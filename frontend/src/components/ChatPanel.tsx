@@ -34,6 +34,7 @@ export default function ChatPanel() {
     reject,
     edit,
     initMessages,
+    refreshHistory,
   } = useChat(invoiceId || '')
 
   // Load sender details once
@@ -51,6 +52,15 @@ export default function ChatPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, interrupt])
+
+  // Periodic refresh to pick up webhook-injected messages (e.g. inbound client emails)
+  useEffect(() => {
+    if (!invoiceId) return
+    const interval = setInterval(() => {
+      if (!loading) refreshHistory()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [invoiceId, loading, refreshHistory])
 
   const handleSend = () => {
     if (!input.trim() || loading) return

@@ -1,4 +1,4 @@
-import { Bot, User, Wrench } from 'lucide-react'
+import { Bot, User, Wrench, Mail } from 'lucide-react'
 import type { Message } from '../types'
 
 export default function MessageBubble({ message }: { message: Message }) {
@@ -21,6 +21,31 @@ export default function MessageBubble({ message }: { message: Message }) {
   }
 
   if (!message.content) return null
+
+  // Inbound client email reply
+  const isInboundEmail = typeof message.content === 'string' && message.content.startsWith('[INCOMING CLIENT REPLY]')
+  if (isInboundEmail) {
+    const content = message.content as string
+    const lines = content.split('\n')
+    const fromLine = lines.find(l => l.startsWith('From:'))?.replace('From:', '').trim() || ''
+    const subjectLine = lines.find(l => l.startsWith('Subject:'))?.replace('Subject:', '').trim() || ''
+    const bodyStart = lines.findIndex(l => l === '')
+    const bodyText = bodyStart >= 0 ? lines.slice(bodyStart + 1).join('\n').trim() : ''
+
+    return (
+      <div className="flex justify-start px-5 mb-4">
+        <div className="max-w-[75%] bg-white border border-indigo-100 border-l-4 border-l-indigo-500 rounded-xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Mail className="w-4 h-4 text-indigo-400" />
+            <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">Client Reply</span>
+          </div>
+          {fromLine && <p className="text-xs text-gray-400 mb-1">From: {fromLine}</p>}
+          {subjectLine && <p className="text-sm font-semibold text-gray-700 mb-2">Re: {subjectLine}</p>}
+          {bodyText && <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{bodyText}</p>}
+        </div>
+      </div>
+    )
+  }
 
   // Tool result
   if (isTool) {

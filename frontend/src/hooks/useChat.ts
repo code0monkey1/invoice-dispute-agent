@@ -110,5 +110,19 @@ export function useChat(invoiceId: string) {
     setAgentState(state)
   }, [])
 
-  return { messages, interrupt, agentState, loading, lastEmailSent, sendMessage, approve, reject, edit, initMessages }
+  const refreshHistory = useCallback(async () => {
+    if (!invoiceId) return
+    try {
+      const res = await api.getHistory(invoiceId)
+      if (res.messages && res.messages.length > 0) {
+        setMessages(res.messages)
+        setInterrupt(res.interrupt)
+        if (res.state) setAgentState(res.state)
+      }
+    } catch (err) {
+      console.error('Failed to refresh history:', err)
+    }
+  }, [invoiceId])
+
+  return { messages, interrupt, agentState, loading, lastEmailSent, sendMessage, approve, reject, edit, initMessages, refreshHistory }
 }
