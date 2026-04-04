@@ -1,24 +1,10 @@
 import { ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
-import { Zap, LogOut, User } from 'lucide-react'
-
-function getUser(): { name: string; type: string } | null {
-  try {
-    const raw = localStorage.getItem('invoicechaser_user')
-    return raw ? JSON.parse(raw) : null
-  } catch {
-    return null
-  }
-}
+import { Link } from 'react-router-dom'
+import { Zap, User } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const navigate = useNavigate()
-  const user = getUser()
-
-  const handleSignOut = () => {
-    localStorage.removeItem('invoicechaser_user')
-    navigate('/')
-  }
+  const { user, signOut } = useAuth()
 
   return (
     <div className="min-h-screen bg-mesh noise">
@@ -45,22 +31,20 @@ export default function Layout({ children }: { children: ReactNode }) {
                 Powered by LangChain + Groq
               </div>
               {user && (
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-2 bg-gray-50 border border-gray-200/60 rounded-full pl-1.5 pr-3 py-1">
-                    <div className="w-6 h-6 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center">
-                      <User className="w-3 h-3 text-white" />
+                <div className="flex items-center gap-3">
+                  {user.picture ? (
+                    <img src={user.picture} alt="" className="w-8 h-8 rounded-full" />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center">
+                      <User className="w-4 h-4 text-white" />
                     </div>
-                    <span className="text-xs font-semibold text-gray-600">{user.name}</span>
-                    {user.type === 'guest' && (
-                      <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200/60 uppercase tracking-wider">Guest</span>
-                    )}
-                  </div>
+                  )}
+                  <span className="text-sm text-zinc-400">{user.email}</span>
                   <button
-                    onClick={handleSignOut}
-                    className="text-gray-400 hover:text-rose-500 transition-colors p-1.5 rounded-lg hover:bg-rose-50"
-                    title="Sign out"
+                    onClick={signOut}
+                    className="text-sm text-zinc-500 hover:text-white transition-colors"
                   >
-                    <LogOut className="w-4 h-4" />
+                    Sign out
                   </button>
                 </div>
               )}

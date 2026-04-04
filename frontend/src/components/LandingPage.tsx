@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../contexts/AuthContext'
 import {
   Zap, ArrowRight, Shield, Mail, Scale, ChevronRight,
   CheckCircle2, Clock, DollarSign, MessageSquare,
@@ -278,6 +279,7 @@ const techStack = [
 
 export default function LandingPage() {
   const navigate = useNavigate()
+  const { signIn } = useAuth()
   const [showGuestModal, setShowGuestModal] = useState(false)
   const [guestName, setGuestName] = useState('')
 
@@ -292,13 +294,7 @@ export default function LandingPage() {
   }
 
   const handleGoogleSignIn = () => {
-    // Placeholder for Google OAuth — stores mock auth
-    localStorage.setItem('invoicechaser_user', JSON.stringify({
-      name: 'Google User',
-      type: 'google',
-      enteredAt: new Date().toISOString(),
-    }))
-    navigate('/dashboard')
+    signIn()
   }
 
   return (

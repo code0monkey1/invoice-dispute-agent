@@ -3,40 +3,35 @@ import Layout from './components/Layout'
 import Dashboard from './components/Dashboard'
 import ChatPanel from './components/ChatPanel'
 import LandingPage from './components/LandingPage'
-
-function isAuthenticated() {
-  const user = localStorage.getItem('invoicechaser_user')
-  return !!user
-}
+import GoogleCallback from './pages/GoogleCallback'
+import { useAuth } from './contexts/AuthContext'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  if (!isAuthenticated()) {
-    return <Navigate to="/" replace />
-  }
+  const { user, loading } = useAuth()
+  if (loading) return null
+  if (!user) return <Navigate to="/" replace />
   return <>{children}</>
 }
 
 function App() {
+  const { user, loading } = useAuth()
+
+  if (loading) return null
+
   return (
     <Routes>
-      {/* Landing page — public */}
       <Route path="/" element={
-        isAuthenticated() ? <Navigate to="/dashboard" replace /> : <LandingPage />
+        user ? <Navigate to="/dashboard" replace /> : <LandingPage />
       } />
-
-      {/* App routes — protected */}
+      <Route path="/auth/google/callback" element={<GoogleCallback />} />
       <Route path="/dashboard" element={
         <ProtectedRoute>
-          <Layout>
-            <Dashboard />
-          </Layout>
+          <Layout><Dashboard /></Layout>
         </ProtectedRoute>
       } />
       <Route path="/invoice/:invoiceId" element={
         <ProtectedRoute>
-          <Layout>
-            <ChatPanel />
-          </Layout>
+          <Layout><ChatPanel /></Layout>
         </ProtectedRoute>
       } />
     </Routes>
