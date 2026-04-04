@@ -1,11 +1,27 @@
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
+function getAuthHeader(): Record<string, string> {
+  const token = localStorage.getItem('invoicechaser_token');
+  if (token) {
+    return { Authorization: `Bearer ${token}` };
+  }
+  return {};
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
     ...options,
   });
   if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem('invoicechaser_token');
+      localStorage.removeItem('invoicechaser_user');
+      window.location.href = '/';
+    }
     const text = await res.text();
     throw new Error(`API error ${res.status}: ${text}`);
   }
@@ -13,6 +29,20 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Auth
+  getGoogleAuthUrl: () =>
+    request<{ url: string }>('/api/auth/google/url'),
+
+  googleCallback: (code: string) =>
+    request<{ token: string; user: import('./types').User }>('/api/auth/google/callback', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+
+  getMe: () =>
+    request<{ user: import('./types').User }>('/api/auth/me'),
+
+  // Invoices
   getInvoices: () => request<import('./types').Invoice[]>('/api/invoices'),
 
   getHistory: (invoiceId: string) =>

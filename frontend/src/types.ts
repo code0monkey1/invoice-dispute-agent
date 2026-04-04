@@ -54,3 +54,10 @@ export interface InvoiceCreateResponse {
   interrupt: Interrupt | null;
   state: AgentState;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  picture: string;
+}
