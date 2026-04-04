@@ -1,0 +1,11 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+venv/
+node_modules/
+frontend/dist/
+.vercel/
+*.egg-info/
+.ipynb_checkpoints/
+data/

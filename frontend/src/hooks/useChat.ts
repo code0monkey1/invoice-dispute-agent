@@ -1,0 +1,114 @@
+import { useState, useCallback, useEffect } from 'react'
+import { api } from '../api'
+import type { Message, Interrupt, AgentState } from '../types'
+
+export function useChat(invoiceId: string) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [interrupt, setInterrupt] = useState<Interrupt | null>(null)
+  const [agentState, setAgentState] = useState<AgentState | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const [lastEmailSent, setLastEmailSent] = useState<{ sent: boolean; id?: string } | null>(null)
+
+  const threadId = `invoice-${invoiceId}`
+
+  // Load existing conversation history when the component mounts
+  useEffect(() => {
+    if (!invoiceId || historyLoaded) return
+    let cancelled = false
+
+    async function loadHistory() {
+      try {
+        const res = await api.getHistory(invoiceId)
+        if (cancelled) return
+        if (res.messages && res.messages.length > 0) {
+          setMessages(res.messages)
+          setInterrupt(res.interrupt)
+          if (res.state) setAgentState(res.state)
+        }
+      } catch (err) {
+        console.error('Failed to load history:', err)
+      } finally {
+        if (!cancelled) setHistoryLoaded(true)
+      }
+    }
+
+    loadHistory()
+    return () => { cancelled = true }
+  }, [invoiceId, historyLoaded])
+
+  const sendMessage = useCallback(async (text: string) => {
+    setLoading(true)
+    try {
+      // Add user message optimistically
+      const userMsg: Message = { type: 'HumanMessage', content: text }
+      setMessages(prev => [...prev, userMsg])
+
+      const res = await api.chat(threadId, text)
+      setMessages(res.messages)
+      setInterrupt(res.interrupt)
+      setAgentState(res.state)
+    } catch (err) {
+      console.error('Chat error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [threadId])
+
+  const approve = useCallback(async () => {
+    setLoading(true)
+    setLastEmailSent(null)
+    try {
+      const res = await api.resume(invoiceId, 'approve')
+      setMessages(res.messages)
+      setInterrupt(res.interrupt)
+      setAgentState(res.state)
+      if (res.email_sent !== undefined) {
+        setLastEmailSent({ sent: res.email_sent, id: res.email_id })
+        // Auto-clear after 8 seconds
+        setTimeout(() => setLastEmailSent(null), 8000)
+      }
+    } catch (err) {
+      console.error('Approve error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [invoiceId])
+
+  const reject = useCallback(async (message: string) => {
+    setLoading(true)
+    try {
+      const res = await api.resume(invoiceId, 'reject', message || 'Please revise.')
+      setMessages(res.messages)
+      setInterrupt(res.interrupt)
+      setAgentState(res.state)
+    } catch (err) {
+      console.error('Reject error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [invoiceId])
+
+  const edit = useCallback(async (editedText: string) => {
+    setLoading(true)
+    try {
+      // Use reject with the edited text as feedback so the agent redrafts
+      const res = await api.resume(invoiceId, 'reject', `Please use this version instead: ${editedText}`)
+      setMessages(res.messages)
+      setInterrupt(res.interrupt)
+      setAgentState(res.state)
+    } catch (err) {
+      console.error('Edit error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [invoiceId])
+
+  const initMessages = useCallback((msgs: Message[], inter: Interrupt | null, state: AgentState) => {
+    setMessages(msgs)
+    setInterrupt(inter)
+    setAgentState(state)
+  }, [])
+
+  return { messages, interrupt, agentState, loading, lastEmailSent, sendMessage, approve, reject, edit, initMessages }
+}
