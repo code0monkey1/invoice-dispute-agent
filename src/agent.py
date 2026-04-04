@@ -15,6 +15,7 @@ from src.tools.drafting import draft_polite_reminder, draft_formal_demand_letter
 from src.tools.invoice import check_invoice_status, calculate_late_fees
 from src.tools.legal import lookup_small_claims_procedures, generate_court_filing_guide
 from src.tools.escalation import escalate_dispute, update_invoice_details
+from src.tools.payment_tools import mark_invoice_pending, mark_invoice_paid
 
 ALL_TOOLS = [
     update_invoice_details,
@@ -26,6 +27,8 @@ ALL_TOOLS = [
     lookup_small_claims_procedures,
     generate_court_filing_guide,
     draft_final_notice,
+    mark_invoice_pending,
+    mark_invoice_paid,
 ]
 
 model = init_chat_model("llama-3.3-70b-versatile", model_provider="groq")
@@ -51,6 +54,8 @@ agent = create_agent(
                 "escalate_dispute": False,
                 "lookup_small_claims_procedures": False,
                 "generate_court_filing_guide": False,
+                "mark_invoice_pending": True,
+                "mark_invoice_paid": True,
             },
             description_prefix="APPROVAL REQUIRED: Review this draft before sending",
         ),

@@ -11,6 +11,8 @@ class InvoiceDisputeState(AgentState):
     escalation_level: int        # 1=friendly, 2=formal, 3=legal
     communication_history: list  # [{"type": str, "content": str, "timestamp": str}]
     jurisdiction: str            # e.g., "California", "England and Wales"
+    gmail_thread_id: str         # Gmail thread ID for tracking replies
+    gmail_message_ids: list      # List of sent message IDs
 
 
 @dataclass
