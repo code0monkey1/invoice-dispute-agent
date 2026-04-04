@@ -33,6 +33,7 @@ from src.db import (
     add_communication, get_communications,
 )
 from src.services.gmail_service import GmailService, SCOPES
+from src.services.telegram_service import send_telegram_notification
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("invoicechaser")
@@ -540,6 +541,17 @@ def chat(req: ChatRequest):
         config=config,
     )
 
+    # Notify on escalation level change
+    new_level = response.get("escalation_level", 0)
+    invoice_data = get_invoice(inv_id)
+    if invoice_data and new_level > invoice_data.get("escalation_level", 0):
+        update_invoice(inv_id, escalation_level=new_level)
+        level_names = {1: "Friendly", 2: "Formal", 3: "Legal"}
+        send_telegram_notification(
+            f"⚠️ <b>Escalation</b>\n"
+            f"Invoice #{inv_id} escalated to Level {new_level} ({level_names.get(new_level, 'Unknown')})"
+        )
+
     return {
         "messages": serialize_messages(response["messages"]),
         "interrupt": extract_interrupt(response, context),
@@ -586,6 +598,13 @@ def resume(invoice_id: str, req: ResumeRequest):
                                 logger.info(f"[RESUME] email_result={email_result}")
                                 if email_result and not gmail_thread_id:
                                     update_invoice(invoice_id, gmail_thread_id=email_result["threadId"])
+                                if email_result:
+                                    send_telegram_notification(
+                                        f"📤 <b>Email Sent</b>\n"
+                                        f"Invoice: #{invoice_id}\n"
+                                        f"To: {client_email}\n"
+                                        f"Subject: {approved_subject}"
+                                    )
                             else:
                                 logger.warning("[RESUME] No user found in DB — skipping email send")
                         else:
@@ -645,7 +664,6 @@ def resume(invoice_id: str, req: ResumeRequest):
     return result
 
 
-from src.services.telegram_service import send_telegram_notification
 import base64 as b64
 import json as json_module
 
