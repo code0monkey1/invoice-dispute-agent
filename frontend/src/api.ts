@@ -23,7 +23,13 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       window.location.href = '/';
     }
     const text = await res.text();
-    throw new Error(`API error ${res.status}: ${text}`);
+    // Try to extract a user-friendly detail message from JSON responses
+    let detail = text;
+    try {
+      const json = JSON.parse(text);
+      if (json.detail) detail = json.detail;
+    } catch { /* not JSON, use raw text */ }
+    throw new Error(detail);
   }
   return res.json();
 }

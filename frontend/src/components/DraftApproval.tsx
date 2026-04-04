@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { Check, X, Pencil, FileText, Mail } from 'lucide-react'
 import type { Interrupt } from '../types'
 
@@ -10,13 +10,108 @@ interface Props {
   loading: boolean
 }
 
+/** Parse a draft email string into editable sections. */
+function parseDraft(raw: string) {
+  let subject = ''
+  let body = ''
+  let senderName = ''
+  let business = ''
+  let email = ''
+
+  // Extract subject line
+  const subjectMatch = raw.match(/^Subject:\s*(.+)/m)
+  if (subjectMatch) {
+    subject = subjectMatch[1].trim()
+  }
+
+  // Everything after "Subject: ...\n\n" is the rest
+  const afterSubject = raw.replace(/^Subject:\s*.+\n\n?/, '')
+
+  // Split off the signature block (last lines after the closing like "Best regards," / "Sincerely,")
+  const closingPatterns = /\n(Best regards|Sincerely|Regards|Respectfully|Thank you),?\n/i
+  const closingMatch = afterSubject.match(closingPatterns)
+
+  if (closingMatch && closingMatch.index !== undefined) {
+    body = afterSubject.slice(0, closingMatch.index + closingMatch[0].length).trim()
+    const signatureBlock = afterSubject.slice(closingMatch.index + closingMatch[0].length).trim()
+    const sigLines = signatureBlock.split('\n').map(l => l.trim()).filter(Boolean)
+
+    // Signature lines: name, business, email (in order, email detected by @)
+    for (const line of sigLines) {
+      if (line.includes('@') && !email) {
+        email = line
+      } else if (!senderName) {
+        senderName = line
+      } else if (!business) {
+        business = line
+      }
+    }
+  } else {
+    // No closing pattern found — try to split by last lines with @
+    const lines = afterSubject.trim().split('\n')
+    const sigStart = lines.findIndex(l => l.trim().includes('@'))
+    if (sigStart > 0) {
+      // Assume 1-3 lines before the email line are the signature
+      const start = Math.max(0, sigStart - 2)
+      body = lines.slice(0, start).join('\n').trim()
+      const sigLines = lines.slice(start).map(l => l.trim()).filter(Boolean)
+      for (const line of sigLines) {
+        if (line.includes('@') && !email) {
+          email = line
+        } else if (!senderName) {
+          senderName = line
+        } else if (!business) {
+          business = line
+        }
+      }
+    } else {
+      body = afterSubject.trim()
+    }
+  }
+
+  return { subject, body, senderName, business, email }
+}
+
+function reassemble(parts: { subject: string; body: string; senderName: string; business: string; email: string }) {
+  let result = `Subject: ${parts.subject}\n\n${parts.body}`
+  const sig = [parts.senderName, parts.business, parts.email].filter(Boolean).join('\n')
+  if (sig) {
+    // If body already ends with a closing line, don't double-add
+    if (!/,\s*$/.test(parts.body)) {
+      result += '\n'
+    }
+    result += '\n' + sig
+  }
+  return result
+}
+
 export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, loading }: Props) {
+  const draftContent = interrupt.description || JSON.stringify(interrupt.args, null, 2)
+  const parsed = useMemo(() => parseDraft(draftContent), [draftContent])
+
   const [editing, setEditing] = useState(false)
-  const [editText, setEditText] = useState('')
+  const [subject, setSubject] = useState(parsed.subject)
+  const [body, setBody] = useState(parsed.body)
+  const [senderName, setSenderName] = useState(parsed.senderName)
+  const [business, setBusiness] = useState(parsed.business)
+  const [email, setEmail] = useState(parsed.email)
   const [rejectReason, setRejectReason] = useState('')
   const [showReject, setShowReject] = useState(false)
 
-  const draftContent = interrupt.description || JSON.stringify(interrupt.args, null, 2)
+  const handleStartEdit = () => {
+    setSubject(parsed.subject)
+    setBody(parsed.body)
+    setSenderName(parsed.senderName)
+    setBusiness(parsed.business)
+    setEmail(parsed.email)
+    setEditing(true)
+  }
+
+  const handleSendEdit = () => {
+    const assembled = reassemble({ subject, body, senderName, business, email })
+    onEdit(assembled)
+    setEditing(false)
+  }
 
   return (
     <div className="mx-5 my-4 animate-fade-up">
@@ -37,36 +132,78 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
 
         {/* Draft Content */}
         <div className="px-5 py-4 bg-gradient-to-b from-amber-50/50 to-white">
-          <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono leading-relaxed">
-            {draftContent}
-          </pre>
+          {editing ? (
+            <div className="space-y-4">
+              {/* Subject */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Subject</label>
+                <input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                />
+              </div>
+              {/* Body */}
+              <div>
+                <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Body</label>
+                <textarea
+                  value={body}
+                  onChange={(e) => setBody(e.target.value)}
+                  className="w-full bg-white border border-amber-200 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-300 min-h-[140px] font-mono leading-relaxed"
+                />
+              </div>
+              {/* Signature fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Sent By</label>
+                  <input
+                    value={senderName}
+                    onChange={(e) => setSenderName(e.target.value)}
+                    className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Business</label>
+                  <input
+                    value={business}
+                    onChange={(e) => setBusiness(e.target.value)}
+                    className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider mb-1.5">Email</label>
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full bg-white border border-amber-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-300"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono leading-relaxed">
+              {draftContent}
+            </pre>
+          )}
         </div>
 
         {/* Actions */}
         <div className="px-5 py-4 border-t border-amber-100 bg-amber-50/30 space-y-3">
           {editing ? (
-            <div className="space-y-3">
-              <textarea
-                value={editText}
-                onChange={(e) => setEditText(e.target.value)}
-                placeholder="Enter your edited version..."
-                className="w-full bg-white border border-amber-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-amber-300 min-h-[120px] font-mono"
-              />
-              <div className="flex gap-2">
-                <button
-                  onClick={() => { onEdit(editText); setEditing(false) }}
-                  disabled={loading || !editText.trim()}
-                  className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white text-sm font-bold rounded-xl py-2.5 transition-all shadow-md shadow-amber-200/40"
-                >
-                  Send Edited Version
-                </button>
-                <button
-                  onClick={() => setEditing(false)}
-                  className="px-4 text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSendEdit}
+                disabled={loading || !subject.trim() || !body.trim()}
+                className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white text-sm font-bold rounded-xl py-2.5 transition-all shadow-md shadow-amber-200/40"
+              >
+                Send Edited Version
+              </button>
+              <button
+                onClick={() => setEditing(false)}
+                className="px-4 text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors"
+              >
+                Cancel
+              </button>
             </div>
           ) : showReject ? (
             <div className="space-y-3">
@@ -103,7 +240,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
                 Approve & Send
               </button>
               <button
-                onClick={() => setEditing(true)}
+                onClick={handleStartEdit}
                 disabled={loading}
                 className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-400 to-orange-400 hover:from-amber-500 hover:to-orange-500 disabled:opacity-50 text-white text-sm font-bold rounded-xl py-3 transition-all shadow-md shadow-amber-200/40 font-[family-name:var(--font-heading)]"
               >

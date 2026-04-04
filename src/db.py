@@ -99,12 +99,28 @@ def init_db() -> None:
                 escalation_level  INTEGER NOT NULL DEFAULT 0,
                 gmail_thread_id   TEXT,
                 gmail_message_ids TEXT DEFAULT '[]',
+                sender_name       TEXT,
+                sender_business   TEXT,
+                sender_email      TEXT,
                 status            TEXT NOT NULL DEFAULT 'pending',
                 created_at        TEXT DEFAULT CURRENT_TIMESTAMP,
                 updated_at        TEXT DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );
 
+            -- Migration: add sender override columns if missing
+            """
+        )
+
+        # Add sender columns to existing DBs (safe to re-run)
+        for col in ("sender_name", "sender_business", "sender_email"):
+            try:
+                conn.execute(f"ALTER TABLE invoices ADD COLUMN {col} TEXT")
+            except sqlite3.OperationalError:
+                pass  # column already exists
+
+        conn.executescript(
+            """
             CREATE TABLE IF NOT EXISTS communication_history (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
                 invoice_id  TEXT NOT NULL,
@@ -116,6 +132,11 @@ def init_db() -> None:
                 FOREIGN KEY (invoice_id) REFERENCES invoices(id)
             );
             """
+        )
+
+        # Seed a guest user so unauthenticated invoices have a valid FK
+        conn.execute(
+            "INSERT OR IGNORE INTO users (id, email, name) VALUES ('guest', 'guest@invoicechaser', 'Guest')"
         )
 
 

@@ -93,6 +93,7 @@ class UpdateSenderRequest(BaseModel):
     business_name: Optional[str] = None
 
 
+
 # --- Helpers ---
 
 def serialize_messages(messages):
@@ -221,8 +222,26 @@ def parse_draft_subject_and_body(draft: str) -> tuple[str, str]:
     return subject, body
 
 
-def get_context_for_invoice(invoice_id: str) -> FreelancerContext:
-    """Get FreelancerContext for an invoice."""
+def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> FreelancerContext:
+    """Get FreelancerContext for an invoice.
+
+    Priority: invoice-level sender overrides > authenticated user profile > defaults.
+    """
+    # Check for per-invoice sender overrides in DB
+    invoice = get_invoice(invoice_id)
+    if invoice and invoice.get("sender_name"):
+        return FreelancerContext(
+            freelancer_name=invoice["sender_name"],
+            freelancer_email=invoice.get("sender_email") or (user or {}).get("email", "unknown@example.com"),
+            business_name=invoice.get("sender_business") or invoice["sender_name"],
+        )
+    # Fall back to authenticated user's Google profile
+    if user:
+        return FreelancerContext(
+            freelancer_name=user.get("name") or "Unknown",
+            freelancer_email=user.get("email") or "unknown@example.com",
+            business_name=user.get("name", "My Business"),
+        )
     return FreelancerContext()
 
 
@@ -300,23 +319,17 @@ def health():
 
 @app.get("/api/auth/google/url")
 def google_auth_url():
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-        },
-        scopes=SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI,
-    )
-    auth_url, _ = flow.authorization_url(
-        access_type="offline",
-        include_granted_scopes="true",
-        prompt="consent",
-    )
+    """Build Google OAuth URL manually without PKCE."""
+    import urllib.parse
+    params = {
+        "client_id": GOOGLE_CLIENT_ID,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "response_type": "code",
+        "scope": " ".join(SCOPES),
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    auth_url = f"https://accounts.google.com/o/oauth2/auth?{urllib.parse.urlencode(params)}"
     return {"url": auth_url}
 
 
@@ -326,27 +339,33 @@ class GoogleCallbackRequest(BaseModel):
 
 @app.post("/api/auth/google/callback")
 def google_callback(req: GoogleCallbackRequest):
-    flow = Flow.from_client_config(
-        {
-            "web": {
-                "client_id": GOOGLE_CLIENT_ID,
-                "client_secret": GOOGLE_CLIENT_SECRET,
-                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-                "token_uri": "https://oauth2.googleapis.com/token",
-            }
-        },
-        scopes=SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI,
+    import urllib.request
+    import urllib.parse
+    import json as json_lib
+
+    # Exchange auth code for tokens directly (bypass Flow PKCE issues)
+    token_data = urllib.parse.urlencode({
+        "code": req.code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": GOOGLE_REDIRECT_URI,
+        "grant_type": "authorization_code",
+    }).encode()
+    token_req = urllib.request.Request(
+        "https://oauth2.googleapis.com/token",
+        data=token_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    flow.fetch_token(code=req.code)
-    credentials = flow.credentials
+    with urllib.request.urlopen(token_req) as resp:
+        token_response = json_lib.loads(resp.read())
+
+    access_token = token_response["access_token"]
+    refresh_token = token_response.get("refresh_token", "")
 
     # Get user info from Google
-    import urllib.request
-    import json as json_lib
     user_info_req = urllib.request.Request(
         "https://www.googleapis.com/oauth2/v2/userinfo",
-        headers={"Authorization": f"Bearer {credentials.token}"}
+        headers={"Authorization": f"Bearer {access_token}"}
     )
     with urllib.request.urlopen(user_info_req) as resp:
         user_info = json_lib.loads(resp.read())
@@ -358,13 +377,13 @@ def google_callback(req: GoogleCallbackRequest):
 
     upsert_user(
         user_id=user_id, email=email, name=name, picture=picture,
-        access_token=credentials.token,
-        refresh_token=credentials.refresh_token or "",
+        access_token=access_token,
+        refresh_token=refresh_token,
     )
 
     # Register for Gmail push notifications
     try:
-        gmail = GmailService(user_id, credentials.token, credentials.refresh_token)
+        gmail = GmailService(user_id, access_token, refresh_token)
         topic = os.getenv("GOOGLE_PUBSUB_TOPIC", "")
         if topic:
             watch_result = gmail.watch_inbox(topic)
@@ -392,8 +411,9 @@ def get_me_route(authorization: str | None = Header(None)):
     }
 
 
+
 @app.get("/api/invoices/{invoice_id}/history")
-def get_invoice_history(invoice_id: str):
+def get_invoice_history(invoice_id: str, authorization: str | None = Header(None)):
     """Retrieve the full conversation history and state for an existing thread."""
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
     try:
@@ -409,13 +429,14 @@ def get_invoice_history(invoice_id: str):
 
     # Check for pending interrupt
     interrupt_data = None
+    user = get_current_user(authorization)
     if snapshot.tasks:
         for task in snapshot.tasks:
             if hasattr(task, "interrupts") and task.interrupts:
                 intr = task.interrupts[0]
                 action = intr.value["action_requests"][0]
                 tool_name = action["name"]
-                ctx = get_context_for_invoice(invoice_id)
+                ctx = get_context_for_invoice(invoice_id, user)
                 draft_preview = generate_draft_preview(tool_name, state, ctx)
                 interrupt_data = {
                     "tool": tool_name,
@@ -433,7 +454,7 @@ def get_invoice_history(invoice_id: str):
 
 @app.patch("/api/invoices/{invoice_id}/details")
 def update_invoice_details_route(invoice_id: str, req: UpdateDetailsRequest):
-    """Update client name and/or email in the agent state."""
+    """Update client name and/or email in the agent state and DB."""
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
 
     updates = {}
@@ -444,6 +465,9 @@ def update_invoice_details_route(invoice_id: str, req: UpdateDetailsRequest):
 
     if not updates:
         return {"error": "No fields to update"}
+
+    # Persist to DB
+    update_invoice(invoice_id, **updates)
 
     # Update the agent's graph state directly
     agent.update_state(config, updates)
@@ -456,9 +480,8 @@ def update_invoice_details_route(invoice_id: str, req: UpdateDetailsRequest):
 @app.get("/api/invoices")
 def list_invoices(authorization: str | None = Header(None)):
     user = get_current_user(authorization)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    invoices = get_invoices_by_user(user["id"])
+    user_id = user["id"] if user else "guest"
+    invoices = get_invoices_by_user(user_id)
     for inv in invoices:
         inv["communication_history"] = get_communications(inv["id"])
     return invoices
@@ -467,12 +490,16 @@ def list_invoices(authorization: str | None = Header(None)):
 @app.post("/api/invoices")
 def create_invoice(req: InvoiceCreateRequest, authorization: str | None = Header(None)):
     user = get_current_user(authorization)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
+    user_id = user["id"] if user else "guest"
+
+    # Check for duplicate invoice ID
+    existing = get_invoice(req.invoice_id)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
 
     invoice = db_create_invoice(
         invoice_id=req.invoice_id,
-        user_id=user["id"],
+        user_id=user_id,
         client_name=req.client_name,
         client_email=req.client_email,
         invoice_amount=req.invoice_amount,
@@ -480,22 +507,37 @@ def create_invoice(req: InvoiceCreateRequest, authorization: str | None = Header
         jurisdiction=req.jurisdiction,
     )
 
-    context = get_context_for_invoice(req.invoice_id)
+    context = get_context_for_invoice(req.invoice_id, user)
     config = {"configurable": {"thread_id": f"invoice-{req.invoice_id}"}}
     msg = (
-        f"I have an overdue invoice. Here are the details:\n"
-        f"Client: {req.client_name} ({req.client_email})\n"
-        f"Invoice ID: {req.invoice_id}\n"
-        f"Amount: ${req.invoice_amount:.2f}\n"
-        f"Days overdue: {req.days_overdue}\n"
-        f"Jurisdiction: {req.jurisdiction}\n\n"
-        f"Please save these details."
+        f"Invoice details have been saved. Here is the summary:\n"
+        f"- Client: {req.client_name} ({req.client_email})\n"
+        f"- Invoice: {req.invoice_id} for ${req.invoice_amount:.2f}\n"
+        f"- {req.days_overdue} days overdue, jurisdiction: {req.jurisdiction}\n\n"
+        f"Please draft a polite payment reminder email to the client."
     )
-    response = agent.invoke(
-        {"messages": [HumanMessage(content=msg)]},
-        context=context,
-        config=config,
-    )
+    try:
+        response = agent.invoke(
+            {
+                "messages": [HumanMessage(content=msg)],
+                "client_name": req.client_name,
+                "client_email": req.client_email,
+                "invoice_id": req.invoice_id,
+                "invoice_amount": req.invoice_amount,
+                "days_overdue": req.days_overdue,
+                "jurisdiction": req.jurisdiction,
+                "escalation_level": 1,
+                "communication_history": [],
+            },
+            context=context,
+            config=config,
+        )
+    except Exception as e:
+        error_msg = str(e)
+        if "rate_limit" in error_msg.lower() or "429" in error_msg:
+            raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
+        logger.exception("Agent invocation failed")
+        raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
 
     invoice["communication_history"] = []
     return {
@@ -507,9 +549,10 @@ def create_invoice(req: InvoiceCreateRequest, authorization: str | None = Header
 
 
 @app.get("/api/invoices/{invoice_id}/sender")
-def get_sender(invoice_id: str):
+def get_sender(invoice_id: str, authorization: str | None = Header(None)):
     """Get current sender details for an invoice."""
-    ctx = get_context_for_invoice(invoice_id)
+    user = get_current_user(authorization)
+    ctx = get_context_for_invoice(invoice_id, user)
     return {
         "freelancer_name": ctx.freelancer_name,
         "freelancer_email": ctx.freelancer_email,
@@ -518,9 +561,23 @@ def get_sender(invoice_id: str):
 
 
 @app.patch("/api/invoices/{invoice_id}/sender")
-def update_sender(invoice_id: str, req: UpdateSenderRequest):
-    """Update sender/freelancer details for an invoice (no-op, returns default context)."""
-    ctx = get_context_for_invoice(invoice_id)
+def update_sender(invoice_id: str, req: UpdateSenderRequest, authorization: str | None = Header(None)):
+    """Update sender/freelancer details for an invoice — persisted to DB."""
+    user = get_current_user(authorization)
+
+    # Build DB updates
+    db_updates = {}
+    if req.freelancer_name is not None:
+        db_updates["sender_name"] = req.freelancer_name
+    if req.freelancer_email is not None:
+        db_updates["sender_email"] = req.freelancer_email
+    if req.business_name is not None:
+        db_updates["sender_business"] = req.business_name
+
+    if db_updates:
+        update_invoice(invoice_id, **db_updates)
+
+    ctx = get_context_for_invoice(invoice_id, user)
     return {
         "freelancer_name": ctx.freelancer_name,
         "freelancer_email": ctx.freelancer_email,
@@ -529,17 +586,25 @@ def update_sender(invoice_id: str, req: UpdateSenderRequest):
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, authorization: str | None = Header(None)):
     # thread_id format is "invoice-{invoice_id}"
     inv_id = req.thread_id.removeprefix("invoice-")
-    context = get_context_for_invoice(inv_id)
+    user = get_current_user(authorization)
+    context = get_context_for_invoice(inv_id, user)
     config = {"configurable": {"thread_id": req.thread_id}}
 
-    response = agent.invoke(
-        {"messages": [HumanMessage(content=req.message)]},
-        context=context,
-        config=config,
-    )
+    try:
+        response = agent.invoke(
+            {"messages": [HumanMessage(content=req.message)]},
+            context=context,
+            config=config,
+        )
+    except Exception as e:
+        error_msg = str(e)
+        if "rate_limit" in error_msg.lower() or "429" in error_msg:
+            raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
+        logger.exception("Agent invocation failed")
+        raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
 
     # Notify on escalation level change
     new_level = response.get("escalation_level", 0)
@@ -560,9 +625,10 @@ def chat(req: ChatRequest):
 
 
 @app.post("/api/invoices/{invoice_id}/resume")
-def resume(invoice_id: str, req: ResumeRequest):
+def resume(invoice_id: str, req: ResumeRequest, authorization: str | None = Header(None)):
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
-    context = get_context_for_invoice(invoice_id)
+    user = get_current_user(authorization)
+    context = get_context_for_invoice(invoice_id, user)
     email_result = None
 
     # If approving, send the actual email and log the communication
@@ -729,7 +795,8 @@ def gmail_webhook(payload: PubSubMessage):
                 )
 
                 config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
-                context = get_context_for_invoice(invoice["id"])
+                invoice_owner = get_user(invoice["user_id"]) if invoice.get("user_id") else None
+                context = get_context_for_invoice(invoice["id"], invoice_owner)
                 agent_msg = (
                     f"[INCOMING CLIENT REPLY]\n"
                     f"From: {from_addr}\n"

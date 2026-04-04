@@ -33,16 +33,16 @@ export default function Layout({ children }: { children: ReactNode }) {
               {user && (
                 <div className="flex items-center gap-3">
                   {user.picture ? (
-                    <img src={user.picture} alt="" className="w-8 h-8 rounded-full" />
+                    <img src={user.picture} alt="" className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
                   ) : (
                     <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center">
                       <User className="w-4 h-4 text-white" />
                     </div>
                   )}
-                  <span className="text-sm text-zinc-400">{user.email}</span>
+                  <span className="text-sm text-gray-500 hidden sm:inline">{user.email}</span>
                   <button
                     onClick={signOut}
-                    className="text-sm text-zinc-500 hover:text-white transition-colors"
+                    className="text-sm text-gray-400 hover:text-red-500 transition-colors"
                   >
                     Sign out
                   </button>

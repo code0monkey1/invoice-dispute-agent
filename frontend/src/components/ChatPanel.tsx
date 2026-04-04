@@ -239,11 +239,13 @@ export default function ChatPanel() {
                             client_email: editEmail.trim(),
                           })
                           if (res.state) {
-                            // Update local agentState via sendMessage's state setter
-                            // We re-use initMessages to refresh state
                             initMessages(messages, interrupt, res.state)
                           }
                           setEditingDetails(false)
+                          // If there's a pending draft, regenerate it with updated details
+                          if (interrupt) {
+                            reject('Client details were updated. Please regenerate the draft with the new details.')
+                          }
                         } catch (err) {
                           console.error('Failed to update details:', err)
                         } finally {
@@ -350,6 +352,10 @@ export default function ChatPanel() {
                           setSenderEmail(res.freelancer_email)
                           setSenderBusiness(res.business_name)
                           setEditingSender(false)
+                          // If there's a pending draft, regenerate it with updated sender
+                          if (interrupt) {
+                            reject('Sender details were updated. Please regenerate the draft with the new sender information.')
+                          }
                         } catch (err) {
                           console.error('Failed to update sender:', err)
                         } finally {

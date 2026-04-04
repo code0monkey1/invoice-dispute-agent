@@ -7,6 +7,7 @@ interface AuthContextType {
   loading: boolean
   signIn: () => Promise<void>
   signOut: () => void
+  enterAsGuest: (name: string) => void
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -16,9 +17,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('invoicechaser_token')
     const savedUser = localStorage.getItem('invoicechaser_user')
-    if (token && savedUser) {
+    if (savedUser) {
       setUser(JSON.parse(savedUser))
     }
     setLoading(false)
@@ -36,8 +36,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = '/'
   }
 
+  const enterAsGuest = (name: string) => {
+    const guestUser: User = {
+      id: 'guest',
+      email: '',
+      name,
+      picture: '',
+    }
+    localStorage.setItem('invoicechaser_user', JSON.stringify(guestUser))
+    setUser(guestUser)
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signOut, enterAsGuest }}>
       {children}
     </AuthContext.Provider>
   )

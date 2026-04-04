@@ -31,7 +31,7 @@ ALL_TOOLS = [
     mark_invoice_paid,
 ]
 
-model = init_chat_model("llama-3.3-70b-versatile", model_provider="groq")
+model = init_chat_model("qwen/qwen3-32b", model_provider="groq")
 checkpointer = InMemorySaver()
 
 agent = create_agent(
