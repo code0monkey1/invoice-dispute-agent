@@ -17,7 +17,6 @@ from langgraph.types import Command
 
 import logging
 from datetime import datetime, timezone
-import resend
 import jwt
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
@@ -26,15 +25,12 @@ from fastapi import Header, HTTPException
 
 from src.agent import agent
 from src.state import FreelancerContext
-from src.db import init_db, upsert_user, get_user, get_user_gmail_tokens, update_user_history_id
+from src.db import init_db, upsert_user, get_user, get_user_gmail_tokens, update_user_history_id, get_db, get_invoice, update_invoice
 from src.services.gmail_service import GmailService, SCOPES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("invoicechaser")
 logger.setLevel(logging.INFO)
-
-resend.api_key = os.getenv("RESEND_API_KEY", "")
-RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
 
 # Google OAuth
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
@@ -44,9 +40,6 @@ SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
 
 # Initialize database on startup
 init_db()
-# Resend free tier (onboarding@resend.dev) can only deliver to the account owner.
-# Set this to your verified email so demos work. Leave empty to send to the real client.
-RESEND_OVERRIDE_TO = os.getenv("RESEND_OVERRIDE_TO", "")
 
 app = FastAPI(title="Invoice Dispute Agent API")
 
@@ -192,26 +185,20 @@ def generate_draft_preview(tool_name: str, state: dict, context: FreelancerConte
     return ""
 
 
-def send_email(to_email: str, subject: str, body: str) -> dict | None:
-    """Send a real email via Resend. Returns the send result or None on failure."""
-    if not resend.api_key:
-        logger.warning("RESEND_API_KEY not set — skipping email send")
+def send_email_via_gmail(user_id: str, to_email: str, subject: str, body: str,
+                         thread_id: str | None = None) -> dict | None:
+    """Send an email via Gmail API. Returns {id, threadId} or None on failure."""
+    tokens = get_user_gmail_tokens(user_id)
+    if not tokens:
+        logger.warning(f"No Gmail tokens for user {user_id} — skipping email send")
         return None
     try:
-        actual_to = RESEND_OVERRIDE_TO or to_email
-        if RESEND_OVERRIDE_TO:
-            logger.info(f"Resend free tier: redirecting email from {to_email} → {actual_to}")
-        html_body = body.replace("\n", "<br>")
-        result = resend.Emails.send({
-            "from": RESEND_FROM_EMAIL,
-            "to": [actual_to],
-            "subject": subject,
-            "html": html_body,
-        })
-        logger.info(f"Email sent to {actual_to}: {result}")
+        gmail = GmailService(user_id, tokens[0], tokens[1])
+        result = gmail.send_email(to_email, subject, body, thread_id)
+        logger.info(f"Email sent via Gmail: {result}")
         return result
     except Exception as e:
-        logger.error(f"Failed to send email to {to_email}: {e}")
+        logger.error(f"Failed to send email via Gmail: {e}")
         return None
 
 
@@ -594,8 +581,21 @@ def resume(invoice_id: str, req: ResumeRequest):
                         logger.info(f"[RESUME] draft length={len(draft) if draft else 0}, client_email='{client_email}'")
                         if draft and client_email:
                             approved_subject, body = parse_draft_subject_and_body(draft)
-                            email_result = send_email(client_email, approved_subject, body)
-                            logger.info(f"[RESUME] email_result={email_result}")
+                            # Get user from DB (single-user for now)
+                            conn = get_db()
+                            user_row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
+                            conn.close()
+                            user_id = user_row["id"] if user_row else None
+
+                            if user_id:
+                                invoice_data = get_invoice(invoice_id)
+                                gmail_thread_id = invoice_data.get("gmail_thread_id") if invoice_data else None
+                                email_result = send_email_via_gmail(user_id, client_email, approved_subject, body, gmail_thread_id)
+                                logger.info(f"[RESUME] email_result={email_result}")
+                                if email_result and not gmail_thread_id:
+                                    update_invoice(invoice_id, gmail_thread_id=email_result["threadId"])
+                            else:
+                                logger.warning("[RESUME] No user found in DB — skipping email send")
                         else:
                             logger.warning(f"[RESUME] Skipped send: draft={'empty' if not draft else 'ok'}, client_email={'empty' if not client_email else 'ok'}")
                         break
@@ -653,3 +653,102 @@ def resume(invoice_id: str, req: ResumeRequest):
         result["email_sent"] = False
 
     return result
+
+
+from src.services.telegram_service import send_telegram_notification
+from src.db import get_invoices_by_client_email, add_communication
+import base64 as b64
+import json as json_module
+
+
+class PubSubMessage(BaseModel):
+    message: dict
+    subscription: str
+
+
+@app.post("/api/gmail/webhook")
+def gmail_webhook(payload: PubSubMessage):
+    """Handle Gmail push notifications from Pub/Sub."""
+    try:
+        data = json_module.loads(
+            b64.b64decode(payload.message.get("data", "")).decode()
+        )
+        email_address = data.get("emailAddress", "")
+        history_id = str(data.get("historyId", ""))
+
+        logger.info(f"Gmail webhook: email={email_address}, historyId={history_id}")
+
+        conn = get_db()
+        user_row = conn.execute("SELECT * FROM users WHERE email = ?", (email_address,)).fetchone()
+        conn.close()
+
+        if not user_row:
+            logger.warning(f"No user found for email {email_address}")
+            return {"status": "ok"}
+
+        user = dict(user_row)
+        last_history_id = user.get("gmail_history_id")
+
+        if not last_history_id:
+            update_user_history_id(user["id"], history_id)
+            return {"status": "ok"}
+
+        tokens = get_user_gmail_tokens(user["id"])
+        if not tokens:
+            return {"status": "ok"}
+
+        gmail = GmailService(user["id"], tokens[0], tokens[1])
+        new_messages = gmail.get_history(last_history_id)
+        update_user_history_id(user["id"], history_id)
+
+        for msg in new_messages:
+            from_addr = msg.get("from", "")
+            if email_address.lower() in from_addr.lower():
+                continue
+
+            sender_email = from_addr
+            if "<" in from_addr:
+                sender_email = from_addr.split("<")[1].rstrip(">")
+
+            matching_invoices = get_invoices_by_client_email(sender_email)
+
+            for invoice in matching_invoices:
+                add_communication(
+                    invoice_id=invoice["id"],
+                    comm_type="client_reply",
+                    subject=msg.get("subject", ""),
+                    content=msg.get("body", "")[:2000],
+                    direction="inbound",
+                )
+
+                config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
+                context = get_context_for_invoice(invoice["id"])
+                agent_msg = (
+                    f"[INCOMING CLIENT REPLY]\n"
+                    f"From: {from_addr}\n"
+                    f"Subject: {msg.get('subject', 'No subject')}\n\n"
+                    f"{msg.get('body', '')[:2000]}\n\n"
+                    f"Please analyze this reply and suggest the appropriate next action."
+                )
+                try:
+                    agent.invoke(
+                        {"messages": [HumanMessage(content=agent_msg)]},
+                        context=context,
+                        config=config,
+                    )
+                except Exception as e:
+                    logger.error(f"Agent failed to process reply for invoice {invoice['id']}: {e}")
+
+                send_telegram_notification(
+                    f"📩 <b>Client Reply</b>\n"
+                    f"Invoice: #{invoice['id']}\n"
+                    f"From: {from_addr}\n"
+                    f"Subject: {msg.get('subject', 'No subject')}\n\n"
+                    f"{msg.get('body', '')[:200]}"
+                )
+
+        return {"status": "ok"}
+
+    except Exception as e:
+        logger.error(f"Gmail webhook error: {e}", exc_info=True)
+        return {"status": "error"}
