@@ -18,9 +18,16 @@ from langgraph.types import Command
 import logging
 from datetime import datetime, timezone
 import resend
+import jwt
+from google_auth_oauthlib.flow import Flow
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from fastapi import Header, HTTPException
 
 from src.agent import agent
 from src.state import FreelancerContext
+from src.db import init_db, upsert_user, get_user, get_user_gmail_tokens, update_user_history_id
+from src.services.gmail_service import GmailService, SCOPES
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("invoicechaser")
@@ -28,6 +35,15 @@ logger.setLevel(logging.INFO)
 
 resend.api_key = os.getenv("RESEND_API_KEY", "")
 RESEND_FROM_EMAIL = os.getenv("RESEND_FROM_EMAIL", "onboarding@resend.dev")
+
+# Google OAuth
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5173/auth/google/callback")
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
+
+# Initialize database on startup
+init_db()
 # Resend free tier (onboarding@resend.dev) can only deliver to the account owner.
 # Set this to your verified email so demos work. Leave empty to send to the real client.
 RESEND_OVERRIDE_TO = os.getenv("RESEND_OVERRIDE_TO", "")
@@ -272,11 +288,127 @@ def extract_state(response):
     }
 
 
+# --- JWT Helpers ---
+
+def create_jwt(user_id: str, email: str) -> str:
+    payload = {
+        "user_id": user_id,
+        "email": email,
+        "exp": datetime.now(timezone.utc).timestamp() + 86400 * 7,
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
+
+
+def get_current_user(authorization: str | None) -> dict | None:
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.removeprefix("Bearer ")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
+        return get_user(payload["user_id"])
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
+
+
 # --- Routes ---
 
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/api/auth/google/url")
+def google_auth_url():
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        },
+        scopes=SCOPES,
+        redirect_uri=GOOGLE_REDIRECT_URI,
+    )
+    auth_url, _ = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        prompt="consent",
+    )
+    return {"url": auth_url}
+
+
+class GoogleCallbackRequest(BaseModel):
+    code: str
+
+
+@app.post("/api/auth/google/callback")
+def google_callback(req: GoogleCallbackRequest):
+    flow = Flow.from_client_config(
+        {
+            "web": {
+                "client_id": GOOGLE_CLIENT_ID,
+                "client_secret": GOOGLE_CLIENT_SECRET,
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+        },
+        scopes=SCOPES,
+        redirect_uri=GOOGLE_REDIRECT_URI,
+    )
+    flow.fetch_token(code=req.code)
+    credentials = flow.credentials
+
+    # Get user info from Google
+    import urllib.request
+    import json as json_lib
+    user_info_req = urllib.request.Request(
+        "https://www.googleapis.com/oauth2/v2/userinfo",
+        headers={"Authorization": f"Bearer {credentials.token}"}
+    )
+    with urllib.request.urlopen(user_info_req) as resp:
+        user_info = json_lib.loads(resp.read())
+
+    user_id = user_info["id"]
+    email = user_info["email"]
+    name = user_info.get("name", "")
+    picture = user_info.get("picture", "")
+
+    upsert_user(
+        user_id=user_id, email=email, name=name, picture=picture,
+        access_token=credentials.token,
+        refresh_token=credentials.refresh_token or "",
+    )
+
+    # Register for Gmail push notifications
+    try:
+        gmail = GmailService(user_id, credentials.token, credentials.refresh_token)
+        topic = os.getenv("GOOGLE_PUBSUB_TOPIC", "")
+        if topic:
+            watch_result = gmail.watch_inbox(topic)
+            update_user_history_id(user_id, str(watch_result.get("historyId", "")))
+    except Exception as e:
+        logger.warning(f"Failed to set up Gmail watch: {e}")
+
+    token = create_jwt(user_id, email)
+    return {
+        "token": token,
+        "user": {"id": user_id, "email": email, "name": name, "picture": picture},
+    }
+
+
+@app.get("/api/auth/me")
+def get_me_route(authorization: str | None = Header(None)):
+    user = get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return {
+        "user": {
+            "id": user["id"], "email": user["email"],
+            "name": user.get("name", ""), "picture": user.get("picture", ""),
+        }
+    }
 
 
 @app.get("/api/invoices/{invoice_id}/history")
