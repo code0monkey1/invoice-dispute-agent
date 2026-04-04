@@ -25,7 +25,13 @@ from fastapi import Header, HTTPException
 
 from src.agent import agent
 from src.state import FreelancerContext
-from src.db import init_db, upsert_user, get_user, get_user_gmail_tokens, update_user_history_id, get_db, get_invoice, update_invoice
+from src.db import (
+    init_db, upsert_user, get_user, get_user_gmail_tokens,
+    update_user_history_id, get_db,
+    create_invoice as db_create_invoice, get_invoice, get_invoices_by_user,
+    update_invoice, get_invoices_by_client_email,
+    add_communication, get_communications,
+)
 from src.services.gmail_service import GmailService, SCOPES
 
 logging.basicConfig(level=logging.INFO)
@@ -51,11 +57,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory invoice store (shared across requests in serverless context)
-INVOICES_STORE = {}
-
-# Per-invoice sender context overrides
-SENDER_OVERRIDES = {}
 
 
 # --- Request/Response Models ---
@@ -220,16 +221,8 @@ def parse_draft_subject_and_body(draft: str) -> tuple[str, str]:
 
 
 def get_context_for_invoice(invoice_id: str) -> FreelancerContext:
-    """Get FreelancerContext with any per-invoice sender overrides applied."""
-    ctx = FreelancerContext()
-    overrides = SENDER_OVERRIDES.get(invoice_id, {})
-    if overrides.get("freelancer_name"):
-        ctx.freelancer_name = overrides["freelancer_name"]
-    if overrides.get("freelancer_email"):
-        ctx.freelancer_email = overrides["freelancer_email"]
-    if overrides.get("business_name"):
-        ctx.business_name = overrides["business_name"]
-    return ctx
+    """Get FreelancerContext for an invoice."""
+    return FreelancerContext()
 
 
 def extract_interrupt(response, ctx: FreelancerContext | None = None):
@@ -454,32 +447,40 @@ def update_invoice_details_route(invoice_id: str, req: UpdateDetailsRequest):
     # Update the agent's graph state directly
     agent.update_state(config, updates)
 
-    # Also update local invoice store
-    if invoice_id in INVOICES_STORE:
-        INVOICES_STORE[invoice_id].update(updates)
-
     # Return refreshed state
     snapshot = agent.get_state(config)
     return {"state": extract_state(snapshot.values)}
 
 
 @app.get("/api/invoices")
-def list_invoices():
-    return list(INVOICES_STORE.values())
+def list_invoices(authorization: str | None = Header(None)):
+    user = get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    invoices = get_invoices_by_user(user["id"])
+    for inv in invoices:
+        inv["communication_history"] = get_communications(inv["id"])
+    return invoices
 
 
 @app.post("/api/invoices")
-def create_invoice(req: InvoiceCreateRequest):
-    invoice = req.model_dump()
-    invoice["escalation_level"] = 1
-    invoice["communication_history"] = []
-    invoice["status"] = "active"
-    INVOICES_STORE[req.invoice_id] = invoice
+def create_invoice(req: InvoiceCreateRequest, authorization: str | None = Header(None)):
+    user = get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
 
-    # Initialize agent state by sending invoice details
+    invoice = db_create_invoice(
+        invoice_id=req.invoice_id,
+        user_id=user["id"],
+        client_name=req.client_name,
+        client_email=req.client_email,
+        invoice_amount=req.invoice_amount,
+        days_overdue=req.days_overdue,
+        jurisdiction=req.jurisdiction,
+    )
+
     context = get_context_for_invoice(req.invoice_id)
     config = {"configurable": {"thread_id": f"invoice-{req.invoice_id}"}}
-
     msg = (
         f"I have an overdue invoice. Here are the details:\n"
         f"Client: {req.client_name} ({req.client_email})\n"
@@ -489,17 +490,17 @@ def create_invoice(req: InvoiceCreateRequest):
         f"Jurisdiction: {req.jurisdiction}\n\n"
         f"Please save these details."
     )
-
     response = agent.invoke(
         {"messages": [HumanMessage(content=msg)]},
         context=context,
         config=config,
     )
 
+    invoice["communication_history"] = []
     return {
         "invoice": invoice,
         "messages": serialize_messages(response["messages"]),
-        "interrupt": extract_interrupt(response, get_context_for_invoice(req.invoice_id)),
+        "interrupt": extract_interrupt(response, context),
         "state": extract_state(response),
     }
 
@@ -517,16 +518,7 @@ def get_sender(invoice_id: str):
 
 @app.patch("/api/invoices/{invoice_id}/sender")
 def update_sender(invoice_id: str, req: UpdateSenderRequest):
-    """Update sender/freelancer details for an invoice."""
-    overrides = SENDER_OVERRIDES.get(invoice_id, {})
-    if req.freelancer_name is not None:
-        overrides["freelancer_name"] = req.freelancer_name
-    if req.freelancer_email is not None:
-        overrides["freelancer_email"] = req.freelancer_email
-    if req.business_name is not None:
-        overrides["business_name"] = req.business_name
-    SENDER_OVERRIDES[invoice_id] = overrides
-
+    """Update sender/freelancer details for an invoice (no-op, returns default context)."""
     ctx = get_context_for_invoice(invoice_id)
     return {
         "freelancer_name": ctx.freelancer_name,
@@ -634,10 +626,8 @@ def resume(invoice_id: str, req: ResumeRequest):
         agent.update_state(config, {"communication_history": history})
         response["communication_history"] = history
 
-    # Update local store with latest state
-    if invoice_id in INVOICES_STORE:
-        INVOICES_STORE[invoice_id]["escalation_level"] = response.get("escalation_level", 1)
-        INVOICES_STORE[invoice_id]["communication_history"] = response.get("communication_history", [])
+    # Persist latest escalation level to SQLite
+    update_invoice(invoice_id, escalation_level=response.get("escalation_level", 1))
 
     result = {
         "messages": serialize_messages(response["messages"]),
@@ -656,7 +646,6 @@ def resume(invoice_id: str, req: ResumeRequest):
 
 
 from src.services.telegram_service import send_telegram_notification
-from src.db import get_invoices_by_client_email, add_communication
 import base64 as b64
 import json as json_module
 
