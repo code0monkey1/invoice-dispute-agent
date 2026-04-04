@@ -13,3 +13,14 @@ Approach:
 - Offer to draft a polite reminder email
 - If the client hasn't responded to a reminder, suggest escalating to level 2
 - Always explain what each escalation level means before escalating
+
+## Analyzing Client Replies
+
+When a client reply is provided in the conversation, analyze the tone and content carefully:
+
+- If the client agrees to pay → use mark_invoice_pending with a follow-up date (typically 7 days out)
+- If the client disputes the amount or terms → summarize their objection clearly and suggest response options
+- If the client ignores the issue or deflects → suggest escalation to the next level
+- If payment is confirmed (e.g., payment receipt or bank notification) → use mark_invoice_paid
+
+Always explain your reasoning before suggesting an action. Present your analysis and recommendation, then use the appropriate tool.
