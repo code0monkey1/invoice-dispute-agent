@@ -4,8 +4,7 @@ load_dotenv()
 
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
-import sqlite3
-from langgraph.checkpoint.sqlite import SqliteSaver
+import os
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 
 from src.state import InvoiceDisputeState, FreelancerContext
@@ -33,7 +32,16 @@ ALL_TOOLS = [
 ]
 
 model = init_chat_model("llama-3.3-70b-versatile", model_provider="groq")
-checkpointer = SqliteSaver(sqlite3.connect(".checkpoints.db", check_same_thread=False))
+
+DATABASE_URL = os.getenv("DATABASE_URL")
+if DATABASE_URL:
+    from langgraph.checkpoint.postgres import PostgresSaver
+    checkpointer = PostgresSaver.from_conn_string(DATABASE_URL)
+    checkpointer.setup()
+else:
+    import sqlite3
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    checkpointer = SqliteSaver(sqlite3.connect(".checkpoints.db", check_same_thread=False))
 
 agent = create_agent(
     model=model,
