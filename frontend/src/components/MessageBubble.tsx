@@ -30,7 +30,8 @@ export default function MessageBubble({ message }: { message: Message }) {
     const fromLine = lines.find(l => l.startsWith('From:'))?.replace('From:', '').trim() || ''
     const subjectLine = lines.find(l => l.startsWith('Subject:'))?.replace('Subject:', '').trim() || ''
     const bodyStart = lines.findIndex(l => l === '')
-    const bodyText = bodyStart >= 0 ? lines.slice(bodyStart + 1).join('\n').trim() : ''
+    const rawBody = bodyStart >= 0 ? lines.slice(bodyStart + 1).join('\n').trim() : ''
+    const bodyText = rawBody.replace(/\n*Please analyze this reply and suggest the appropriate next action\.?$/i, '').trim()
 
     return (
       <div className="flex justify-start px-5 mb-4">
@@ -40,7 +41,7 @@ export default function MessageBubble({ message }: { message: Message }) {
             <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">Client Reply</span>
           </div>
           {fromLine && <p className="text-xs text-gray-400 mb-1">From: {fromLine}</p>}
-          {subjectLine && <p className="text-sm font-semibold text-gray-700 mb-2">Re: {subjectLine}</p>}
+          {subjectLine && <p className="text-sm font-semibold text-gray-700 mb-2">{subjectLine}</p>}
           {bodyText && <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{bodyText}</p>}
         </div>
       </div>

@@ -16,6 +16,16 @@ export interface CommunicationEntry {
   timestamp: string;
 }
 
+export interface SupabaseCommEntry {
+  id: number;
+  invoice_id: string;
+  type: string;
+  subject: string | null;
+  content: string | null;
+  direction: string;
+  timestamp: string;
+}
+
 export interface Message {
   type: string;
   content: string;
@@ -46,6 +56,7 @@ export interface ChatResponse {
   state: AgentState;
   email_sent?: boolean;
   email_id?: string;
+  communications?: SupabaseCommEntry[];
 }
 
 export interface InvoiceCreateResponse {

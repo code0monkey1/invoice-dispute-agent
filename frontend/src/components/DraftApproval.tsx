@@ -1,6 +1,21 @@
 import { useState, useMemo } from 'react'
-import { Check, X, Pencil, FileText, Mail } from 'lucide-react'
+import { Check, X, Pencil, FileText, Mail, CreditCard, Clock } from 'lucide-react'
 import type { Interrupt } from '../types'
+
+const PAYMENT_TOOLS: Record<string, { label: string; description: string; icon: React.ReactNode; color: string }> = {
+  mark_invoice_paid: {
+    label: 'Mark Invoice as Paid',
+    description: 'This will mark the invoice as fully paid and close the dispute.',
+    icon: <CreditCard className="w-4 h-4 text-white" />,
+    color: 'from-emerald-400 to-green-500',
+  },
+  mark_invoice_pending: {
+    label: 'Mark Invoice as Pending',
+    description: 'This will mark the invoice as pending — client has agreed to pay.',
+    icon: <Clock className="w-4 h-4 text-white" />,
+    color: 'from-blue-400 to-indigo-500',
+  },
+}
 
 interface Props {
   interrupt: Interrupt
@@ -86,6 +101,7 @@ function reassemble(parts: { subject: string; body: string; senderName: string; 
 }
 
 export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, loading }: Props) {
+  const paymentAction = PAYMENT_TOOLS[interrupt.tool]
   const draftContent = interrupt.description || JSON.stringify(interrupt.args, null, 2)
   const parsed = useMemo(() => parseDraft(draftContent), [draftContent])
 
@@ -113,6 +129,49 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
     setEditing(false)
   }
 
+  // Payment action confirmation card
+  if (paymentAction) {
+    return (
+      <div className="mx-5 my-4 animate-fade-up">
+        <div className="bg-white rounded-2xl overflow-hidden border-2 border-gray-100 shadow-lg">
+          <div className={`bg-gradient-to-r ${paymentAction.color} px-5 py-3.5 flex items-center gap-2.5`}>
+            <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
+              {paymentAction.icon}
+            </div>
+            <div className="flex-1">
+              <span className="text-sm font-bold text-white font-[family-name:var(--font-heading)]">
+                Action Required
+              </span>
+              <p className="text-white/80 text-[11px] font-medium">{paymentAction.label}</p>
+            </div>
+          </div>
+          <div className="px-5 py-4">
+            <p className="text-sm text-gray-600">{paymentAction.description}</p>
+            {interrupt.args?.follow_up_date && (
+              <p className="text-xs text-gray-400 mt-1">Follow-up: {String(interrupt.args.follow_up_date)}</p>
+            )}
+          </div>
+          <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
+            <button
+              onClick={onApprove}
+              disabled={loading}
+              className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-green-500 disabled:opacity-50 text-white text-sm font-bold rounded-xl py-3 transition-all shadow-md shadow-emerald-200/40"
+            >
+              <Check className="w-4 h-4" strokeWidth={3} /> Confirm
+            </button>
+            <button
+              onClick={() => onReject('Not now')}
+              disabled={loading}
+              className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-rose-50 disabled:opacity-50 text-rose-500 text-sm font-bold rounded-xl py-3 border-2 border-rose-200 transition-all"
+            >
+              <X className="w-4 h-4" strokeWidth={3} /> Dismiss
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="mx-5 my-4 animate-fade-up">
       <div className="bg-white rounded-2xl overflow-hidden border-2 border-amber-200 shadow-lg shadow-amber-100/40">
@@ -125,7 +184,6 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
             <span className="text-sm font-bold text-white font-[family-name:var(--font-heading)]">
               Draft Pending Your Approval
             </span>
-            <p className="text-white/70 text-[11px] font-medium">{interrupt.tool}</p>
           </div>
           <FileText className="w-5 h-5 text-white/40" />
         </div>

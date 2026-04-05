@@ -27,7 +27,7 @@ from src.agent import agent
 from src.state import FreelancerContext
 from src.db import (
     init_db, upsert_user, get_user, get_user_gmail_tokens,
-    update_user_history_id, get_db,
+    update_user_history_id, get_user_by_email,
     create_invoice as db_create_invoice, get_invoice, get_invoices_by_user,
     update_invoice, get_invoices_by_client_email,
     add_communication, get_communications,
@@ -449,6 +449,7 @@ def get_invoice_history(invoice_id: str, authorization: str | None = Header(None
         "messages": messages,
         "interrupt": interrupt_data,
         "state": extract_state(state),
+        "communications": get_communications(invoice_id),
     }
 
 
@@ -651,11 +652,7 @@ def resume(invoice_id: str, req: ResumeRequest, authorization: str | None = Head
                         logger.info(f"[RESUME] draft length={len(draft) if draft else 0}, client_email='{client_email}'")
                         if draft and client_email:
                             approved_subject, body = parse_draft_subject_and_body(draft)
-                            # Get user from DB (single-user for now)
-                            conn = get_db()
-                            user_row = conn.execute("SELECT id FROM users LIMIT 1").fetchone()
-                            conn.close()
-                            user_id = user_row["id"] if user_row else None
+                            user_id = user["id"] if user else None
 
                             if user_id:
                                 invoice_data = get_invoice(invoice_id)
@@ -664,13 +661,7 @@ def resume(invoice_id: str, req: ResumeRequest, authorization: str | None = Head
                                 logger.info(f"[RESUME] email_result={email_result}")
                                 if email_result and not gmail_thread_id:
                                     update_invoice(invoice_id, gmail_thread_id=email_result["threadId"])
-                                if email_result:
-                                    send_telegram_notification(
-                                        f"📤 <b>Email Sent</b>\n"
-                                        f"Invoice: #{invoice_id}\n"
-                                        f"To: {client_email}\n"
-                                        f"Subject: {approved_subject}"
-                                    )
+                                pass  # no notification on outbound send
                             else:
                                 logger.warning("[RESUME] No user found in DB — skipping email send")
                         else:
@@ -688,11 +679,17 @@ def resume(invoice_id: str, req: ResumeRequest, authorization: str | None = Head
     else:
         decisions = [{"type": "reject", "message": req.message or "Please revise."}]
 
-    response = agent.invoke(
-        Command(resume={"decisions": decisions}),
-        context=context,
-        config=config,
-    )
+    try:
+        response = agent.invoke(
+            Command(resume={"decisions": decisions}),
+            context=context,
+            config=config,
+        )
+    except Exception as e:
+        error_msg = str(e)
+        if "rate_limit" in error_msg.lower() or "429" in error_msg:
+            raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
+        raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
 
     # Log the approved communication into agent state
     if req.decision == "approve" and approved_tool_name:
@@ -720,12 +717,14 @@ def resume(invoice_id: str, req: ResumeRequest, authorization: str | None = Head
         "state": extract_state(response),
     }
 
-    # Include email send status so the frontend can confirm
-    if email_result is not None:
-        result["email_sent"] = True
-        result["email_id"] = email_result.get("id") if isinstance(email_result, dict) else str(email_result)
-    elif req.decision == "approve":
-        result["email_sent"] = False
+    # Only report email send status for email draft approvals
+    EMAIL_DRAFT_TOOLS = {"draft_polite_reminder", "draft_formal_demand_letter", "draft_final_notice"}
+    if approved_tool_name in EMAIL_DRAFT_TOOLS:
+        if email_result is not None:
+            result["email_sent"] = True
+            result["email_id"] = email_result.get("id") if isinstance(email_result, dict) else str(email_result)
+        else:
+            result["email_sent"] = False
 
     return result
 
@@ -751,15 +750,11 @@ def gmail_webhook(payload: PubSubMessage):
 
         logger.info(f"Gmail webhook: email={email_address}, historyId={history_id}")
 
-        conn = get_db()
-        user_row = conn.execute("SELECT * FROM users WHERE email = ?", (email_address,)).fetchone()
-        conn.close()
+        user = get_user_by_email(email_address)
 
-        if not user_row:
+        if not user:
             logger.warning(f"No user found for email {email_address}")
             return {"status": "ok"}
-
-        user = dict(user_row)
         last_history_id = user.get("gmail_history_id")
 
         if not last_history_id:
@@ -794,17 +789,30 @@ def gmail_webhook(payload: PubSubMessage):
                     direction="inbound",
                 )
 
-                config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
-                invoice_owner = get_user(invoice["user_id"]) if invoice.get("user_id") else None
-                context = get_context_for_invoice(invoice["id"], invoice_owner)
-                agent_msg = (
-                    f"[INCOMING CLIENT REPLY]\n"
-                    f"From: {from_addr}\n"
-                    f"Subject: {msg.get('subject', 'No subject')}\n\n"
-                    f"{msg.get('body', '')[:2000]}\n\n"
-                    f"Please analyze this reply and suggest the appropriate next action."
+                # Notify immediately after saving — before any potentially-failing calls
+                import html as _html
+                safe_body = _html.escape(msg.get("body", "")[:200])
+                safe_from = _html.escape(from_addr)
+                safe_subject = _html.escape(msg.get("subject", "No subject"))
+                send_telegram_notification(
+                    f"📩 <b>Client Reply</b>\n"
+                    f"Invoice: #{invoice['id']}\n"
+                    f"From: {safe_from}\n"
+                    f"Subject: {safe_subject}\n\n"
+                    f"{safe_body}"
                 )
+
                 try:
+                    config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
+                    invoice_owner = get_user(invoice["user_id"]) if invoice.get("user_id") else None
+                    context = get_context_for_invoice(invoice["id"], invoice_owner)
+                    agent_msg = (
+                        f"[INCOMING CLIENT REPLY]\n"
+                        f"From: {from_addr}\n"
+                        f"Subject: {msg.get('subject', 'No subject')}\n\n"
+                        f"{msg.get('body', '')[:2000]}\n\n"
+                        f"Please analyze this reply and suggest the appropriate next action."
+                    )
                     agent.invoke(
                         {"messages": [HumanMessage(content=agent_msg)]},
                         context=context,
@@ -813,16 +821,31 @@ def gmail_webhook(payload: PubSubMessage):
                 except Exception as e:
                     logger.error(f"Agent failed to process reply for invoice {invoice['id']}: {e}")
 
-                send_telegram_notification(
-                    f"📩 <b>Client Reply</b>\n"
-                    f"Invoice: #{invoice['id']}\n"
-                    f"From: {from_addr}\n"
-                    f"Subject: {msg.get('subject', 'No subject')}\n\n"
-                    f"{msg.get('body', '')[:200]}"
-                )
-
         return {"status": "ok"}
 
     except Exception as e:
         logger.error(f"Gmail webhook error: {e}", exc_info=True)
         return {"status": "error"}
+
+
+@app.post("/api/gmail/rewatch")
+def gmail_rewatch(authorization: str | None = Header(None)):
+    """Re-register Gmail push notifications for the current user."""
+    user = get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    topic = os.getenv("GOOGLE_PUBSUB_TOPIC", "")
+    if not topic:
+        raise HTTPException(status_code=400, detail="GOOGLE_PUBSUB_TOPIC not configured")
+    tokens = get_user_gmail_tokens(user["id"])
+    if not tokens:
+        raise HTTPException(status_code=400, detail="No Gmail tokens found")
+    try:
+        gmail = GmailService(user["id"], tokens[0], tokens[1])
+        result = gmail.watch_inbox(topic)
+        update_user_history_id(user["id"], str(result.get("historyId", "")))
+        logger.info(f"Gmail watch re-registered for {user['email']}: {result}")
+        return {"status": "ok", "historyId": result.get("historyId"), "expiration": result.get("expiration")}
+    except Exception as e:
+        logger.error(f"Failed to re-register Gmail watch: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

@@ -4,7 +4,8 @@ load_dotenv()
 
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
-from langgraph.checkpoint.memory import InMemorySaver
+import sqlite3
+from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 
 from src.state import InvoiceDisputeState, FreelancerContext
@@ -31,8 +32,8 @@ ALL_TOOLS = [
     mark_invoice_paid,
 ]
 
-model = init_chat_model("qwen/qwen3-32b", model_provider="groq")
-checkpointer = InMemorySaver()
+model = init_chat_model("llama-3.3-70b-versatile", model_provider="groq")
+checkpointer = SqliteSaver(sqlite3.connect(".checkpoints.db", check_same_thread=False))
 
 agent = create_agent(
     model=model,

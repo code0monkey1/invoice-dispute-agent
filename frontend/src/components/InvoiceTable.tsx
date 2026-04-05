@@ -38,14 +38,14 @@ export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
         <tbody>
           {invoices.map((inv, i) => (
             <tr
-              key={inv.invoice_id}
+              key={inv.id}
               className="border-b border-gray-50 hover:bg-orange-50/40 transition-colors cursor-pointer group"
-              onClick={() => navigate(`/invoice/${inv.invoice_id}`)}
+              onClick={() => navigate(`/invoice/${inv.id}`)}
               style={{ animationDelay: `${i * 60}ms` }}
             >
               <td className="px-6 py-4">
                 <span className="font-mono text-sm font-semibold text-gray-800 bg-gray-100 px-2 py-0.5 rounded-md">
-                  {inv.invoice_id}
+                  {inv.id}
                 </span>
               </td>
               <td className="px-6 py-4">

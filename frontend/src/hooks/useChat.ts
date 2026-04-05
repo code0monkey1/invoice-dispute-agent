@@ -1,14 +1,16 @@
 import { useState, useCallback, useEffect } from 'react'
 import { api } from '../api'
-import type { Message, Interrupt, AgentState } from '../types'
+import type { Message, Interrupt, AgentState, SupabaseCommEntry } from '../types'
 
 export function useChat(invoiceId: string) {
   const [messages, setMessages] = useState<Message[]>([])
   const [interrupt, setInterrupt] = useState<Interrupt | null>(null)
   const [agentState, setAgentState] = useState<AgentState | null>(null)
+  const [communications, setCommunications] = useState<SupabaseCommEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
   const [lastEmailSent, setLastEmailSent] = useState<{ sent: boolean; id?: string } | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const threadId = `invoice-${invoiceId}`
 
@@ -26,6 +28,7 @@ export function useChat(invoiceId: string) {
           setInterrupt(res.interrupt)
           if (res.state) setAgentState(res.state)
         }
+        if (res.communications) setCommunications(res.communications)
       } catch (err) {
         console.error('Failed to load history:', err)
       } finally {
@@ -58,6 +61,7 @@ export function useChat(invoiceId: string) {
   const approve = useCallback(async () => {
     setLoading(true)
     setLastEmailSent(null)
+    setError(null)
     try {
       const res = await api.resume(invoiceId, 'approve')
       setMessages(res.messages)
@@ -69,6 +73,9 @@ export function useChat(invoiceId: string) {
         setTimeout(() => setLastEmailSent(null), 8000)
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong'
+      setError(msg)
+      setTimeout(() => setError(null), 10000)
       console.error('Approve error:', err)
     } finally {
       setLoading(false)
@@ -77,12 +84,16 @@ export function useChat(invoiceId: string) {
 
   const reject = useCallback(async (message: string) => {
     setLoading(true)
+    setError(null)
     try {
       const res = await api.resume(invoiceId, 'reject', message || 'Please revise.')
       setMessages(res.messages)
       setInterrupt(res.interrupt)
       setAgentState(res.state)
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong'
+      setError(msg)
+      setTimeout(() => setError(null), 10000)
       console.error('Reject error:', err)
     } finally {
       setLoading(false)
@@ -91,6 +102,7 @@ export function useChat(invoiceId: string) {
 
   const edit = useCallback(async (editedText: string) => {
     setLoading(true)
+    setError(null)
     try {
       // Use reject with the edited text as feedback so the agent redrafts
       const res = await api.resume(invoiceId, 'reject', `Please use this version instead: ${editedText}`)
@@ -98,6 +110,9 @@ export function useChat(invoiceId: string) {
       setInterrupt(res.interrupt)
       setAgentState(res.state)
     } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Something went wrong'
+      setError(msg)
+      setTimeout(() => setError(null), 10000)
       console.error('Edit error:', err)
     } finally {
       setLoading(false)
@@ -119,10 +134,11 @@ export function useChat(invoiceId: string) {
         setInterrupt(res.interrupt)
         if (res.state) setAgentState(res.state)
       }
+      if (res.communications) setCommunications(res.communications)
     } catch (err) {
       console.error('Failed to refresh history:', err)
     }
   }, [invoiceId])
 
-  return { messages, interrupt, agentState, loading, lastEmailSent, sendMessage, approve, reject, edit, initMessages, refreshHistory }
+  return { messages, interrupt, agentState, communications, loading, lastEmailSent, error, sendMessage, approve, reject, edit, initMessages, refreshHistory }
 }

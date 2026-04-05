@@ -58,7 +58,7 @@ React 19 + TypeScript + Tailwind CSS 4 + React Router. Key pages: Landing, Dashb
 5. Client replies arrive via Gmail push webhook → stored as inbound communications → Telegram notification
 
 ## External Services
-- **Groq API** (LLM — qwen/qwen3-32b)
+- **Groq API** (LLM — llama-3.3-70b-versatile)
 - **Tavily API** (web search for legal procedures)
 - **Google OAuth + Gmail API** (auth + email send/read/watch)
 - **Telegram Bot API** (push notifications)

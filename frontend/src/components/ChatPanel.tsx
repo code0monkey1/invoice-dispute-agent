@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Send, ArrowUpCircle, Loader2, FileText, Shield, MessageSquare, ChevronUp, Pencil, Check, X, MailCheck, MailX, User } from 'lucide-react'
+import { ArrowLeft, Send, ArrowUpCircle, Loader2, FileText, Shield, MessageSquare, ChevronUp, Pencil, Check, X, MailCheck, MailX, User, AlertCircle } from 'lucide-react'
 import MessageBubble from './MessageBubble'
 import DraftApproval from './DraftApproval'
 import EscalationBadge from './EscalationBadge'
@@ -27,8 +27,10 @@ export default function ChatPanel() {
     messages,
     interrupt,
     agentState,
+    communications,
     loading,
     lastEmailSent,
+    error,
     sendMessage,
     approve,
     reject,
@@ -52,6 +54,16 @@ export default function ChatPanel() {
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, interrupt])
+
+  const DRAFT_TOOLS = ['draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
+  const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid']
+
+  // Auto-approve non-draft interrupts silently (e.g. mark_invoice_pending)
+  useEffect(() => {
+    if (interrupt && !APPROVAL_TOOLS.includes(interrupt.tool) && !loading) {
+      approve()
+    }
+  }, [interrupt, loading])
 
   // Periodic refresh to pick up webhook-injected messages (e.g. inbound client emails)
   useEffect(() => {
@@ -114,10 +126,12 @@ export default function ChatPanel() {
               </p>
             </div>
           )}
-          {messages.map((msg, i) => (
-            <MessageBubble key={i} message={msg} />
-          ))}
-          {interrupt && (
+          {messages
+            .filter(msg => msg.type !== 'ToolMessage' && !(msg.type === 'AIMessage' && !msg.content && msg.tool_calls?.length))
+            .map((msg, i) => (
+              <MessageBubble key={i} message={msg} />
+            ))}
+          {interrupt && APPROVAL_TOOLS.includes(interrupt.tool) && (
             <DraftApproval
               interrupt={interrupt}
               onApprove={approve}
@@ -157,6 +171,14 @@ export default function ChatPanel() {
               </div>
             </div>
           )}
+          {error && (
+            <div className="mx-5 my-3 animate-fade-up">
+              <div className="inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-semibold bg-amber-50 text-amber-700 border border-amber-200/60">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                {error}
+              </div>
+            </div>
+          )}
           <div ref={messagesEndRef} />
         </div>
 
@@ -167,13 +189,13 @@ export default function ChatPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={interrupt ? 'Approve or reject the draft above...' : 'Type your message...'}
-              disabled={loading || !!interrupt}
+              placeholder={interrupt && APPROVAL_TOOLS.includes(interrupt.tool) ? 'Approve or reject the draft above...' : 'Type your message...'}
+              disabled={loading || !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))}
               className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35]/50 disabled:opacity-50 transition-all"
             />
             <button
               onClick={handleSend}
-              disabled={loading || !input.trim() || !!interrupt}
+              disabled={loading || !input.trim() || !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))}
               className="btn-gradient disabled:opacity-50 text-white rounded-xl px-4 py-2.5 transition-all shadow-md shadow-orange-200/40"
             >
               <Send className="w-4 h-4" />
@@ -457,21 +479,26 @@ export default function ChatPanel() {
             <h3 className="text-xs font-bold text-gray-600 uppercase tracking-widest font-[family-name:var(--font-heading)]">Communication Log</h3>
           </div>
           <div className="p-5">
-            {agentState?.communication_history?.length ? (
+            {communications.length ? (
               <div className="space-y-3">
-                {agentState.communication_history.slice().reverse().map((entry, i) => (
-                  <div key={i} className="text-xs border-l-2 border-teal-400/50 pl-3 py-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-teal-600 font-bold uppercase tracking-wider text-[10px]">{entry.type}</span>
-                      {entry.timestamp && (
-                        <span className="text-gray-300 text-[10px] font-medium">
-                          {new Date(entry.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {communications.slice().reverse().map((entry) => {
+                  const isInbound = entry.direction === 'inbound'
+                  return (
+                    <div key={entry.id} className={`text-xs border-l-2 pl-3 py-1.5 ${isInbound ? 'border-blue-400/70' : 'border-teal-400/50'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`font-bold uppercase tracking-wider text-[10px] ${isInbound ? 'text-blue-500' : 'text-teal-600'}`}>
+                          {isInbound ? '📩 Client Reply' : `📤 ${entry.type}`}
                         </span>
+                        <span className="text-gray-300 text-[10px] font-medium">
+                          {new Date(entry.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      {entry.subject && (
+                        <p className="text-gray-600 mt-0.5 font-medium leading-snug">{entry.subject}</p>
                       )}
                     </div>
-                    <p className="text-gray-600 mt-0.5 font-medium leading-snug">{entry.content}</p>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             ) : (
               <p className="text-gray-400 text-xs font-medium italic">Communications will appear here as you approve drafts.</p>
