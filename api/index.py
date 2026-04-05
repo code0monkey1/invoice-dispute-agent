@@ -863,11 +863,9 @@ def gmail_rewatch(authorization: str | None = Header(None)):
 # Serve React SPA — must be LAST
 _frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend', 'dist')
 if os.path.exists(_frontend_dist):
-    # Serve static assets (JS/CSS) from /assets
-    app.mount("/assets", StaticFiles(directory=os.path.join(_frontend_dist, "assets")), name="assets")
-
-    # SPA catch-all: serve index.html for all unmatched routes
     @app.get("/{full_path:path}")
     def serve_spa(full_path: str):
-        index = os.path.join(_frontend_dist, "index.html")
-        return FileResponse(index)
+        file = os.path.join(_frontend_dist, full_path)
+        if os.path.isfile(file):
+            return FileResponse(file)
+        return FileResponse(os.path.join(_frontend_dist, "index.html"))
