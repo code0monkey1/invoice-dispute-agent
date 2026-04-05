@@ -33,15 +33,22 @@ ALL_TOOLS = [
 
 model = init_chat_model("llama-3.3-70b-versatile", model_provider="groq")
 
-DATABASE_URL = os.getenv("DATABASE_URL")
-if DATABASE_URL:
-    from langgraph.checkpoint.postgres import PostgresSaver
-    checkpointer = PostgresSaver.from_conn_string(DATABASE_URL)
-    checkpointer.setup()
-else:
+def _make_checkpointer():
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if DATABASE_URL:
+        try:
+            from langgraph.checkpoint.postgres import PostgresSaver
+            cp = PostgresSaver.from_conn_string(DATABASE_URL)
+            cp.setup()
+            return cp
+        except Exception as e:
+            print(f"[agent] PostgresSaver failed ({e}), falling back to SQLite")
     import sqlite3
     from langgraph.checkpoint.sqlite import SqliteSaver
-    checkpointer = SqliteSaver(sqlite3.connect(".checkpoints.db", check_same_thread=False))
+    db_path = "/tmp/.checkpoints.db" if not os.path.exists(".checkpoints.db") else ".checkpoints.db"
+    return SqliteSaver(sqlite3.connect(db_path, check_same_thread=False))
+
+checkpointer = _make_checkpointer()
 
 agent = create_agent(
     model=model,

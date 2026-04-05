@@ -50,6 +50,13 @@ init_db()
 
 app = FastAPI(title="Invoice Dispute Agent API")
 
+
+@app.get("/api/health")
+def health():
+    import sys
+    return {"status": "ok", "python": sys.version}
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
