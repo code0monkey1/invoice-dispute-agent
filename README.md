@@ -6,7 +6,7 @@
 
 An intelligent agent that helps freelancers chase overdue payments through **progressive escalation** — from friendly reminders to formal demands to legal action — with human-in-the-loop approval at every step.
 
-**Built with LangChain | LangGraph | Groq | React | FastAPI**
+**Built with LangChain | Groq | React | FastAPI** *(LangGraph used for checkpointing & state Commands)*
 
 [Live Demo](#) &nbsp;&bull;&nbsp; [Architecture](#architecture) &nbsp;&bull;&nbsp; [How It Works](#how-it-works) &nbsp;&bull;&nbsp; [Setup](#getting-started) &nbsp;&bull;&nbsp; [GenAI Deep Dive](#genai-technologies--how-they-help)
 
@@ -346,7 +346,7 @@ User                Frontend              Backend/Agent            Groq LLM     
 
 This project is a showcase of **production-grade GenAI patterns** — not just "chat with an LLM" but a fully orchestrated agent system with state management, middleware pipelines, and human oversight.
 
-### 1. LangGraph Agent with Custom State (`create_agent` + `AgentState`)
+### 1. LangChain Agent with Custom State (`create_agent` + `AgentState`)
 
 ```python
 class InvoiceDisputeState(AgentState):
@@ -381,7 +381,7 @@ def dynamic_tool_middleware(request: ModelRequest, handler) -> ModelResponse:
 
 **Why it matters for the customer:** The AI literally *cannot* jump to legal threats on Day 1. Tools are physically gated — at Level 1, the model doesn't even know `draft_final_notice` exists. This prevents premature escalation that could damage client relationships, and ensures a structured, professional approach to payment recovery.
 
-**Technical detail:** This uses LangGraph's `@wrap_model_call` middleware to intercept the model request and replace the available tools based on the current state. The model's tool schema is rewritten on every call.
+**Technical detail:** This uses LangChain's `@wrap_model_call` middleware to intercept the model request and replace the available tools based on the current state. The model's tool schema is rewritten on every call.
 
 ### 3. Dynamic Prompt Engineering (`@dynamic_prompt` Middleware)
 
@@ -444,7 +444,7 @@ def escalate_dispute(runtime: ToolRuntime) -> Command:
 
 **Why it matters for the customer:** State changes (escalation, invoice details) are atomic and auditable. When you escalate, the new level takes effect immediately — the next model call sees the updated state, gets new tools, and adopts a new tone.
 
-**Technical detail:** Tools return `Command(update={...})` to modify the agent's state graph. This is LangGraph's declarative state mutation pattern — tools don't directly mutate state; they return instructions for the graph to execute.
+**Technical detail:** Tools return `Command(update={...})` from `langgraph.types` to modify the agent's state. This is one of the few places LangGraph is directly used — `Command` is LangGraph's declarative state mutation primitive, imported here into an otherwise LangChain-driven agent.
 
 ### 6. Runtime Context Injection (`@dataclass` + `context_schema`)
 
@@ -504,7 +504,7 @@ def log_communication(invoice_id: str, comm_type: str, content: str) -> str:
 
 **Why it matters for the customer:** Every conversation is preserved per client thread. You can pick up a dispute weeks later and the agent remembers everything — what was sent, what level you're at, what the client responded.
 
-**Technical detail:** `InMemorySaver` is LangGraph's checkpointing mechanism. Each thread has a unique ID (`invoice-{invoice_id}`), and every state mutation is saved. On Vercel serverless, this resets between cold starts — in production, you'd swap to `PostgresSaver` or `RedisSaver`.
+**Technical detail:** This is where LangGraph contributes directly — `SqliteSaver` and `PostgresSaver` are LangGraph's checkpointing backends. Each thread has a unique ID (`invoice-{invoice_id}`), and every state mutation is persisted. The code tries `PostgresSaver` first (via `DATABASE_URL`), falling back to `SqliteSaver` locally.
 
 ---
 
@@ -554,7 +554,8 @@ def log_communication(invoice_id: str, comm_type: str, content: str) -> str:
 | Layer | Technology | Why |
 |-------|-----------|-----|
 | **LLM** | Groq (LLaMA 3.3 70B) | Free tier, fast inference, strong reasoning |
-| **Agent Framework** | LangChain + LangGraph | State management, middleware pipeline, tool orchestration |
+| **Agent Framework** | LangChain (primary) | Agent runtime, middleware pipeline (`@wrap_model_call`, `@dynamic_prompt`, HITL), tool orchestration |
+| **Checkpointing / State** | LangGraph (secondary) | `SqliteSaver`/`PostgresSaver` for thread memory; `Command` type for tool state mutations |
 | **Web Search** | Tavily | Clean content optimized for LLM consumption |
 | **Backend** | FastAPI (Python) | Async, Pydantic validation, Vercel serverless compatible |
 | **Frontend** | React 19 + Vite + Tailwind v4 | Fast builds, modern CSS, type-safe |
