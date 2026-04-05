@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Zap, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'

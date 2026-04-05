@@ -1,4 +1,5 @@
 export interface Invoice {
+  id: string;
   invoice_id: string;
   client_name: string;
   client_email: string;

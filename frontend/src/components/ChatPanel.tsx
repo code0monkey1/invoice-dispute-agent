@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Send, ArrowUpCircle, Loader2, FileText, Shield, MessageSquare, ChevronUp, Pencil, Check, X, MailCheck, MailX, User, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Send, ArrowUpCircle, FileText, Shield, MessageSquare, ChevronUp, Pencil, Check, X, MailCheck, MailX, User, AlertCircle } from 'lucide-react'
 import MessageBubble from './MessageBubble'
 import DraftApproval from './DraftApproval'
 import EscalationBadge from './EscalationBadge'

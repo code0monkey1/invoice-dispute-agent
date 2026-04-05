@@ -147,7 +147,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
           </div>
           <div className="px-5 py-4">
             <p className="text-sm text-gray-600">{paymentAction.description}</p>
-            {interrupt.args?.follow_up_date && (
+            {interrupt.args?.follow_up_date != null && (
               <p className="text-xs text-gray-400 mt-1">Follow-up: {String(interrupt.args.follow_up_date)}</p>
             )}
           </div>
