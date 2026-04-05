@@ -33,13 +33,15 @@ ALL_TOOLS = [
 
 model = init_chat_model("llama-3.3-70b-versatile", model_provider="groq")
 
+_checkpointer_error = None
+
 def _make_checkpointer():
+    global _checkpointer_error
     DATABASE_URL = os.getenv("DATABASE_URL")
     if DATABASE_URL:
         try:
             import psycopg
             from langgraph.checkpoint.postgres import PostgresSaver
-            # Supabase requires SSL
             url = DATABASE_URL if "sslmode" in DATABASE_URL else DATABASE_URL + "?sslmode=require"
             conn = psycopg.connect(url)
             cp = PostgresSaver(conn)
@@ -48,10 +50,10 @@ def _make_checkpointer():
             return cp
         except Exception as e:
             import traceback
-            print(f"[agent] PostgresSaver failed: {e}\n{traceback.format_exc()}")
+            _checkpointer_error = f"{type(e).__name__}: {e}"
+            print(f"[agent] PostgresSaver failed: {_checkpointer_error}\n{traceback.format_exc()}")
     import sqlite3
     from langgraph.checkpoint.sqlite import SqliteSaver
-    # Use local file in dev, /tmp on Vercel (read-only filesystem outside /tmp)
     db_path = ".checkpoints.db" if os.access(".", os.W_OK) else "/tmp/.checkpoints.db"
     return SqliteSaver(sqlite3.connect(db_path, check_same_thread=False))
 

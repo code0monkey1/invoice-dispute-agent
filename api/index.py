@@ -55,10 +55,12 @@ app = FastAPI(title="Invoice Dispute Agent API")
 
 @app.get("/api/health")
 def health():
-    import sys
-    from src.agent import checkpointer
+    import sys, os
+    from src.agent import checkpointer, _checkpointer_error
     cp_type = type(checkpointer).__name__
-    return {"status": "ok", "python": sys.version, "checkpointer": cp_type}
+    db_url_set = bool(os.getenv("DATABASE_URL"))
+    return {"status": "ok", "python": sys.version, "checkpointer": cp_type,
+            "database_url_set": db_url_set, "checkpointer_error": _checkpointer_error}
 
 
 app.add_middleware(
