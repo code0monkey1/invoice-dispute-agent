@@ -60,10 +60,8 @@ def _make_checkpointer():
             import traceback
             _checkpointer_error = f"{type(e).__name__}: {e}"
             print(f"[agent] PostgresSaver failed: {_checkpointer_error}\n{traceback.format_exc()}")
-    import sqlite3
-    from langgraph.checkpoint.sqlite import SqliteSaver
-    db_path = ".checkpoints.db" if os.access(".", os.W_OK) else "/tmp/.checkpoints.db"
-    return SqliteSaver(sqlite3.connect(db_path, check_same_thread=False))
+    from langgraph.checkpoint.memory import MemorySaver
+    return MemorySaver()
 
 checkpointer = _make_checkpointer()
 
