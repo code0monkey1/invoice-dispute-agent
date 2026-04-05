@@ -44,10 +44,12 @@ def _make_checkpointer():
             cp.setup()
             return cp
         except Exception as e:
-            print(f"[agent] PostgresSaver failed ({e}), falling back to SQLite")
+            import traceback
+            print(f"[agent] PostgresSaver failed: {e}\n{traceback.format_exc()}")
     import sqlite3
     from langgraph.checkpoint.sqlite import SqliteSaver
-    db_path = "/tmp/.checkpoints.db" if not os.path.exists(".checkpoints.db") else ".checkpoints.db"
+    # Use local file in dev, /tmp on Vercel (read-only filesystem outside /tmp)
+    db_path = ".checkpoints.db" if os.access(".", os.W_OK) else "/tmp/.checkpoints.db"
     return SqliteSaver(sqlite3.connect(db_path, check_same_thread=False))
 
 checkpointer = _make_checkpointer()
