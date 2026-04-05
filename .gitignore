@@ -10,3 +10,4 @@ frontend/dist/
 .ipynb_checkpoints/
 data/
 .vercel
+/public/
