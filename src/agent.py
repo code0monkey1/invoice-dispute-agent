@@ -37,8 +37,10 @@ def _make_checkpointer():
     DATABASE_URL = os.getenv("DATABASE_URL")
     if DATABASE_URL:
         try:
+            import psycopg
             from langgraph.checkpoint.postgres import PostgresSaver
-            cp = PostgresSaver.from_conn_string(DATABASE_URL)
+            conn = psycopg.connect(DATABASE_URL)
+            cp = PostgresSaver(conn)
             cp.setup()
             return cp
         except Exception as e:
