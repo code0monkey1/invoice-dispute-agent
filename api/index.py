@@ -11,6 +11,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from langchain.messages import HumanMessage, AIMessage
@@ -859,7 +860,14 @@ def gmail_rewatch(authorization: str | None = Header(None)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# Serve React SPA — must be mounted LAST (catch-all for all non-API routes)
+# Serve React SPA — must be LAST
 _frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend', 'dist')
 if os.path.exists(_frontend_dist):
-    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="static")
+    # Serve static assets (JS/CSS) from /assets
+    app.mount("/assets", StaticFiles(directory=os.path.join(_frontend_dist, "assets")), name="assets")
+
+    # SPA catch-all: serve index.html for all unmatched routes
+    @app.get("/{full_path:path}")
+    def serve_spa(full_path: str):
+        index = os.path.join(_frontend_dist, "index.html")
+        return FileResponse(index)
