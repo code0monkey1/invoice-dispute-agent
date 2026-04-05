@@ -10,6 +10,7 @@ load_dotenv()
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from typing import Optional
 from langchain.messages import HumanMessage, AIMessage
@@ -856,3 +857,9 @@ def gmail_rewatch(authorization: str | None = Header(None)):
     except Exception as e:
         logger.error(f"Failed to re-register Gmail watch: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# Serve React SPA — must be mounted LAST (catch-all for all non-API routes)
+_frontend_dist = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'frontend', 'dist')
+if os.path.exists(_frontend_dist):
+    app.mount("/", StaticFiles(directory=_frontend_dist, html=True), name="static")
