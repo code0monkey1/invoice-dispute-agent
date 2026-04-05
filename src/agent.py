@@ -41,9 +41,17 @@ def _make_checkpointer():
     if DATABASE_URL:
         try:
             import psycopg
+            from urllib.parse import urlparse, unquote
             from langgraph.checkpoint.postgres import PostgresSaver
-            url = DATABASE_URL if "sslmode" in DATABASE_URL else DATABASE_URL + "?sslmode=require"
-            conn = psycopg.connect(url)
+            p = urlparse(DATABASE_URL)
+            conn = psycopg.connect(
+                host=p.hostname,
+                port=p.port or 5432,
+                dbname=(p.path or "/postgres").lstrip("/"),
+                user=unquote(p.username or ""),
+                password=unquote(p.password or ""),
+                sslmode="require",
+            )
             cp = PostgresSaver(conn)
             cp.setup()
             print("[agent] PostgresSaver initialized successfully")
