@@ -39,9 +39,12 @@ def _make_checkpointer():
         try:
             import psycopg
             from langgraph.checkpoint.postgres import PostgresSaver
-            conn = psycopg.connect(DATABASE_URL)
+            # Supabase requires SSL
+            url = DATABASE_URL if "sslmode" in DATABASE_URL else DATABASE_URL + "?sslmode=require"
+            conn = psycopg.connect(url)
             cp = PostgresSaver(conn)
             cp.setup()
+            print("[agent] PostgresSaver initialized successfully")
             return cp
         except Exception as e:
             import traceback

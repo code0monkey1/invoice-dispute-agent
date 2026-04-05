@@ -56,7 +56,9 @@ app = FastAPI(title="Invoice Dispute Agent API")
 @app.get("/api/health")
 def health():
     import sys
-    return {"status": "ok", "python": sys.version}
+    from src.agent import checkpointer
+    cp_type = type(checkpointer).__name__
+    return {"status": "ok", "python": sys.version, "checkpointer": cp_type}
 
 
 app.add_middleware(
