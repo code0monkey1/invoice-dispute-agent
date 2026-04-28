@@ -65,6 +65,7 @@ export interface InvoiceCreateResponse {
   messages: Message[];
   interrupt: Interrupt | null;
   state: AgentState;
+  initialization_error?: string;
 }
 
 export interface User {

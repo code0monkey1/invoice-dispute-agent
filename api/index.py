@@ -33,6 +33,7 @@ from src.db import (
     create_invoice as db_create_invoice, get_invoice, get_invoices_by_user,
     update_invoice, get_invoices_by_client_email,
     add_communication, get_communications,
+    build_invoice_storage_id, parse_public_invoice_id,
 )
 from src.services.gmail_service import GmailService, SCOPES
 from src.services.telegram_service import send_telegram_notification
@@ -301,6 +302,16 @@ def extract_state(response):
     }
 
 
+def present_invoice(invoice: dict | None) -> dict | None:
+    """Add the user-facing invoice number to invoice payloads."""
+    if not invoice:
+        return None
+
+    payload = dict(invoice)
+    payload["invoice_id"] = parse_public_invoice_id(payload["id"])
+    return payload
+
+
 # --- JWT Helpers ---
 
 def create_jwt(user_id: str, email: str) -> str:
@@ -498,31 +509,42 @@ def list_invoices(authorization: str | None = Header(None)):
     invoices = get_invoices_by_user(user_id)
     for inv in invoices:
         inv["communication_history"] = get_communications(inv["id"])
-    return invoices
+    return [present_invoice(inv) for inv in invoices]
 
 
 @app.post("/api/invoices")
 def create_invoice(req: InvoiceCreateRequest, authorization: str | None = Header(None)):
     user = get_current_user(authorization)
     user_id = user["id"] if user else "guest"
+    storage_invoice_id = build_invoice_storage_id(user_id, req.invoice_id)
 
-    # Check for duplicate invoice ID
-    existing = get_invoice(req.invoice_id)
+    # Check for duplicate invoice ID for this user.
+    existing = get_invoice(storage_invoice_id)
     if existing:
         raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
 
-    invoice = db_create_invoice(
-        invoice_id=req.invoice_id,
+    invoice = present_invoice(db_create_invoice(
+        invoice_id=storage_invoice_id,
         user_id=user_id,
         client_name=req.client_name,
         client_email=req.client_email,
         invoice_amount=req.invoice_amount,
         days_overdue=req.days_overdue,
         jurisdiction=req.jurisdiction,
-    )
+    ))
 
-    context = get_context_for_invoice(req.invoice_id, user)
-    config = {"configurable": {"thread_id": f"invoice-{req.invoice_id}"}}
+    context = get_context_for_invoice(storage_invoice_id, user)
+    config = {"configurable": {"thread_id": f"invoice-{storage_invoice_id}"}}
+    initial_state = {
+        "client_name": req.client_name,
+        "client_email": req.client_email,
+        "invoice_id": req.invoice_id,
+        "invoice_amount": req.invoice_amount,
+        "days_overdue": req.days_overdue,
+        "jurisdiction": req.jurisdiction,
+        "escalation_level": 1,
+        "communication_history": [],
+    }
     msg = (
         f"Invoice details have been saved. Here is the summary:\n"
         f"- Client: {req.client_name} ({req.client_email})\n"
@@ -534,24 +556,25 @@ def create_invoice(req: InvoiceCreateRequest, authorization: str | None = Header
         response = agent.invoke(
             {
                 "messages": [HumanMessage(content=msg)],
-                "client_name": req.client_name,
-                "client_email": req.client_email,
-                "invoice_id": req.invoice_id,
-                "invoice_amount": req.invoice_amount,
-                "days_overdue": req.days_overdue,
-                "jurisdiction": req.jurisdiction,
-                "escalation_level": 1,
-                "communication_history": [],
+                **initial_state,
             },
             context=context,
             config=config,
         )
     except Exception as e:
-        error_msg = str(e)
-        if "rate_limit" in error_msg.lower() or "429" in error_msg:
-            raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
-        logger.exception("Agent invocation failed")
-        raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
+        logger.exception("Initial agent invocation failed for invoice %s", storage_invoice_id)
+        try:
+            agent.update_state(config, initial_state)
+        except Exception:
+            logger.exception("Failed to initialize fallback state for invoice %s", storage_invoice_id)
+
+        return {
+            "invoice": invoice,
+            "messages": [],
+            "interrupt": None,
+            "state": initial_state,
+            "initialization_error": "The dispute was created, but the first AI draft could not be generated yet.",
+        }
 
     invoice["communication_history"] = []
     return {

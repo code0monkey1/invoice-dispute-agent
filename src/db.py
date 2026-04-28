@@ -20,6 +20,7 @@ from supabase import create_client, Client
 # ---------------------------------------------------------------------------
 
 _supabase_client: Optional[Client] = None
+_INVOICE_ID_SEPARATOR = "__inv__"
 
 
 def get_supabase() -> Client:
@@ -70,6 +71,25 @@ def init_db() -> None:
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def build_invoice_storage_id(user_id: str, invoice_id: str) -> str:
+    """Create a per-user storage ID while preserving the public invoice number."""
+    encoded = base64.urlsafe_b64encode(invoice_id.encode()).decode().rstrip("=")
+    return f"{user_id}{_INVOICE_ID_SEPARATOR}{encoded}"
+
+
+def parse_public_invoice_id(storage_id: str) -> str:
+    """Recover the original invoice number from a storage ID when possible."""
+    if _INVOICE_ID_SEPARATOR not in storage_id:
+        return storage_id
+
+    _, encoded = storage_id.split(_INVOICE_ID_SEPARATOR, 1)
+    try:
+        padding = "=" * (-len(encoded) % 4)
+        return base64.urlsafe_b64decode(f"{encoded}{padding}".encode()).decode()
+    except Exception:
+        return storage_id
 
 
 def upsert_user(

@@ -23,11 +23,9 @@ export function useChat(invoiceId: string) {
       try {
         const res = await api.getHistory(invoiceId)
         if (cancelled) return
-        if (res.messages && res.messages.length > 0) {
-          setMessages(res.messages)
-          setInterrupt(res.interrupt)
-          if (res.state) setAgentState(res.state)
-        }
+        if (res.messages) setMessages(res.messages)
+        setInterrupt(res.interrupt)
+        if (res.state) setAgentState(res.state)
         if (res.communications) setCommunications(res.communications)
       } catch (err) {
         console.error('Failed to load history:', err)
@@ -129,11 +127,9 @@ export function useChat(invoiceId: string) {
     if (!invoiceId) return
     try {
       const res = await api.getHistory(invoiceId)
-      if (res.messages && res.messages.length > 0) {
-        setMessages(res.messages)
-        setInterrupt(res.interrupt)
-        if (res.state) setAgentState(res.state)
-      }
+      if (res.messages) setMessages(res.messages)
+      setInterrupt(res.interrupt)
+      if (res.state) setAgentState(res.state)
       if (res.communications) setCommunications(res.communications)
     } catch (err) {
       console.error('Failed to refresh history:', err)

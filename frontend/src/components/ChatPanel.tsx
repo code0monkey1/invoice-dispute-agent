@@ -57,6 +57,7 @@ export default function ChatPanel() {
 
   const DRAFT_TOOLS = ['draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
   const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid']
+  const displayInvoiceId = agentState?.invoice_id || invoiceId
 
   // Auto-approve non-draft interrupts silently (e.g. mark_invoice_pending)
   useEffect(() => {
@@ -102,7 +103,7 @@ export default function ChatPanel() {
           </Link>
           <div className="flex-1">
             <h2 className="text-sm font-bold text-gray-800 font-[family-name:var(--font-heading)]">
-              Invoice <span className="font-mono text-[#FF6B35] bg-orange-50 px-1.5 py-0.5 rounded-md">#{invoiceId}</span>
+              Invoice <span className="font-mono text-[#FF6B35] bg-orange-50 px-1.5 py-0.5 rounded-md">#{displayInvoiceId}</span>
               {agentState?.client_name && (
                 <span className="text-gray-400 font-normal font-sans"> — {agentState.client_name}</span>
               )}

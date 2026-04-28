@@ -10,6 +10,7 @@ export default function Dashboard() {
   const { invoices, loading: fetchLoading, createInvoice } = useInvoices()
   const [formOpen, setFormOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
   const navigate = useNavigate()
 
   const handleCreate = async (data: {
@@ -21,12 +22,14 @@ export default function Dashboard() {
     jurisdiction: string
   }) => {
     setCreating(true)
+    setCreateError(null)
     try {
-      await createInvoice(data)
+      const res = await createInvoice(data)
       setFormOpen(false)
-      navigate(`/invoice/${data.invoice_id}`)
+      navigate(`/invoice/${res.invoice.id}`)
     } catch (err) {
       console.error('Failed to create invoice:', err)
+      setCreateError(err instanceof Error ? err.message : 'Could not create the dispute.')
     } finally {
       setCreating(false)
     }
@@ -51,7 +54,10 @@ export default function Dashboard() {
           </p>
         </div>
         <button
-          onClick={() => setFormOpen(true)}
+          onClick={() => {
+            setCreateError(null)
+            setFormOpen(true)
+          }}
           className="btn-gradient inline-flex items-center gap-2 text-white font-bold rounded-xl px-5 py-3 text-sm transition-all shadow-lg shadow-orange-300/40 hover:shadow-orange-400/50 font-[family-name:var(--font-heading)]"
         >
           <Plus className="w-4 h-4" strokeWidth={3} />
@@ -83,9 +89,13 @@ export default function Dashboard() {
       {/* Form Modal */}
       <InvoiceForm
         open={formOpen}
-        onClose={() => setFormOpen(false)}
+        onClose={() => {
+          setCreateError(null)
+          setFormOpen(false)
+        }}
         onSubmit={handleCreate}
         loading={creating}
+        error={createError}
       />
     </div>
   )

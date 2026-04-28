@@ -13,9 +13,10 @@ interface Props {
     jurisdiction: string
   }) => void
   loading: boolean
+  error?: string | null
 }
 
-export default function InvoiceForm({ open, onClose, onSubmit, loading }: Props) {
+export default function InvoiceForm({ open, onClose, onSubmit, loading, error }: Props) {
   const [form, setForm] = useState({
     invoice_id: '',
     client_name: '',
@@ -80,6 +81,11 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading }: Props)
               />
             </div>
           ))}
+          {error && (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {error}
+            </div>
+          )}
           <button
             type="submit"
             disabled={loading}

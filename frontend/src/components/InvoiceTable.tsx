@@ -45,7 +45,7 @@ export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
             >
               <td className="px-6 py-4">
                 <span className="font-mono text-sm font-semibold text-gray-800 bg-gray-100 px-2 py-0.5 rounded-md">
-                  {inv.id}
+                  {inv.invoice_id || inv.id}
                 </span>
               </td>
               <td className="px-6 py-4">
