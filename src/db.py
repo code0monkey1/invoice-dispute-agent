@@ -23,14 +23,24 @@ _supabase_client: Optional[Client] = None
 _INVOICE_ID_SEPARATOR = "__inv__"
 
 
+def _create_supabase_client() -> Client:
+    url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    if not url or not key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
+    return create_client(url, key)
+
+
 def get_supabase() -> Client:
     global _supabase_client
+
+    # In Vercel serverless, reusing the same HTTP client across warm invocations
+    # can trigger transient socket errors. A fresh client per call is more stable.
+    if os.environ.get("VERCEL"):
+        return _create_supabase_client()
+
     if _supabase_client is None:
-        url = os.environ.get("SUPABASE_URL")
-        key = os.environ.get("SUPABASE_KEY")
-        if not url or not key:
-            raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
-        _supabase_client = create_client(url, key)
+        _supabase_client = _create_supabase_client()
     return _supabase_client
 
 
