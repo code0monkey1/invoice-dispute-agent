@@ -20,6 +20,8 @@ from langgraph.types import Command
 import logging
 from datetime import datetime, timezone
 import jwt
+import json as json_lib
+import urllib.error
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -334,6 +336,23 @@ def get_current_user(authorization: str | None) -> dict | None:
         return None
 
 
+def _parse_google_http_error(exc: urllib.error.HTTPError) -> tuple[str, str]:
+    """Return (error_code, user_message) for Google OAuth/userinfo failures."""
+    raw_body = exc.read().decode("utf-8", errors="replace")
+    error_code = f"http_{exc.code}"
+    message = raw_body or str(exc)
+
+    try:
+        payload = json_lib.loads(raw_body) if raw_body else {}
+        error_code = payload.get("error") or error_code
+        message = payload.get("error_description") or payload.get("error") or message
+    except Exception:
+        pass
+
+    logger.error("Google OAuth HTTP error %s: %s", error_code, raw_body or str(exc))
+    return error_code, message
+
+
 # --- Routes ---
 
 @app.get("/api/health")
@@ -345,12 +364,16 @@ def health():
 def google_auth_url():
     """Build Google OAuth URL manually without PKCE."""
     import urllib.parse
+    if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
+        raise HTTPException(status_code=500, detail="Google OAuth is not configured on the server.")
+
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": GOOGLE_REDIRECT_URI,
         "response_type": "code",
         "scope": " ".join(SCOPES),
         "access_type": "offline",
+        "include_granted_scopes": "true",
         "prompt": "consent",
     }
     auth_url = f"https://accounts.google.com/o/oauth2/auth?{urllib.parse.urlencode(params)}"
@@ -365,7 +388,9 @@ class GoogleCallbackRequest(BaseModel):
 def google_callback(req: GoogleCallbackRequest):
     import urllib.request
     import urllib.parse
-    import json as json_lib
+
+    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
+        raise HTTPException(status_code=500, detail="Google OAuth is not fully configured on the server.")
 
     # Exchange auth code for tokens directly (bypass Flow PKCE issues)
     token_data = urllib.parse.urlencode({
@@ -380,8 +405,12 @@ def google_callback(req: GoogleCallbackRequest):
         data=token_data,
         headers={"Content-Type": "application/x-www-form-urlencoded"},
     )
-    with urllib.request.urlopen(token_req) as resp:
-        token_response = json_lib.loads(resp.read())
+    try:
+        with urllib.request.urlopen(token_req) as resp:
+            token_response = json_lib.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        error_code, message = _parse_google_http_error(exc)
+        raise HTTPException(status_code=400, detail=f"Google sign-in failed ({error_code}): {message}") from exc
 
     access_token = token_response["access_token"]
     refresh_token = token_response.get("refresh_token", "")
@@ -391,19 +420,27 @@ def google_callback(req: GoogleCallbackRequest):
         "https://www.googleapis.com/oauth2/v2/userinfo",
         headers={"Authorization": f"Bearer {access_token}"}
     )
-    with urllib.request.urlopen(user_info_req) as resp:
-        user_info = json_lib.loads(resp.read())
+    try:
+        with urllib.request.urlopen(user_info_req) as resp:
+            user_info = json_lib.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        error_code, message = _parse_google_http_error(exc)
+        raise HTTPException(status_code=400, detail=f"Google profile lookup failed ({error_code}): {message}") from exc
 
     user_id = user_info["id"]
     email = user_info["email"]
     name = user_info.get("name", "")
     picture = user_info.get("picture", "")
 
-    upsert_user(
-        user_id=user_id, email=email, name=name, picture=picture,
-        access_token=access_token,
-        refresh_token=refresh_token,
-    )
+    try:
+        upsert_user(
+            user_id=user_id, email=email, name=name, picture=picture,
+            access_token=access_token,
+            refresh_token=refresh_token,
+        )
+    except Exception as exc:
+        logger.exception("Failed to persist Google user %s", email)
+        raise HTTPException(status_code=500, detail="Google sign-in succeeded, but saving the user failed.") from exc
 
     # Register for Gmail push notifications
     try:
