@@ -8,9 +8,13 @@ supabase/schema.sql — run that once in the Supabase SQL editor.
 
 import base64
 import hashlib
+import json
 import os
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Sequence
 
 from cryptography.fernet import Fernet
 from supabase import create_client, Client
@@ -21,6 +25,7 @@ from supabase import create_client, Client
 
 _supabase_client: Optional[Client] = None
 _INVOICE_ID_SEPARATOR = "__inv__"
+_SUPABASE_TIMEOUT_SECONDS = 20
 
 
 def _create_supabase_client() -> Client:
@@ -42,6 +47,59 @@ def get_supabase() -> Client:
     if _supabase_client is None:
         _supabase_client = _create_supabase_client()
     return _supabase_client
+
+
+def _supabase_rest_url(table: str, query: Optional[Sequence[tuple[str, str]]] = None) -> str:
+    base_url = os.environ.get("SUPABASE_URL")
+    key = os.environ.get("SUPABASE_KEY")
+    if not base_url or not key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
+
+    url = f"{base_url.rstrip('/')}/rest/v1/{table}"
+    if query:
+        url = f"{url}?{urllib.parse.urlencode(list(query), doseq=True)}"
+    return url
+
+
+def _supabase_rest_request(
+    method: str,
+    table: str,
+    *,
+    query: Optional[Sequence[tuple[str, str]]] = None,
+    payload: Optional[dict] = None,
+    prefer: Optional[str] = None,
+):
+    key = os.environ.get("SUPABASE_KEY")
+    if not key:
+        raise RuntimeError("SUPABASE_KEY must be set in environment")
+
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    if prefer:
+        headers["Prefer"] = prefer
+
+    data = None if payload is None else json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        _supabase_rest_url(table, query),
+        data=data,
+        headers=headers,
+        method=method,
+    )
+
+    try:
+        with urllib.request.urlopen(request, timeout=_SUPABASE_TIMEOUT_SECONDS) as response:
+            raw = response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Supabase REST {method} {table} failed: {exc.code} {details}") from exc
+
+    if not raw:
+        return None
+    return json.loads(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -120,20 +178,34 @@ def upsert_user(
         "gmail_refresh_token": encrypt_token(refresh_token),
         "gmail_connected_at": _now(),
     }
-    get_supabase().table("users").upsert(data, on_conflict="id").execute()
+    _supabase_rest_request(
+        "POST",
+        "users",
+        query=[("on_conflict", "id")],
+        payload=data,
+        prefer="resolution=merge-duplicates",
+    )
     return get_user(user_id)
 
 
 def get_user(user_id: str) -> Optional[dict]:
     """Return the user row for *user_id* as a ``dict``, or ``None``."""
-    resp = get_supabase().table("users").select("*").eq("id", user_id).execute()
-    return resp.data[0] if resp.data else None
+    rows = _supabase_rest_request(
+        "GET",
+        "users",
+        query=[("select", "*"), ("id", f"eq.{user_id}")],
+    ) or []
+    return rows[0] if rows else None
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
     """Return the user row matching *email* as a ``dict``, or ``None``."""
-    resp = get_supabase().table("users").select("*").eq("email", email).execute()
-    return resp.data[0] if resp.data else None
+    rows = _supabase_rest_request(
+        "GET",
+        "users",
+        query=[("select", "*"), ("email", f"eq.{email}")],
+    ) or []
+    return rows[0] if rows else None
 
 
 def get_user_gmail_tokens(user_id: str) -> Optional[tuple[str, str]]:
@@ -163,12 +235,22 @@ def update_user_gmail_tokens(
     }
     if refresh_token is not None:
         updates["gmail_refresh_token"] = encrypt_token(refresh_token)
-    get_supabase().table("users").update(updates).eq("id", user_id).execute()
+    _supabase_rest_request(
+        "PATCH",
+        "users",
+        query=[("id", f"eq.{user_id}")],
+        payload=updates,
+    )
 
 
 def update_user_history_id(user_id: str, history_id: str) -> None:
     """Persist the latest Gmail history ID for *user_id*."""
-    get_supabase().table("users").update({"gmail_history_id": history_id}).eq("id", user_id).execute()
+    _supabase_rest_request(
+        "PATCH",
+        "users",
+        query=[("id", f"eq.{user_id}")],
+        payload={"gmail_history_id": history_id},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -197,26 +279,27 @@ def create_invoice(
         "created_at": now,
         "updated_at": now,
     }
-    get_supabase().table("invoices").insert(data).execute()
+    _supabase_rest_request("POST", "invoices", payload=data)
     return get_invoice(invoice_id)
 
 
 def get_invoice(invoice_id: str) -> Optional[dict]:
     """Return the invoice row for *invoice_id* as a ``dict``, or ``None``."""
-    resp = get_supabase().table("invoices").select("*").eq("id", invoice_id).execute()
-    return resp.data[0] if resp.data else None
+    rows = _supabase_rest_request(
+        "GET",
+        "invoices",
+        query=[("select", "*"), ("id", f"eq.{invoice_id}")],
+    ) or []
+    return rows[0] if rows else None
 
 
 def get_invoices_by_user(user_id: str) -> list[dict]:
     """Return all invoices belonging to *user_id*, newest first."""
-    resp = (
-        get_supabase().table("invoices")
-        .select("*")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .execute()
-    )
-    return resp.data or []
+    return _supabase_rest_request(
+        "GET",
+        "invoices",
+        query=[("select", "*"), ("user_id", f"eq.{user_id}"), ("order", "created_at.desc")],
+    ) or []
 
 
 def update_invoice(invoice_id: str, **kwargs) -> Optional[dict]:
@@ -232,7 +315,12 @@ def update_invoice(invoice_id: str, **kwargs) -> Optional[dict]:
     updates = {k: v for k, v in kwargs.items() if k != "updated_at"}
     updates["updated_at"] = _now()
 
-    get_supabase().table("invoices").update(updates).eq("id", invoice_id).execute()
+    _supabase_rest_request(
+        "PATCH",
+        "invoices",
+        query=[("id", f"eq.{invoice_id}")],
+        payload=updates,
+    )
     return get_invoice(invoice_id)
 
 
@@ -241,16 +329,12 @@ def get_invoices_by_client_email(client_email: str) -> list[dict]:
     Return all active (non-resolved, non-cancelled) invoices for a given
     client email address, newest first.
     """
-    resp = (
-        get_supabase().table("invoices")
-        .select("*")
-        .eq("client_email", client_email)
-        .neq("status", "resolved")
-        .neq("status", "cancelled")
-        .order("created_at", desc=True)
-        .execute()
-    )
-    return resp.data or []
+    rows = _supabase_rest_request(
+        "GET",
+        "invoices",
+        query=[("select", "*"), ("client_email", f"eq.{client_email}"), ("order", "created_at.desc")],
+    ) or []
+    return [row for row in rows if row.get("status") not in {"resolved", "cancelled"}]
 
 
 # ---------------------------------------------------------------------------
@@ -278,17 +362,19 @@ def add_communication(
         "direction": direction,
         "timestamp": _now(),
     }
-    resp = get_supabase().table("communication_history").insert(data).execute()
-    return resp.data[0]
+    rows = _supabase_rest_request(
+        "POST",
+        "communication_history",
+        payload=data,
+        prefer="return=representation",
+    ) or []
+    return rows[0]
 
 
 def get_communications(invoice_id: str) -> list[dict]:
     """Return all communication records for *invoice_id*, oldest first."""
-    resp = (
-        get_supabase().table("communication_history")
-        .select("*")
-        .eq("invoice_id", invoice_id)
-        .order("timestamp", desc=False)
-        .execute()
-    )
-    return resp.data or []
+    return _supabase_rest_request(
+        "GET",
+        "communication_history",
+        query=[("select", "*"), ("invoice_id", f"eq.{invoice_id}"), ("order", "timestamp.asc")],
+    ) or []
