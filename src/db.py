@@ -13,6 +13,7 @@ import os
 import urllib.error
 import urllib.parse
 import urllib.request
+import mimetypes
 from datetime import datetime, timezone
 from typing import Optional, Sequence
 
@@ -254,6 +255,104 @@ def update_user_history_id(user_id: str, history_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Telegram helpers (per-user routing)
+# ---------------------------------------------------------------------------
+
+def set_user_telegram_link_token(user_id: str, token: str) -> None:
+    """Store a one-time link token used to bind a Telegram chat to *user_id*."""
+    _supabase_rest_request(
+        "PATCH",
+        "users",
+        query=[("id", f"eq.{user_id}")],
+        payload={"telegram_link_token": token},
+    )
+
+
+def get_user_by_telegram_link_token(token: str) -> Optional[dict]:
+    """Return the user row whose telegram_link_token matches, or None."""
+    rows = _supabase_rest_request(
+        "GET",
+        "users",
+        query=[("select", "*"), ("telegram_link_token", f"eq.{token}")],
+    ) or []
+    return rows[0] if rows else None
+
+
+def update_user_telegram_chat_id(user_id: str, chat_id: Optional[str]) -> None:
+    """Persist (or clear) the Telegram chat_id for *user_id* and clear the link token."""
+    _supabase_rest_request(
+        "PATCH",
+        "users",
+        query=[("id", f"eq.{user_id}")],
+        payload={"telegram_chat_id": chat_id, "telegram_link_token": None},
+    )
+
+
+# ---------------------------------------------------------------------------
+# Guest user helpers (per-session anonymous identity)
+# ---------------------------------------------------------------------------
+
+def ensure_guest_user(guest_id: str) -> dict:
+    """Insert a lightweight guest user row if missing; return it.
+
+    Guest rows have ``is_guest = True`` and ``email = NULL``. They exist solely
+    to satisfy the ``invoices.user_id`` FK for unauthenticated invoices.
+    """
+    existing = get_user(guest_id)
+    if existing:
+        return existing
+    _supabase_rest_request(
+        "POST",
+        "users",
+        query=[("on_conflict", "id")],
+        payload={
+            "id": guest_id,
+            "email": None,
+            "name": "Guest",
+            "is_guest": True,
+        },
+        prefer="resolution=merge-duplicates",
+    )
+    return get_user(guest_id) or {"id": guest_id, "is_guest": True}
+
+
+def migrate_guest_to_user(guest_id: str, real_user_id: str) -> None:
+    """Reassign a guest's invoices + communications to a real user, then delete the guest row.
+
+    No-op if guest_id == real_user_id or the guest has no data.
+    """
+    if not guest_id or guest_id == real_user_id:
+        return
+
+    # Reassign invoices
+    _supabase_rest_request(
+        "PATCH",
+        "invoices",
+        query=[("user_id", f"eq.{guest_id}")],
+        payload={"user_id": real_user_id},
+    )
+    # Reassign communications
+    _supabase_rest_request(
+        "PATCH",
+        "communication_history",
+        query=[("user_id", f"eq.{guest_id}")],
+        payload={"user_id": real_user_id},
+    )
+
+    # Delete the guest user row (only if it was a per-session guest, not the legacy shared one)
+    if guest_id != "guest":
+        try:
+            _supabase_rest_request(
+                "DELETE",
+                "users",
+                query=[("id", f"eq.{guest_id}"), ("is_guest", "eq.true")],
+            )
+        except Exception:
+            # Best-effort cleanup; leaving a stray guest row is harmless.
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Invoice helpers
 # ---------------------------------------------------------------------------
 
@@ -265,17 +364,33 @@ def create_invoice(
     invoice_amount: float,
     days_overdue: int,
     jurisdiction: Optional[str],
+    *,
+    amount_paid: float = 0,
+    status: str = "active",
+    invoice_file_path: Optional[str] = None,
+    invoice_file_name: Optional[str] = None,
+    invoice_file_mime: Optional[str] = None,
+    invoice_file_size: Optional[int] = None,
 ) -> dict:
     """Insert a new invoice row and return it as a ``dict``."""
     now = _now()
+    amount_paid = max(0, min(float(invoice_amount), float(amount_paid or 0)))
+    if amount_paid >= float(invoice_amount):
+        status = "paid"
     data = {
         "id": invoice_id,
         "user_id": user_id,
         "client_name": client_name,
         "client_email": client_email,
         "invoice_amount": invoice_amount,
+        "amount_paid": amount_paid,
         "days_overdue": days_overdue,
         "jurisdiction": jurisdiction,
+        "status": status,
+        "invoice_file_path": invoice_file_path,
+        "invoice_file_name": invoice_file_name,
+        "invoice_file_mime": invoice_file_mime,
+        "invoice_file_size": invoice_file_size,
         "created_at": now,
         "updated_at": now,
     }
@@ -313,6 +428,12 @@ def update_invoice(invoice_id: str, **kwargs) -> Optional[dict]:
         return get_invoice(invoice_id)
 
     updates = {k: v for k, v in kwargs.items() if k != "updated_at"}
+    if "amount_paid" in updates:
+        invoice = get_invoice(invoice_id)
+        invoice_amount = float((invoice or {}).get("invoice_amount", 0) or 0)
+        updates["amount_paid"] = max(0, min(invoice_amount, float(updates["amount_paid"] or 0)))
+        if updates["amount_paid"] >= invoice_amount and invoice_amount > 0:
+            updates["status"] = "paid"
     updates["updated_at"] = _now()
 
     _supabase_rest_request(
@@ -334,7 +455,37 @@ def get_invoices_by_client_email(client_email: str) -> list[dict]:
         "invoices",
         query=[("select", "*"), ("client_email", f"eq.{client_email}"), ("order", "created_at.desc")],
     ) or []
-    return [row for row in rows if row.get("status") not in {"resolved", "cancelled"}]
+    return [row for row in rows if row.get("status") not in {"resolved", "cancelled", "paid"}]
+
+
+def upload_invoice_file(
+    bucket: str,
+    path: str,
+    content: bytes,
+    content_type: Optional[str] = None,
+) -> str:
+    """Upload an invoice file to Supabase Storage and return its object path."""
+    key = os.environ.get("SUPABASE_KEY")
+    base_url = os.environ.get("SUPABASE_URL")
+    if not base_url or not key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
+
+    encoded_path = "/".join(urllib.parse.quote(part, safe="") for part in path.split("/"))
+    url = f"{base_url.rstrip('/')}/storage/v1/object/{bucket}/{encoded_path}"
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": content_type or mimetypes.guess_type(path)[0] or "application/octet-stream",
+        "x-upsert": "false",
+    }
+    request = urllib.request.Request(url, data=content, headers=headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=_SUPABASE_TIMEOUT_SECONDS) as response:
+            response.read()
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Supabase Storage upload failed: {exc.code} {details}") from exc
+    return path
 
 
 # ---------------------------------------------------------------------------
@@ -347,15 +498,24 @@ def add_communication(
     subject: Optional[str],
     content: Optional[str],
     direction: str = "outbound",
+    user_id: Optional[str] = None,
 ) -> dict:
     """
     Append a communication record and return it as a ``dict``.
 
     *comm_type* is a free-form string (e.g. ``"email"``, ``"telegram"``).
     *direction* is ``"outbound"`` or ``"inbound"``.
+
+    *user_id* is the owner of the invoice. If omitted, it's derived from the
+    invoice row — required for per-user scoping and future RLS.
     """
+    if user_id is None:
+        invoice = get_invoice(invoice_id)
+        user_id = (invoice or {}).get("user_id")
+
     data = {
         "invoice_id": invoice_id,
+        "user_id": user_id,
         "type": comm_type,
         "subject": subject,
         "content": content,

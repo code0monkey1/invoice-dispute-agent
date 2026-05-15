@@ -4,10 +4,13 @@ import { Plus, Sparkles } from 'lucide-react'
 import StatsCards from './StatsCards'
 import InvoiceTable from './InvoiceTable'
 import InvoiceForm from './InvoiceForm'
+import TelegramConnect from './TelegramConnect'
 import { useInvoices } from '../hooks/useInvoices'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Dashboard() {
   const { invoices, loading: fetchLoading, createInvoice } = useInvoices()
+  const { user } = useAuth()
   const [formOpen, setFormOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -18,13 +21,14 @@ export default function Dashboard() {
     client_name: string
     client_email: string
     invoice_amount: number
+    amount_paid?: number
     days_overdue: number
     jurisdiction: string
-  }) => {
+  }, file?: File) => {
     setCreating(true)
     setCreateError(null)
     try {
-      const res = await createInvoice(data)
+      const res = await createInvoice(data, file)
       setFormOpen(false)
       navigate(`/invoice/${res.invoice.id}`)
     } catch (err) {
@@ -67,6 +71,9 @@ export default function Dashboard() {
 
       {/* Stats */}
       <StatsCards invoices={invoices} />
+
+      {/* Telegram connect — authenticated users only */}
+      {user && <TelegramConnect />}
 
       {/* Table */}
       <div>
