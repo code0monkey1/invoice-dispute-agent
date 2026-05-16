@@ -1167,25 +1167,31 @@ def resume(
             raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
         raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
 
-    if req.decision == "approve" and approved_tool_name in {"mark_invoice_pending", "mark_invoice_paid", "record_partial_payment"}:
+    # Persist any payment/status changes the agent applied (record_partial_payment,
+    # mark_invoice_paid, mark_invoice_pending) back to the DB. Reads from the
+    # post-invoke response state rather than the pre-invoke interrupt task, because
+    # sync_agent_state_from_invoice above clears pending tasks before we can inspect them.
+    if req.decision == "approve":
         invoice_data = get_invoice(invoice_id)
         if invoice_data:
             invoice_amount = float(invoice_data.get("invoice_amount", 0) or 0)
-            current_paid = float(invoice_data.get("amount_paid", 0) or 0)
-            if approved_tool_name == "mark_invoice_paid":
-                updated = update_invoice(invoice_id, amount_paid=invoice_amount, status="paid")
-            elif approved_tool_name == "record_partial_payment":
-                paid_delta = float(approved_args.get("amount_paid", 0) or 0)
-                next_paid = min(invoice_amount, current_paid + max(0, paid_delta))
-                status = "paid" if compute_balance(invoice_amount, next_paid) <= 0 else "active"
-                updated = update_invoice(invoice_id, amount_paid=next_paid, status=status)
-            else:
-                updated = update_invoice(invoice_id, status="pending")
-
-            if updated:
-                persisted_state = invoice_state_from_db(updated)
-                agent.update_state(config, persisted_state)
-                response.update(persisted_state)
+            db_paid = float(invoice_data.get("amount_paid", 0) or 0)
+            db_status = invoice_data.get("status") or "active"
+            new_paid_raw = response.get("amount_paid")
+            new_status = response.get("status")
+            updates = {}
+            if isinstance(new_paid_raw, (int, float)):
+                new_paid = max(0.0, min(invoice_amount, float(new_paid_raw)))
+                if abs(new_paid - db_paid) > 0.005:
+                    updates["amount_paid"] = new_paid
+            if new_status and new_status != db_status and new_status in {"active", "pending", "paid"}:
+                updates["status"] = new_status
+            if updates:
+                updated = update_invoice(invoice_id, **updates)
+                if updated:
+                    persisted_state = invoice_state_from_db(updated)
+                    agent.update_state(config, persisted_state)
+                    response.update(persisted_state)
 
     # Log the approved communication into agent state
     if req.decision == "approve" and approved_tool_name:
