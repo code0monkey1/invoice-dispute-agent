@@ -4,11 +4,17 @@ export interface Invoice {
   client_name: string;
   client_email: string;
   invoice_amount: number;
+  amount_paid: number;
+  balance_due: number;
   days_overdue: number;
   jurisdiction: string;
   escalation_level: number;
   communication_history: CommunicationEntry[];
   status: string;
+  invoice_file_path?: string | null;
+  invoice_file_name?: string | null;
+  invoice_file_mime?: string | null;
+  invoice_file_size?: number | null;
 }
 
 export interface CommunicationEntry {
@@ -45,9 +51,12 @@ export interface AgentState {
   client_name: string;
   client_email: string;
   invoice_amount: number;
+  amount_paid: number;
+  balance_due: number;
   invoice_id: string;
   days_overdue: number;
   jurisdiction: string;
+  status: string;
   communication_history: CommunicationEntry[];
 }
 
@@ -66,6 +75,28 @@ export interface InvoiceCreateResponse {
   interrupt: Interrupt | null;
   state: AgentState;
   initialization_error?: string;
+}
+
+export interface ParsedInvoiceResponse {
+  extracted: {
+    invoice_id?: string | null;
+    client_name?: string | null;
+    client_email?: string | null;
+    invoice_amount?: number | null;
+    due_date?: string | null;
+    days_overdue?: number | null;
+    jurisdiction?: string | null;
+    confidence?: number;
+    warnings?: string[];
+  };
+  missing_fields: string[];
+  warnings: string[];
+  text_length: number;
+  file: {
+    name: string;
+    mime: string;
+    size: number;
+  };
 }
 
 export interface User {

@@ -7,6 +7,9 @@ import EscalationBadge from './EscalationBadge'
 import { useChat } from '../hooks/useChat'
 import { api } from '../api'
 
+const DRAFT_TOOLS = ['draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
+const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid', 'record_partial_payment']
+
 export default function ChatPanel() {
   const { invoiceId } = useParams<{ invoiceId: string }>()
   const [input, setInput] = useState('')
@@ -55,8 +58,6 @@ export default function ChatPanel() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, interrupt])
 
-  const DRAFT_TOOLS = ['draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
-  const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid']
   const displayInvoiceId = agentState?.invoice_id || invoiceId
 
   // Auto-approve non-draft interrupts silently (e.g. mark_invoice_pending)
@@ -64,7 +65,7 @@ export default function ChatPanel() {
     if (interrupt && !APPROVAL_TOOLS.includes(interrupt.tool) && !loading) {
       approve()
     }
-  }, [interrupt, loading])
+  }, [approve, interrupt, loading])
 
   // Periodic refresh to pick up webhook-injected messages (e.g. inbound client emails)
   useEffect(() => {
@@ -295,7 +296,10 @@ export default function ChatPanel() {
                   {[
                     ['Client', agentState.client_name],
                     ['Email', agentState.client_email],
-                    ['Amount', `$${agentState.invoice_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
+                    ['Original', `$${agentState.invoice_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
+                    ['Paid', `$${agentState.amount_paid.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
+                    ['Balance', `$${agentState.balance_due.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
+                    ['Status', agentState.status],
                     ['Overdue', `${agentState.days_overdue} days`],
                     ['Jurisdiction', agentState.jurisdiction],
                   ].map(([label, value]) => (

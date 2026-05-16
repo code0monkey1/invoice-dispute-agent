@@ -5,9 +5,9 @@ from src.tools.drafting import draft_polite_reminder, draft_formal_demand_letter
 from src.tools.invoice import check_invoice_status, calculate_late_fees
 from src.tools.legal import lookup_small_claims_procedures, generate_court_filing_guide
 from src.tools.escalation import escalate_dispute, update_invoice_details
-from src.tools.payment_tools import mark_invoice_pending, mark_invoice_paid
+from src.tools.payment_tools import mark_invoice_pending, mark_invoice_paid, record_partial_payment
 
-PAYMENT_TOOLS = [mark_invoice_pending, mark_invoice_paid]
+PAYMENT_TOOLS = [mark_invoice_pending, mark_invoice_paid, record_partial_payment]
 
 # Tools available at each escalation level (progressive unlocking)
 LEVEL_0_TOOLS = [update_invoice_details]
