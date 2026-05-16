@@ -10,6 +10,7 @@ function getAuthHeader(): Record<string, string> {
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...getAuthHeader(),
@@ -24,6 +25,32 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     }
     const text = await res.text();
     // Try to extract a user-friendly detail message from JSON responses
+    let detail = text;
+    try {
+      const json = JSON.parse(text);
+      if (json.detail) detail = json.detail;
+    } catch { /* not JSON, use raw text */ }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+async function requestForm<T>(path: string, formData: FormData): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      ...getAuthHeader(),
+    },
+    body: formData,
+  });
+  if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem('invoicechaser_token');
+      localStorage.removeItem('invoicechaser_user');
+      window.location.href = '/';
+    }
+    const text = await res.text();
     let detail = text;
     try {
       const json = JSON.parse(text);
@@ -76,6 +103,7 @@ export const api = {
     client_name: string;
     client_email: string;
     invoice_amount: number;
+    amount_paid?: number;
     days_overdue: number;
     jurisdiction: string;
   }) =>
@@ -83,6 +111,27 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+
+  parseInvoiceFile: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return requestForm<import('./types').ParsedInvoiceResponse>('/api/invoices/parse', form);
+  },
+
+  createInvoiceFromUpload: (file: File, data: {
+    invoice_id: string;
+    client_name: string;
+    client_email: string;
+    invoice_amount: number;
+    amount_paid?: number;
+    days_overdue: number;
+    jurisdiction: string;
+  }) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('metadata', JSON.stringify(data));
+    return requestForm<import('./types').InvoiceCreateResponse>('/api/invoices/upload', form);
+  },
 
   chat: (thread_id: string, message: string) =>
     request<import('./types').ChatResponse>('/api/chat', {
@@ -103,4 +152,18 @@ export const api = {
         body: JSON.stringify({ decision, message, edited_action }),
       }
     ),
+
+  // Telegram
+  telegramStatus: () =>
+    request<{ connected: boolean; chat_id: string | null }>('/api/telegram/status'),
+
+  telegramConnect: () =>
+    request<{ deep_link: string; token: string }>('/api/telegram/connect', {
+      method: 'POST',
+    }),
+
+  telegramDisconnect: () =>
+    request<{ connected: boolean }>('/api/telegram/disconnect', {
+      method: 'POST',
+    }),
 };

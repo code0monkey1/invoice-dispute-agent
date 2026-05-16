@@ -15,6 +15,12 @@ const PAYMENT_TOOLS: Record<string, { label: string; description: string; icon: 
     icon: <Clock className="w-4 h-4 text-white" />,
     color: 'from-blue-400 to-indigo-500',
   },
+  record_partial_payment: {
+    label: 'Record Partial Payment',
+    description: 'This will reduce the remaining balance and continue the dispute if money is still owed.',
+    icon: <CreditCard className="w-4 h-4 text-white" />,
+    color: 'from-teal-400 to-emerald-500',
+  },
 }
 
 interface Props {
@@ -149,6 +155,12 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
             <p className="text-sm text-gray-600">{paymentAction.description}</p>
             {interrupt.args?.follow_up_date != null && (
               <p className="text-xs text-gray-400 mt-1">Follow-up: {String(interrupt.args.follow_up_date)}</p>
+            )}
+            {interrupt.args?.amount_paid != null && (
+              <p className="text-xs text-gray-400 mt-1">Payment: ${String(interrupt.args.amount_paid)}</p>
+            )}
+            {interrupt.args?.payment_date != null && (
+              <p className="text-xs text-gray-400 mt-1">Date: {String(interrupt.args.payment_date)}</p>
             )}
           </div>
           <div className="px-5 py-4 border-t border-gray-100 flex gap-3">

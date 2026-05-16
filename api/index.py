@@ -8,19 +8,23 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from fastapi import FastAPI
+import secrets
+from fastapi import FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional
-from langchain.messages import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.types import Command
 
 import logging
 from datetime import datetime, timezone
 import jwt
 import json as json_lib
+import re
+import time
+import uuid
 import urllib.error
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
@@ -35,10 +39,20 @@ from src.db import (
     create_invoice as db_create_invoice, get_invoice, get_invoices_by_user,
     update_invoice, get_invoices_by_client_email,
     add_communication, get_communications,
-    build_invoice_storage_id, parse_public_invoice_id,
+    build_invoice_storage_id, parse_public_invoice_id, upload_invoice_file,
+    set_user_telegram_link_token, get_user_by_telegram_link_token,
+    update_user_telegram_chat_id, ensure_guest_user, migrate_guest_to_user,
+)
+from src.invoice_parser import (
+    extract_text_from_invoice,
+    parse_invoice_text,
+    parsed_invoice_payload,
+    validate_invoice_upload,
 )
 from src.services.gmail_service import GmailService, SCOPES
-from src.services.telegram_service import send_telegram_notification
+from src.services.telegram_service import (
+    send_telegram_notification, send_telegram_to_chat, TELEGRAM_BOT_TOKEN,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("invoicechaser")
@@ -49,6 +63,14 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5173/auth/google/callback")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
+
+# Telegram
+TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "")
+TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
+
+# Guest session cookie
+GUEST_COOKIE_NAME = "ic_guest_session"
+GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 # Initialize database on startup
 init_db()
@@ -66,9 +88,15 @@ def health():
             "database_url_set": db_url_set, "checkpointer_error": _checkpointer_error}
 
 
+# CORS — explicit origins so credentials (guest_session cookie) can flow.
+# Set CORS_ALLOW_ORIGINS to a comma-separated list (e.g. "https://your.app,https://dash.your.app").
+# Defaults to localhost dev origins.
+_cors_env = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
+_cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -90,6 +118,11 @@ class InvoiceCreateRequest(BaseModel):
     invoice_amount: float
     days_overdue: int
     jurisdiction: str
+    amount_paid: float = 0
+
+
+class InvoiceUploadMetadata(InvoiceCreateRequest):
+    pass
 
 
 class ResumeRequest(BaseModel):
@@ -111,6 +144,186 @@ class UpdateSenderRequest(BaseModel):
 
 
 # --- Helpers ---
+
+RATE_LIMITS: dict[str, list[float]] = {}
+CHAT_LIMIT_PER_MINUTE = 20
+PARSE_LIMIT_PER_MINUTE = 8
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+INVOICE_FILE_BUCKET = os.getenv("SUPABASE_INVOICE_FILE_BUCKET", "invoice-files")
+
+
+def _client_key(request: Request, authorization: str | None) -> str:
+    user = get_current_user(authorization)
+    if user:
+        return f"user:{user['id']}"
+    host = request.client.host if request.client else "unknown"
+    return f"ip:{host}"
+
+
+def enforce_rate_limit(key: str, action: str, limit: int) -> None:
+    now = time.time()
+    window_start = now - 60
+    bucket_key = f"{action}:{key}"
+    hits = [ts for ts in RATE_LIMITS.get(bucket_key, []) if ts >= window_start]
+    if len(hits) >= limit:
+        raise HTTPException(status_code=429, detail="Rate limit reached. Please wait a minute and try again.")
+    hits.append(now)
+    RATE_LIMITS[bucket_key] = hits
+
+
+def safe_filename(filename: str) -> str:
+    base = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._")
+    return cleaned or "invoice"
+
+
+def compute_balance(invoice_amount: float, amount_paid: float) -> float:
+    return max(0, float(invoice_amount or 0) - float(amount_paid or 0))
+
+
+def invoice_state_from_db(invoice: dict) -> dict:
+    amount_paid = float(invoice.get("amount_paid", 0) or 0)
+    invoice_amount = float(invoice.get("invoice_amount", 0) or 0)
+    return {
+        "client_name": invoice.get("client_name", ""),
+        "client_email": invoice.get("client_email", ""),
+        "invoice_id": parse_public_invoice_id(invoice["id"]),
+        "invoice_amount": invoice_amount,
+        "amount_paid": amount_paid,
+        "balance_due": compute_balance(invoice_amount, amount_paid),
+        "days_overdue": invoice.get("days_overdue", 0) or 0,
+        "jurisdiction": invoice.get("jurisdiction", "") or "",
+        "escalation_level": invoice.get("escalation_level", 1) or 1,
+        "status": invoice.get("status", "active") or "active",
+    }
+
+
+def sync_agent_state_from_invoice(invoice_id: str, config: dict) -> dict | None:
+    invoice = get_invoice(invoice_id)
+    if not invoice:
+        return None
+    persisted_state = invoice_state_from_db(invoice)
+    try:
+        agent.update_state(config, persisted_state)
+    except Exception:
+        logger.exception("Failed to sync agent state for invoice %s", invoice_id)
+    return persisted_state
+
+
+def invoke_agent_with_retry(payload, *, context: FreelancerContext, config: dict):
+    last_error = None
+    for attempt in range(3):
+        try:
+            return agent.invoke(payload, context=context, config=config)
+        except Exception as exc:
+            last_error = exc
+            message = str(exc).lower()
+            if "429" not in message and "rate_limit" not in message:
+                raise
+            time.sleep(1.5 * (attempt + 1))
+    raise last_error
+
+
+def build_initial_invoice_message(req: InvoiceCreateRequest) -> str:
+    balance_due = compute_balance(req.invoice_amount, req.amount_paid)
+    return (
+        f"Invoice details have been saved. Here is the summary:\n"
+        f"- Client: {req.client_name} ({req.client_email})\n"
+        f"- Invoice: {req.invoice_id} for ${req.invoice_amount:.2f}\n"
+        f"- Amount already paid: ${req.amount_paid:.2f}\n"
+        f"- Remaining balance: ${balance_due:.2f}\n"
+        f"- {req.days_overdue} days overdue, jurisdiction: {req.jurisdiction}\n\n"
+        f"Please draft a polite payment reminder email to the client."
+    )
+
+
+def create_invoice_and_start_agent(
+    req: InvoiceCreateRequest,
+    *,
+    user: dict | None,
+    user_id: str,
+    file_metadata: dict | None = None,
+):
+    storage_invoice_id = build_invoice_storage_id(user_id, req.invoice_id)
+
+    existing = get_invoice(storage_invoice_id)
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
+
+    invoice = present_invoice(db_create_invoice(
+        invoice_id=storage_invoice_id,
+        user_id=user_id,
+        client_name=req.client_name,
+        client_email=req.client_email,
+        invoice_amount=req.invoice_amount,
+        amount_paid=req.amount_paid,
+        days_overdue=req.days_overdue,
+        jurisdiction=req.jurisdiction,
+        status="paid" if compute_balance(req.invoice_amount, req.amount_paid) <= 0 else "active",
+        invoice_file_path=(file_metadata or {}).get("path"),
+        invoice_file_name=(file_metadata or {}).get("name"),
+        invoice_file_mime=(file_metadata or {}).get("mime"),
+        invoice_file_size=(file_metadata or {}).get("size"),
+    ))
+
+    context = get_context_for_invoice(storage_invoice_id, user)
+    config = {"configurable": {"thread_id": f"invoice-{storage_invoice_id}"}}
+    balance_due = compute_balance(req.invoice_amount, req.amount_paid)
+    initial_state = {
+        "client_name": req.client_name,
+        "client_email": req.client_email,
+        "invoice_id": req.invoice_id,
+        "invoice_amount": req.invoice_amount,
+        "amount_paid": req.amount_paid,
+        "balance_due": balance_due,
+        "days_overdue": req.days_overdue,
+        "jurisdiction": req.jurisdiction,
+        "escalation_level": 1,
+        "status": "paid" if balance_due <= 0 else "active",
+        "communication_history": [],
+    }
+
+    if balance_due <= 0:
+        agent.update_state(config, initial_state)
+        return {
+            "invoice": invoice,
+            "messages": [],
+            "interrupt": None,
+            "state": initial_state,
+        }
+
+    try:
+        response = invoke_agent_with_retry(
+            {
+                "messages": [HumanMessage(content=build_initial_invoice_message(req))],
+                **initial_state,
+            },
+            context=context,
+            config=config,
+        )
+    except Exception:
+        logger.exception("Initial agent invocation failed for invoice %s", storage_invoice_id)
+        try:
+            agent.update_state(config, initial_state)
+        except Exception:
+            logger.exception("Failed to initialize fallback state for invoice %s", storage_invoice_id)
+
+        return {
+            "invoice": invoice,
+            "messages": [],
+            "interrupt": None,
+            "state": initial_state,
+            "initialization_error": "The dispute was created, but the first AI draft could not be generated yet.",
+        }
+
+    invoice["communication_history"] = []
+    return {
+        "invoice": invoice,
+        "messages": serialize_messages(response["messages"]),
+        "interrupt": extract_interrupt(response, context),
+        "state": extract_state(response),
+    }
+
 
 def serialize_messages(messages):
     """Extract serializable message data from LangChain messages."""
@@ -137,7 +350,11 @@ def generate_draft_preview(tool_name: str, state: dict, context: FreelancerConte
         client_name = state.get("client_name", "Client")
         client_email = state.get("client_email", "")
         invoice_id = state.get("invoice_id", "N/A")
-        invoice_amount = state.get("invoice_amount", 0)
+        invoice_amount = float(state.get("invoice_amount", 0) or 0)
+        amount_paid = float(state.get("amount_paid", 0) or 0)
+        balance_due = compute_balance(invoice_amount, amount_paid)
+        if "balance_due" in state:
+            balance_due = float(state.get("balance_due", balance_due) or balance_due)
         days_overdue = state.get("days_overdue", 0)
         jurisdiction = state.get("jurisdiction", "")
 
@@ -146,7 +363,8 @@ def generate_draft_preview(tool_name: str, state: dict, context: FreelancerConte
                 f"Subject: Friendly Reminder - Invoice #{invoice_id} Payment\n\n"
                 f"Hi {client_name},\n\n"
                 f"I hope this message finds you well. I wanted to kindly follow up on "
-                f"Invoice #{invoice_id} for ${invoice_amount:,.2f}, "
+                f"Invoice #{invoice_id}. The original invoice total was ${invoice_amount:,.2f}, "
+                f"and the remaining balance is ${balance_due:,.2f}, "
                 f"which was due {days_overdue} days ago.\n\n"
                 f"I understand things can get busy, and I'd appreciate it if you could "
                 f"let me know the status of this payment at your earliest convenience.\n\n"
@@ -157,13 +375,14 @@ def generate_draft_preview(tool_name: str, state: dict, context: FreelancerConte
                 f"{context.freelancer_email}"
             )
         elif tool_name == "draft_formal_demand_letter":
-            late_fee = invoice_amount * (context.default_late_fee_percent / 100)
-            total_due = invoice_amount + late_fee
+            late_fee = balance_due * (context.default_late_fee_percent / 100)
+            total_due = balance_due + late_fee
             return (
                 f"Subject: FORMAL DEMAND - Overdue Invoice #{invoice_id}\n\n"
                 f"Dear {client_name},\n\n"
                 f"This letter constitutes a formal demand for payment of Invoice "
-                f"#{invoice_id} in the amount of ${invoice_amount:,.2f}, "
+                f"#{invoice_id}. The original invoice amount was ${invoice_amount:,.2f}; "
+                f"the remaining unpaid balance is ${balance_due:,.2f}, "
                 f"which is now {days_overdue} days past due.\n\n"
                 f"Per our agreed payment terms ({context.default_payment_terms}), this invoice "
                 f"was due for immediate payment. A late fee of ${late_fee:,.2f}/month "
@@ -178,8 +397,8 @@ def generate_draft_preview(tool_name: str, state: dict, context: FreelancerConte
             )
         elif tool_name == "draft_final_notice":
             months_overdue = max(1, days_overdue // 30)
-            total_late_fees = invoice_amount * (context.default_late_fee_percent / 100) * months_overdue
-            total_due = invoice_amount + total_late_fees
+            total_late_fees = balance_due * (context.default_late_fee_percent / 100) * months_overdue
+            total_due = balance_due + total_late_fees
             return (
                 f"Subject: FINAL NOTICE BEFORE LEGAL ACTION - Invoice #{invoice_id}\n\n"
                 f"Dear {client_name},\n\n"
@@ -187,6 +406,8 @@ def generate_draft_preview(tool_name: str, state: dict, context: FreelancerConte
                 f"are initiated in {jurisdiction}.\n\n"
                 f"Despite previous communications, Invoice #{invoice_id} remains unpaid.\n\n"
                 f"Original amount: ${invoice_amount:,.2f}\n"
+                f"Amount paid: ${amount_paid:,.2f}\n"
+                f"Remaining unpaid balance: ${balance_due:,.2f}\n"
                 f"Accumulated late fees ({months_overdue} month(s) at {context.default_late_fee_percent}%): "
                 f"${total_late_fees:,.2f}\n"
                 f"TOTAL DUE: ${total_due:,.2f}\n\n"
@@ -242,23 +463,27 @@ def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> Freela
     """Get FreelancerContext for an invoice.
 
     Priority: invoice-level sender overrides > authenticated user profile > defaults.
+    Always carries ``user_id`` so downstream tools can route per-user side-effects
+    (e.g. notifications) without re-deriving identity.
     """
-    # Check for per-invoice sender overrides in DB
     invoice = get_invoice(invoice_id)
+    owner_id = (invoice or {}).get("user_id") or (user or {}).get("id", "")
+
     if invoice and invoice.get("sender_name"):
         return FreelancerContext(
             freelancer_name=invoice["sender_name"],
             freelancer_email=invoice.get("sender_email") or (user or {}).get("email", "unknown@example.com"),
             business_name=invoice.get("sender_business") or invoice["sender_name"],
+            user_id=owner_id,
         )
-    # Fall back to authenticated user's Google profile
     if user:
         return FreelancerContext(
             freelancer_name=user.get("name") or "Unknown",
             freelancer_email=user.get("email") or "unknown@example.com",
             business_name=user.get("name", "My Business"),
+            user_id=owner_id,
         )
-    return FreelancerContext()
+    return FreelancerContext(user_id=owner_id)
 
 
 def extract_interrupt(response, ctx: FreelancerContext | None = None):
@@ -276,9 +501,12 @@ def extract_interrupt(response, ctx: FreelancerContext | None = None):
         "client_email": response.get("client_email", ""),
         "invoice_id": response.get("invoice_id", ""),
         "invoice_amount": response.get("invoice_amount", 0),
+        "amount_paid": response.get("amount_paid", 0),
+        "balance_due": response.get("balance_due", 0),
         "days_overdue": response.get("days_overdue", 0),
         "jurisdiction": response.get("jurisdiction", ""),
         "escalation_level": response.get("escalation_level", 0),
+        "status": response.get("status", "active"),
         "communication_history": response.get("communication_history", []),
     }
     draft_preview = generate_draft_preview(tool_name, state, ctx or FreelancerContext())
@@ -292,14 +520,20 @@ def extract_interrupt(response, ctx: FreelancerContext | None = None):
 
 def extract_state(response):
     """Extract relevant state fields from response."""
+    invoice_amount = float(response.get("invoice_amount", 0) or 0)
+    amount_paid = float(response.get("amount_paid", 0) or 0)
+    balance_due = float(response.get("balance_due", compute_balance(invoice_amount, amount_paid)) or 0)
     return {
         "escalation_level": response.get("escalation_level", 0),
         "client_name": response.get("client_name", ""),
         "client_email": response.get("client_email", ""),
-        "invoice_amount": response.get("invoice_amount", 0),
+        "invoice_amount": invoice_amount,
+        "amount_paid": amount_paid,
+        "balance_due": balance_due,
         "invoice_id": response.get("invoice_id", ""),
         "days_overdue": response.get("days_overdue", 0),
         "jurisdiction": response.get("jurisdiction", ""),
+        "status": response.get("status", "active"),
         "communication_history": response.get("communication_history", []),
     }
 
@@ -311,6 +545,9 @@ def present_invoice(invoice: dict | None) -> dict | None:
 
     payload = dict(invoice)
     payload["invoice_id"] = parse_public_invoice_id(payload["id"])
+    payload["amount_paid"] = float(payload.get("amount_paid", 0) or 0)
+    payload["invoice_amount"] = float(payload.get("invoice_amount", 0) or 0)
+    payload["balance_due"] = compute_balance(payload["invoice_amount"], payload["amount_paid"])
     return payload
 
 
@@ -334,6 +571,87 @@ def get_current_user(authorization: str | None) -> dict | None:
         return get_user(payload["user_id"])
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
+
+
+def _is_secure_request(request: Request) -> bool:
+    """Return True when the request is over HTTPS (incl. behind a TLS proxy)."""
+    if request.url.scheme == "https":
+        return True
+    forwarded = request.headers.get("x-forwarded-proto", "")
+    return "https" in forwarded.lower()
+
+
+def get_guest_id(request: Request, response: Response) -> str:
+    """Return the per-session guest_id from the cookie, minting one if absent.
+
+    Each anonymous visitor gets a unique ``guest-<hex>`` ID stored in an
+    HTTP-only cookie. Guest IDs are isolated: visitor A never sees visitor B's
+    invoices. On Google sign-in, the cookie's guest data is migrated to the
+    real user and the cookie is cleared.
+    """
+    existing = request.cookies.get(GUEST_COOKIE_NAME)
+    if existing and existing.startswith("guest-") and len(existing) <= 64:
+        return existing
+
+    guest_id = f"guest-{secrets.token_hex(16)}"
+    ensure_guest_user(guest_id)
+    response.set_cookie(
+        key=GUEST_COOKIE_NAME,
+        value=guest_id,
+        max_age=GUEST_COOKIE_MAX_AGE,
+        httponly=True,
+        samesite="lax",
+        secure=_is_secure_request(request),
+        path="/",
+    )
+    return guest_id
+
+
+def resolve_user_id(
+    request: Request,
+    response: Response,
+    authorization: str | None,
+) -> tuple[dict | None, str]:
+    """Return ``(user_or_none, user_id)`` — falls back to a per-session guest_id."""
+    user = get_current_user(authorization)
+    if user:
+        return user, user["id"]
+    return None, get_guest_id(request, response)
+
+
+def _current_caller_id(
+    request: Request,
+    authorization: str | None,
+) -> str | None:
+    """Return the caller's user_id (authed or guest) WITHOUT minting a new guest cookie.
+
+    Used for read-only ownership checks where we shouldn't be creating identities.
+    """
+    user = get_current_user(authorization)
+    if user:
+        return user["id"]
+    cookie = request.cookies.get(GUEST_COOKIE_NAME)
+    if cookie and cookie.startswith("guest-"):
+        return cookie
+    return None
+
+
+def authorize_invoice_access(
+    invoice_id: str,
+    request: Request,
+    authorization: str | None,
+) -> dict:
+    """Return the invoice row only if the caller owns it; otherwise raise 404.
+
+    404 (not 403) so we don't leak the existence of invoices belonging to others.
+    """
+    caller_id = _current_caller_id(request, authorization)
+    invoice = get_invoice(invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.get("user_id") != caller_id:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return invoice
 
 
 def _parse_google_http_error(exc: urllib.error.HTTPError) -> tuple[str, str]:
@@ -385,7 +703,7 @@ class GoogleCallbackRequest(BaseModel):
 
 
 @app.post("/api/auth/google/callback")
-def google_callback(req: GoogleCallbackRequest):
+def google_callback(req: GoogleCallbackRequest, request: Request, response: Response):
     import urllib.request
     import urllib.parse
 
@@ -442,6 +760,15 @@ def google_callback(req: GoogleCallbackRequest):
         logger.exception("Failed to persist Google user %s", email)
         raise HTTPException(status_code=500, detail="Google sign-in succeeded, but saving the user failed.") from exc
 
+    # Promote any anonymous guest data created in this browser to the real user.
+    guest_id = request.cookies.get(GUEST_COOKIE_NAME)
+    if guest_id and guest_id.startswith("guest-") and guest_id != user_id:
+        try:
+            migrate_guest_to_user(guest_id, user_id)
+        except Exception:
+            logger.exception("Failed to migrate guest %s -> %s", guest_id, user_id)
+        response.delete_cookie(GUEST_COOKIE_NAME, path="/")
+
     # Register for Gmail push notifications
     try:
         gmail = GmailService(user_id, access_token, refresh_token)
@@ -474,16 +801,22 @@ def get_me_route(authorization: str | None = Header(None)):
 
 
 @app.get("/api/invoices/{invoice_id}/history")
-def get_invoice_history(invoice_id: str, authorization: str | None = Header(None)):
+def get_invoice_history(
+    invoice_id: str,
+    request: Request,
+    authorization: str | None = Header(None),
+):
     """Retrieve the full conversation history and state for an existing thread."""
+    authorize_invoice_access(invoice_id, request, authorization)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
+    persisted_state = sync_agent_state_from_invoice(invoice_id, config)
     try:
         snapshot = agent.get_state(config)
     except Exception:
-        return {"messages": [], "interrupt": None, "state": None}
+        return {"messages": [], "interrupt": None, "state": persisted_state}
 
     if not snapshot or not snapshot.values:
-        return {"messages": [], "interrupt": None, "state": None}
+        return {"messages": [], "interrupt": None, "state": persisted_state}
 
     state = snapshot.values
     messages = serialize_messages(state.get("messages", []))
@@ -515,8 +848,14 @@ def get_invoice_history(invoice_id: str, authorization: str | None = Header(None
 
 
 @app.patch("/api/invoices/{invoice_id}/details")
-def update_invoice_details_route(invoice_id: str, req: UpdateDetailsRequest):
+def update_invoice_details_route(
+    invoice_id: str,
+    req: UpdateDetailsRequest,
+    request: Request,
+    authorization: str | None = Header(None),
+):
     """Update client name and/or email in the agent state and DB."""
+    authorize_invoice_access(invoice_id, request, authorization)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
 
     updates = {}
@@ -539,10 +878,96 @@ def update_invoice_details_route(invoice_id: str, req: UpdateDetailsRequest):
     return {"state": extract_state(snapshot.values)}
 
 
+@app.post("/api/invoices/parse")
+async def parse_invoice_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    authorization: str | None = Header(None),
+):
+    enforce_rate_limit(_client_key(request, authorization), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
+    try:
+        file_type = validate_invoice_upload(file.filename or "", file.content_type)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Invoice file is too large. Please upload a file under 10 MB.")
+    try:
+        text = extract_text_from_invoice(content, file_type)
+        parsed = parse_invoice_text(text)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        error_msg = str(exc)
+        if "429" in error_msg or "rate_limit" in error_msg.lower():
+            raise HTTPException(status_code=429, detail="AI extraction is rate limited. Please wait a few minutes and try again.") from exc
+        logger.exception("Invoice parsing failed")
+        raise HTTPException(status_code=500, detail="Could not parse this invoice.") from exc
+
+    payload = parsed_invoice_payload(parsed, text)
+    payload["file"] = {
+        "name": file.filename,
+        "mime": file.content_type,
+        "size": len(content),
+    }
+    return payload
+
+
+@app.post("/api/invoices/upload")
+async def upload_invoice_and_create(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    metadata: str = Form(...),
+    authorization: str | None = Header(None),
+):
+    enforce_rate_limit(_client_key(request, authorization), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
+    user, user_id = resolve_user_id(request, response, authorization)
+    try:
+        validate_invoice_upload(file.filename or "", file.content_type)
+        req = InvoiceUploadMetadata(**json_lib.loads(metadata))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid confirmed invoice metadata.") from exc
+
+    storage_invoice_id = build_invoice_storage_id(user_id, req.invoice_id)
+    if get_invoice(storage_invoice_id):
+        raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
+
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Invoice file is too large. Please upload a file under 10 MB.")
+
+    filename = safe_filename(file.filename or "invoice")
+    object_path = f"{user_id}/{uuid.uuid4().hex}/{filename}"
+    try:
+        stored_path = upload_invoice_file(INVOICE_FILE_BUCKET, object_path, content, file.content_type)
+    except Exception as exc:
+        logger.exception("Invoice file upload failed")
+        raise HTTPException(status_code=500, detail="Could not store the invoice file. Check Supabase Storage bucket configuration.") from exc
+
+    return create_invoice_and_start_agent(
+        req,
+        user=user,
+        user_id=user_id,
+        file_metadata={
+            "path": stored_path,
+            "name": filename,
+            "mime": file.content_type,
+            "size": len(content),
+        },
+    )
+
+
 @app.get("/api/invoices")
-def list_invoices(authorization: str | None = Header(None)):
-    user = get_current_user(authorization)
-    user_id = user["id"] if user else "guest"
+def list_invoices(
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(None),
+):
+    _user, user_id = resolve_user_id(request, response, authorization)
     invoices = get_invoices_by_user(user_id)
     for inv in invoices:
         inv["communication_history"] = get_communications(inv["id"])
@@ -550,81 +975,24 @@ def list_invoices(authorization: str | None = Header(None)):
 
 
 @app.post("/api/invoices")
-def create_invoice(req: InvoiceCreateRequest, authorization: str | None = Header(None)):
-    user = get_current_user(authorization)
-    user_id = user["id"] if user else "guest"
-    storage_invoice_id = build_invoice_storage_id(user_id, req.invoice_id)
-
-    # Check for duplicate invoice ID for this user.
-    existing = get_invoice(storage_invoice_id)
-    if existing:
-        raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
-
-    invoice = present_invoice(db_create_invoice(
-        invoice_id=storage_invoice_id,
-        user_id=user_id,
-        client_name=req.client_name,
-        client_email=req.client_email,
-        invoice_amount=req.invoice_amount,
-        days_overdue=req.days_overdue,
-        jurisdiction=req.jurisdiction,
-    ))
-
-    context = get_context_for_invoice(storage_invoice_id, user)
-    config = {"configurable": {"thread_id": f"invoice-{storage_invoice_id}"}}
-    initial_state = {
-        "client_name": req.client_name,
-        "client_email": req.client_email,
-        "invoice_id": req.invoice_id,
-        "invoice_amount": req.invoice_amount,
-        "days_overdue": req.days_overdue,
-        "jurisdiction": req.jurisdiction,
-        "escalation_level": 1,
-        "communication_history": [],
-    }
-    msg = (
-        f"Invoice details have been saved. Here is the summary:\n"
-        f"- Client: {req.client_name} ({req.client_email})\n"
-        f"- Invoice: {req.invoice_id} for ${req.invoice_amount:.2f}\n"
-        f"- {req.days_overdue} days overdue, jurisdiction: {req.jurisdiction}\n\n"
-        f"Please draft a polite payment reminder email to the client."
-    )
-    try:
-        response = agent.invoke(
-            {
-                "messages": [HumanMessage(content=msg)],
-                **initial_state,
-            },
-            context=context,
-            config=config,
-        )
-    except Exception as e:
-        logger.exception("Initial agent invocation failed for invoice %s", storage_invoice_id)
-        try:
-            agent.update_state(config, initial_state)
-        except Exception:
-            logger.exception("Failed to initialize fallback state for invoice %s", storage_invoice_id)
-
-        return {
-            "invoice": invoice,
-            "messages": [],
-            "interrupt": None,
-            "state": initial_state,
-            "initialization_error": "The dispute was created, but the first AI draft could not be generated yet.",
-        }
-
-    invoice["communication_history"] = []
-    return {
-        "invoice": invoice,
-        "messages": serialize_messages(response["messages"]),
-        "interrupt": extract_interrupt(response, context),
-        "state": extract_state(response),
-    }
+def create_invoice(
+    req: InvoiceCreateRequest,
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(None),
+):
+    user, user_id = resolve_user_id(request, response, authorization)
+    return create_invoice_and_start_agent(req, user=user, user_id=user_id)
 
 
 @app.get("/api/invoices/{invoice_id}/sender")
-def get_sender(invoice_id: str, authorization: str | None = Header(None)):
+def get_sender(
+    invoice_id: str,
+    request: Request,
+    authorization: str | None = Header(None),
+):
     """Get current sender details for an invoice."""
+    authorize_invoice_access(invoice_id, request, authorization)
     user = get_current_user(authorization)
     ctx = get_context_for_invoice(invoice_id, user)
     return {
@@ -635,8 +1003,14 @@ def get_sender(invoice_id: str, authorization: str | None = Header(None)):
 
 
 @app.patch("/api/invoices/{invoice_id}/sender")
-def update_sender(invoice_id: str, req: UpdateSenderRequest, authorization: str | None = Header(None)):
+def update_sender(
+    invoice_id: str,
+    req: UpdateSenderRequest,
+    request: Request,
+    authorization: str | None = Header(None),
+):
     """Update sender/freelancer details for an invoice — persisted to DB."""
+    authorize_invoice_access(invoice_id, request, authorization)
     user = get_current_user(authorization)
 
     # Build DB updates
@@ -660,15 +1034,34 @@ def update_sender(invoice_id: str, req: UpdateSenderRequest, authorization: str 
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest, authorization: str | None = Header(None)):
+def chat(req: ChatRequest, request: Request, authorization: str | None = Header(None)):
+    enforce_rate_limit(_client_key(request, authorization), "chat", CHAT_LIMIT_PER_MINUTE)
     # thread_id format is "invoice-{invoice_id}"
     inv_id = req.thread_id.removeprefix("invoice-")
+    authorize_invoice_access(inv_id, request, authorization)
     user = get_current_user(authorization)
     context = get_context_for_invoice(inv_id, user)
     config = {"configurable": {"thread_id": req.thread_id}}
+    persisted_state = sync_agent_state_from_invoice(inv_id, config)
+
+    if persisted_state and persisted_state.get("status") == "paid":
+        try:
+            snapshot = agent.get_state(config)
+            messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
+        except Exception:
+            messages = []
+        messages.append({
+            "type": "AIMessage",
+            "content": "This invoice is marked as resolved / fully paid, so I will not continue chasing payment.",
+        })
+        return {
+            "messages": messages,
+            "interrupt": None,
+            "state": persisted_state,
+        }
 
     try:
-        response = agent.invoke(
+        response = invoke_agent_with_retry(
             {"messages": [HumanMessage(content=req.message)]},
             context=context,
             config=config,
@@ -687,6 +1080,7 @@ def chat(req: ChatRequest, authorization: str | None = Header(None)):
         update_invoice(inv_id, escalation_level=new_level)
         level_names = {1: "Friendly", 2: "Formal", 3: "Legal"}
         send_telegram_notification(
+            invoice_data.get("user_id"),
             f"⚠️ <b>Escalation</b>\n"
             f"Invoice #{inv_id} escalated to Level {new_level} ({level_names.get(new_level, 'Unknown')})"
         )
@@ -699,15 +1093,23 @@ def chat(req: ChatRequest, authorization: str | None = Header(None)):
 
 
 @app.post("/api/invoices/{invoice_id}/resume")
-def resume(invoice_id: str, req: ResumeRequest, authorization: str | None = Header(None)):
+def resume(
+    invoice_id: str,
+    req: ResumeRequest,
+    request: Request,
+    authorization: str | None = Header(None),
+):
+    authorize_invoice_access(invoice_id, request, authorization)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
     user = get_current_user(authorization)
     context = get_context_for_invoice(invoice_id, user)
+    sync_agent_state_from_invoice(invoice_id, config)
     email_result = None
 
     # If approving, send the actual email and log the communication
     approved_tool_name = None
     approved_subject = None
+    approved_args = {}
     if req.decision == "approve":
         try:
             snapshot = agent.get_state(config)
@@ -720,6 +1122,7 @@ def resume(invoice_id: str, req: ResumeRequest, authorization: str | None = Head
                     if hasattr(task, "interrupts") and task.interrupts:
                         action = task.interrupts[0].value["action_requests"][0]
                         approved_tool_name = action["name"]
+                        approved_args = action.get("args", {}) or {}
                         logger.info(f"[RESUME] tool={approved_tool_name}, action={action}")
                         draft = generate_draft_preview(approved_tool_name, state, context)
                         logger.info(f"[RESUME] draft length={len(draft) if draft else 0}, client_email='{client_email}'")
@@ -764,12 +1167,41 @@ def resume(invoice_id: str, req: ResumeRequest, authorization: str | None = Head
             raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
         raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
 
+    # Persist any payment/status changes the agent applied (record_partial_payment,
+    # mark_invoice_paid, mark_invoice_pending) back to the DB. Reads from the
+    # post-invoke response state rather than the pre-invoke interrupt task, because
+    # sync_agent_state_from_invoice above clears pending tasks before we can inspect them.
+    if req.decision == "approve":
+        invoice_data = get_invoice(invoice_id)
+        if invoice_data:
+            invoice_amount = float(invoice_data.get("invoice_amount", 0) or 0)
+            db_paid = float(invoice_data.get("amount_paid", 0) or 0)
+            db_status = invoice_data.get("status") or "active"
+            new_paid_raw = response.get("amount_paid")
+            new_status = response.get("status")
+            updates = {}
+            if isinstance(new_paid_raw, (int, float)):
+                new_paid = max(0.0, min(invoice_amount, float(new_paid_raw)))
+                if abs(new_paid - db_paid) > 0.005:
+                    updates["amount_paid"] = new_paid
+            if new_status and new_status != db_status and new_status in {"active", "pending", "paid"}:
+                updates["status"] = new_status
+            if updates:
+                updated = update_invoice(invoice_id, **updates)
+                if updated:
+                    persisted_state = invoice_state_from_db(updated)
+                    agent.update_state(config, persisted_state)
+                    response.update(persisted_state)
+
     # Log the approved communication into agent state
     if req.decision == "approve" and approved_tool_name:
         tool_labels = {
             "draft_polite_reminder": "Polite Reminder",
             "draft_formal_demand_letter": "Formal Demand",
             "draft_final_notice": "Final Notice",
+            "record_partial_payment": "Partial Payment",
+            "mark_invoice_pending": "Payment Pending",
+            "mark_invoice_paid": "Invoice Paid",
         }
         entry = {
             "type": tool_labels.get(approved_tool_name, approved_tool_name),
@@ -868,6 +1300,7 @@ def gmail_webhook(payload: PubSubMessage):
                 safe_from = _html.escape(from_addr)
                 safe_subject = _html.escape(msg.get("subject", "No subject"))
                 send_telegram_notification(
+                    invoice.get("user_id"),
                     f"📩 <b>Client Reply</b>\n"
                     f"Invoice: #{invoice['id']}\n"
                     f"From: {safe_from}\n"
@@ -899,6 +1332,103 @@ def gmail_webhook(payload: PubSubMessage):
     except Exception as e:
         logger.error(f"Gmail webhook error: {e}", exc_info=True)
         return {"status": "error"}
+
+
+@app.post("/api/telegram/connect")
+def telegram_connect(authorization: str | None = Header(None)):
+    """Generate a one-time token and return a deep link to bind the user's Telegram chat.
+
+    Flow:
+    1. Frontend calls this endpoint → receives ``{deep_link, token}``.
+    2. User opens the deep link → Telegram starts a chat with the bot and sends ``/start TOKEN``.
+    3. Bot receives the message via /api/telegram/webhook, looks up the token,
+       persists ``users.telegram_chat_id``, and clears the token.
+    """
+    user = get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_BOT_USERNAME:
+        raise HTTPException(
+            status_code=500,
+            detail="Telegram is not configured on the server (TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME).",
+        )
+
+    token = secrets.token_urlsafe(24)
+    set_user_telegram_link_token(user["id"], token)
+    return {
+        "deep_link": f"https://t.me/{TELEGRAM_BOT_USERNAME}?start={token}",
+        "token": token,
+    }
+
+
+@app.get("/api/telegram/status")
+def telegram_status(authorization: str | None = Header(None)):
+    user = get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    chat_id = user.get("telegram_chat_id")
+    return {"connected": bool(chat_id), "chat_id": chat_id}
+
+
+@app.post("/api/telegram/disconnect")
+def telegram_disconnect(authorization: str | None = Header(None)):
+    user = get_current_user(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    update_user_telegram_chat_id(user["id"], None)
+    return {"connected": False}
+
+
+@app.post("/api/telegram/webhook")
+async def telegram_webhook(request: Request):
+    """Handle Telegram bot updates. Used during the connect handshake to bind chat_id.
+
+    Telegram POSTs every incoming message here. We only care about ``/start TOKEN``
+    messages — those bind the sender's chat_id to the user that minted the token.
+    All other messages are ignored.
+    """
+    if TELEGRAM_WEBHOOK_SECRET:
+        header_secret = request.headers.get("x-telegram-bot-api-secret-token", "")
+        if header_secret != TELEGRAM_WEBHOOK_SECRET:
+            raise HTTPException(status_code=403, detail="Invalid webhook secret")
+
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"ok": True}
+
+    message = payload.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    text = (message.get("text") or "").strip()
+
+    if not chat_id or not text.startswith("/start"):
+        return {"ok": True}
+
+    parts = text.split(maxsplit=1)
+    if len(parts) < 2:
+        send_telegram_to_chat(
+            str(chat_id),
+            "Please open the connect link from the InvoiceChaser dashboard to link this chat.",
+        )
+        return {"ok": True}
+
+    token = parts[1].strip()
+    user = get_user_by_telegram_link_token(token)
+    if not user:
+        send_telegram_to_chat(
+            str(chat_id),
+            "That link has expired or is invalid. Please generate a new one from the dashboard.",
+        )
+        return {"ok": True}
+
+    update_user_telegram_chat_id(user["id"], str(chat_id))
+    display_name = user.get("name") or user.get("email") or "your account"
+    send_telegram_to_chat(
+        str(chat_id),
+        f"✅ Connected to <b>{display_name}</b>. You'll receive invoice notifications here.",
+    )
+    return {"ok": True}
 
 
 @app.post("/api/gmail/rewatch")

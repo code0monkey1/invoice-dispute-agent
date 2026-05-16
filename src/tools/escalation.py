@@ -1,6 +1,6 @@
 from langchain.tools import tool, ToolRuntime
 from langgraph.types import Command
-from langchain.messages import ToolMessage
+from langchain_core.messages import ToolMessage
 
 
 @tool

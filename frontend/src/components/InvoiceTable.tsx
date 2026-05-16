@@ -29,7 +29,7 @@ export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
           <tr className="bg-gradient-to-r from-gray-50/80 to-orange-50/30 border-b border-gray-100">
             <th className="text-left px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Invoice</th>
             <th className="text-left px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Client</th>
-            <th className="text-right px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Amount</th>
+            <th className="text-right px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Balance</th>
             <th className="text-right px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Overdue</th>
             <th className="text-left px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Level</th>
             <th className="text-center px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest"></th>
@@ -56,8 +56,13 @@ export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
               </td>
               <td className="px-6 py-4 text-right">
                 <span className="text-sm font-bold text-gray-900 font-[family-name:var(--font-heading)]">
-                  ${inv.invoice_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  ${(inv.balance_due ?? inv.invoice_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                 </span>
+                {inv.amount_paid > 0 && (
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    ${inv.amount_paid.toLocaleString('en-US', { minimumFractionDigits: 2 })} paid
+                  </p>
+                )}
               </td>
               <td className="px-6 py-4 text-right">
                 <span className="text-sm font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md">

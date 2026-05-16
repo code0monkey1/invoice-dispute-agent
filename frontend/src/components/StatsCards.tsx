@@ -2,8 +2,10 @@ import { DollarSign, AlertTriangle, TrendingUp } from 'lucide-react'
 import type { Invoice } from '../types'
 
 export default function StatsCards({ invoices }: { invoices: Invoice[] }) {
-  const totalOwed = invoices.reduce((sum, inv) => sum + inv.invoice_amount, 0)
-  const activeCount = invoices.filter(inv => inv.status === 'active').length
+  const totalOwed = invoices
+    .filter(inv => inv.status !== 'paid')
+    .reduce((sum, inv) => sum + (inv.balance_due ?? inv.invoice_amount), 0)
+  const activeCount = invoices.filter(inv => inv.status !== 'paid').length
   const paidCount = invoices.filter(inv => inv.status === 'paid').length
   const recoveryRate = invoices.length > 0
     ? Math.round((paidCount / invoices.length) * 100)

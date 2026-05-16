@@ -26,10 +26,13 @@ export function useInvoices() {
     client_name: string
     client_email: string
     invoice_amount: number
+    amount_paid?: number
     days_overdue: number
     jurisdiction: string
-  }): Promise<InvoiceCreateResponse> => {
-    const res = await api.createInvoice(data)
+  }, file?: File): Promise<InvoiceCreateResponse> => {
+    const res = file
+      ? await api.createInvoiceFromUpload(file, data)
+      : await api.createInvoice(data)
     setInvoices(prev => [...prev, res.invoice])
     return res
   }, [])

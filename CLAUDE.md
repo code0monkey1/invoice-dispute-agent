@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-InvoiceChaser — an AI-powered invoice dispute agent for freelancers. Uses LangGraph to orchestrate a multi-level escalation system (Friendly → Formal → Legal) with human-in-the-loop approval before sending emails. Full-stack: FastAPI backend (Vercel serverless), React frontend, SQLite database.
+InvoiceChaser — a multi-tenant, AI-powered invoice dispute agent for freelancers. Uses LangGraph to orchestrate a multi-level escalation system (Friendly → Formal → Legal) with human-in-the-loop approval before sending emails. Full-stack: FastAPI backend (Vercel serverless), React frontend, Supabase (Postgres) database. Each freelancer connects their own Gmail and Telegram chat — data is isolated per `user_id`.
 
 ## Commands
 
@@ -35,11 +35,11 @@ Vercel serverless — `vercel.json` routes frontend to `frontend/dist`, backend 
   - `dynamic_prompts.py` — Shifts system prompt tone per escalation level
   - HITL middleware for draft approval interrupts
 - **`tools/`** — Tool definitions organized by function: `drafting.py` (email templates), `escalation.py` (level progression), `invoice.py` (status/fees), `legal.py` (Tavily web search), `payment_tools.py` (mark paid/pending)
-- **`services/`** — `gmail_service.py` (send/read/watch via Gmail API), `telegram_service.py` (bot notifications)
-- **`db.py`** — SQLite with WAL mode, Fernet encryption for stored tokens. Tables: `users`, `invoices`, `communications`. Auto-initializes via `init_db()`.
+- **`services/`** — `gmail_service.py` (send/read/watch via Gmail API), `telegram_service.py` (per-user bot notifications via `users.telegram_chat_id`)
+- **`db.py`** — Supabase REST wrappers with Fernet-encrypted token storage. Tables (in `supabase/schema.sql`): `users`, `invoices`, `communication_history`. Per-user scoping enforced at the API layer; guests get a per-session `guest-<uuid>` ID via HTTP-only cookie.
 
 ### API (`api/index.py`)
-Single-file FastAPI backend (~800 lines). Handles: Google OAuth, invoice CRUD, chat (agent invocation with thread_id config), HITL resume decisions, Gmail webhook for inbound client replies, Telegram notifications.
+Single-file FastAPI backend. Handles: Google OAuth (with guest→user data migration), invoice CRUD (ownership-checked via `authorize_invoice_access`), chat (agent invocation with thread_id config), HITL resume decisions, Gmail webhook for inbound client replies, per-user Telegram connect/webhook/notifications.
 
 ### Frontend (`frontend/src/`)
 React 19 + TypeScript + Tailwind CSS 4 + React Router. Key pages: Landing, Dashboard (invoice list/stats), ChatPanel (agent conversation with HITL approval UI). Auth via `AuthContext` (JWT + Google profile). API calls in `api.ts`.
@@ -64,4 +64,4 @@ React 19 + TypeScript + Tailwind CSS 4 + React Router. Key pages: Landing, Dashb
 - **Telegram Bot API** (push notifications)
 
 ## Environment
-Copy `.env.example` to `.env`. Required keys: `GROQ_API_KEY`, `TAVILY_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `SECRET_KEY`. Optional: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `GOOGLE_PUBSUB_TOPIC`.
+Copy `.env.example` to `.env`. Required keys: `GROQ_API_KEY`, `TAVILY_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `SECRET_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`. Optional: `TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME` + `TELEGRAM_WEBHOOK_SECRET` (for per-user Telegram notifications), `GOOGLE_PUBSUB_TOPIC` (for Gmail push), `CORS_ALLOW_ORIGINS` (comma-separated origins for cross-origin dev).

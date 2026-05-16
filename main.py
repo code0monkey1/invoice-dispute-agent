@@ -2,7 +2,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from langchain.messages import HumanMessage
+from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from src.agent import agent
 from src.state import FreelancerContext
