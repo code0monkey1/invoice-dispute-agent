@@ -5,6 +5,7 @@ import type { User } from '../types'
 
 interface AuthContextType {
   user: User | null
+  isGuest: boolean
   loading: boolean
   signIn: () => Promise<void>
   signOut: () => void
@@ -48,8 +49,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(guestUser)
   }
 
+  // A guest is any user without a real auth token. The frontend marker is
+  // the legacy 'guest' id; the backend independently tracks each guest via
+  // an HTTP-only cookie (ic_guest_session) so data stays isolated per browser.
+  const isGuest = !!user && (user.id === 'guest' || !user.email)
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signOut, enterAsGuest }}>
+    <AuthContext.Provider value={{ user, isGuest, loading, signIn, signOut, enterAsGuest }}>
       {children}
     </AuthContext.Provider>
   )

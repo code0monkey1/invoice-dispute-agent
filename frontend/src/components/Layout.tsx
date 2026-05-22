@@ -4,7 +4,7 @@ import { Zap, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function Layout({ children }: { children: ReactNode }) {
-  const { user, signOut } = useAuth()
+  const { user, isGuest, signOut } = useAuth()
 
   return (
     <div className="min-h-screen bg-mesh noise">
@@ -39,12 +39,21 @@ export default function Layout({ children }: { children: ReactNode }) {
                       <User className="w-4 h-4 text-white" />
                     </div>
                   )}
-                  <span className="text-sm text-gray-500 hidden sm:inline">{user.email}</span>
+                  <span className="text-sm text-gray-500 hidden sm:inline">
+                    {isGuest ? (
+                      <span className="inline-flex items-center gap-1.5">
+                        <span className="font-medium text-gray-700">{user.name || 'Guest'}</span>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-violet-700 bg-violet-50 border border-violet-200 px-2 py-0.5 rounded-full">Demo</span>
+                      </span>
+                    ) : (
+                      user.email
+                    )}
+                  </span>
                   <button
                     onClick={signOut}
                     className="text-sm text-gray-400 hover:text-red-500 transition-colors"
                   >
-                    Sign out
+                    {isGuest ? 'Exit demo' : 'Sign out'}
                   </button>
                 </div>
               )}

@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
-  Zap, ArrowRight, Shield, Mail, Scale, ChevronRight,
+  Zap, ArrowRight, Shield, Mail, Scale,
   CheckCircle2, Clock, DollarSign, MessageSquare,
-  Sparkles, Eye, Users, TrendingUp, Lock, Play
+  Sparkles, Eye, Users, TrendingUp, Lock, Play, FileText
 } from 'lucide-react'
 
 // ─── Animated Agent Flow (3D Isometric CSS) ──────────────────────────────────
@@ -26,17 +26,17 @@ function AgentFlowVisualization() {
   const levels = [
     {
       level: 1, label: 'Friendly', color: '#10b981', bgFrom: '#ecfdf5', bgTo: '#d1fae5',
-      tools: ['draft_polite_reminder', 'check_invoice_status'],
+      tools: ['Polite reminder', 'Status check'],
       icon: <Mail className="w-4 h-4" />,
     },
     {
       level: 2, label: 'Formal', color: '#f59e0b', bgFrom: '#fffbeb', bgTo: '#fef3c7',
-      tools: ['draft_formal_demand', 'calculate_late_fees'],
+      tools: ['Formal demand', 'Late fee math'],
       icon: <Shield className="w-4 h-4" />,
     },
     {
       level: 3, label: 'Legal', color: '#ef4444', bgFrom: '#fef2f2', bgTo: '#fecaca',
-      tools: ['draft_final_notice', 'lookup_small_claims'],
+      tools: ['Final notice', 'Small-claims path'],
       icon: <Scale className="w-4 h-4" />,
     },
   ]
@@ -160,7 +160,7 @@ function AgentFlowVisualization() {
               </div>
               <div className="space-y-1">
                 {l.tools.map((t) => (
-                  <div key={t} className="text-[10px] font-mono font-medium text-gray-500 bg-white/80 rounded-md px-2 py-0.5 truncate border border-gray-100">
+                  <div key={t} className="text-[10px] font-medium text-gray-600 bg-white/80 rounded-md px-2 py-0.5 truncate border border-gray-100">
                     {t}
                   </div>
                 ))}
@@ -193,52 +193,60 @@ function AgentFlowVisualization() {
 
 const features = [
   {
+    icon: <FileText className="w-5 h-5" />,
+    title: 'Just drop the invoice PDF',
+    desc: 'Upload the original invoice — PDF or DOCX. We read it, pull out the client, amount, due date, and jurisdiction, and have you ready to go in seconds. No retyping.',
+    color: '#0ea5e9',
+    bg: 'from-sky-50 to-blue-50',
+    border: 'border-sky-200/60',
+  },
+  {
     icon: <TrendingUp className="w-5 h-5" />,
-    title: 'Progressive Escalation',
-    desc: 'AI automatically shifts from friendly reminders to formal demands to legal notices. Each level unlocks new capabilities.',
+    title: 'Knows when to push harder',
+    desc: 'Starts with a friendly nudge. If the client ghosts, it ramps to a formal demand. Still nothing? It prepares a small-claims notice — all on the right cadence, without you watching the calendar.',
     color: '#10b981',
     bg: 'from-emerald-50 to-green-50',
     border: 'border-emerald-200/60',
   },
   {
-    icon: <Lock className="w-5 h-5" />,
-    title: 'Dynamic Tool Gating',
-    desc: 'The agent physically cannot use legal tools at Level 1. Tools are programmatically gated by dispute state.',
-    color: '#8b5cf6',
-    bg: 'from-violet-50 to-purple-50',
-    border: 'border-violet-200/60',
-  },
-  {
     icon: <Eye className="w-5 h-5" />,
-    title: 'Human-in-the-Loop',
-    desc: 'Every draft requires your explicit approval. Review, edit, or reject before anything is "sent" to your client.',
+    title: 'You approve every send',
+    desc: 'Every email is drafted for you, not sent on your behalf. Read it, tweak the tone, or reject it. Nothing goes out until you click approve.',
     color: '#f59e0b',
     bg: 'from-amber-50 to-orange-50',
     border: 'border-amber-200/60',
   },
   {
-    icon: <Scale className="w-5 h-5" />,
-    title: 'Legal Research',
-    desc: 'At Level 3, the AI searches real small claims court procedures for your client\'s jurisdiction via Tavily.',
-    color: '#ef4444',
-    bg: 'from-rose-50 to-red-50',
-    border: 'border-rose-200/60',
+    icon: <Mail className="w-5 h-5" />,
+    title: 'Sends from your own Gmail',
+    desc: 'Connect Gmail once. Reminders go out from your address, replies land in your inbox, and the thread stays intact — clients see a real person, not a no-reply bot.',
+    color: '#FF6B35',
+    bg: 'from-orange-50 to-amber-50',
+    border: 'border-orange-200/60',
   },
   {
     icon: <DollarSign className="w-5 h-5" />,
-    title: 'Late Fee Calculator',
-    desc: 'Automatically computes accumulated late fees based on your contract terms and days overdue.',
+    title: 'Late fees, calculated',
+    desc: 'When it&apos;s time to add interest, the math is done for you — based on your terms, the balance, and how long it&apos;s been overdue.',
     color: '#0d9488',
     bg: 'from-teal-50 to-emerald-50',
     border: 'border-teal-200/60',
   },
   {
+    icon: <Scale className="w-5 h-5" />,
+    title: 'Ready for small-claims, if you need it',
+    desc: 'When a dispute really has to go legal, the agent looks up the actual filing procedure for the client&apos;s jurisdiction and gives you a step-by-step path to court.',
+    color: '#ef4444',
+    bg: 'from-rose-50 to-red-50',
+    border: 'border-rose-200/60',
+  },
+  {
     icon: <MessageSquare className="w-5 h-5" />,
-    title: 'Tone-Shifting AI',
-    desc: 'System prompt dynamically changes per level. Warm at Level 1, firm at Level 2, legal language at Level 3.',
-    color: '#FF6B35',
-    bg: 'from-orange-50 to-amber-50',
-    border: 'border-orange-200/60',
+    title: 'Telegram alerts when it matters',
+    desc: 'The moment a client replies — or the agent decides it&apos;s time to escalate — you get a ping on Telegram so nothing slips.',
+    color: '#8b5cf6',
+    bg: 'from-violet-50 to-purple-50',
+    border: 'border-violet-200/60',
   },
 ]
 
@@ -254,10 +262,10 @@ const stats = [
 // ─── How It Works Steps ──────────────────────────────────────────────────────
 
 const steps = [
-  { step: '01', title: 'Add Invoice', desc: 'Enter the overdue invoice details — client, amount, days overdue, jurisdiction.' },
-  { step: '02', title: 'AI Drafts', desc: 'The agent drafts a contextual reminder based on the current escalation level.' },
-  { step: '03', title: 'You Approve', desc: 'Review the draft. Approve it, edit it, or reject it with feedback.' },
-  { step: '04', title: 'Escalate', desc: 'If no response, escalate. New tools unlock and the tone shifts automatically.' },
+  { step: '01', title: 'Drop the invoice PDF', desc: 'Upload the original invoice (PDF or DOCX). InvoiceChaser reads it and pre-fills the client, amount, due date, and jurisdiction — no retyping.' },
+  { step: '02', title: 'AI drafts the email', desc: 'The agent writes a reminder tuned to how overdue the invoice is and to your client&apos;s tone. No blank-page anxiety.' },
+  { step: '03', title: 'You approve in one click', desc: 'Read the draft, edit anything you want, or reject it. Nothing leaves your Gmail until you say so.' },
+  { step: '04', title: 'It escalates if needed', desc: 'No response after a few rounds? The agent gets firmer, calculates late fees, and prepares a small-claims notice when the time is right.' },
 ]
 
 // ─── Tech Stack Badges ───────────────────────────────────────────────────────
@@ -344,7 +352,7 @@ export default function LandingPage() {
               </h2>
 
               <p className="text-lg text-gray-500 leading-relaxed mb-8 max-w-lg">
-                An AI agent that progressively escalates overdue invoice disputes — from friendly reminders to formal demands to legal notices — while keeping you in full control.
+                Late invoices kill freelancers and small businesses. InvoiceChaser handles the awkward follow-ups for you — it drafts polite reminders, firm demand letters, even small-claims notices when needed. You stay in control: nothing leaves your inbox until you say yes.
               </p>
 
               <div className="flex flex-wrap gap-3 mb-10">
@@ -353,7 +361,7 @@ export default function LandingPage() {
                   className="inline-flex items-center gap-2.5 btn-gradient text-white text-sm font-bold rounded-xl px-7 py-3.5 shadow-lg shadow-orange-300/40 hover:shadow-orange-400/60 transition-all font-[family-name:var(--font-heading)] group"
                 >
                   <Play className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  Try it Free
+                  Live Demo
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
                 <button
@@ -455,13 +463,13 @@ export default function LandingPage() {
           <div className="text-center mb-16 animate-fade-up">
             <span className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-full border border-violet-200/60 mb-4">
               <Sparkles className="w-3 h-3" />
-              GENAI POWERED
+              WHAT YOU GET
             </span>
             <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
-              Built on cutting-edge AI
+              The collections workflow you wish you had
             </h3>
             <p className="text-gray-400 mt-3 max-w-lg mx-auto">
-              Every feature leverages production-grade GenAI patterns — not just chat, but orchestrated agent intelligence.
+              All the steps you&apos;d normally dread — written for you, ready for your approval.
             </p>
           </div>
 
@@ -504,20 +512,20 @@ export default function LandingPage() {
               {
                 level: 1, name: 'Friendly', color: '#10b981', bgFrom: '#ecfdf5', bgTo: '#d1fae5',
                 icon: <Mail className="w-5 h-5 text-white" />,
-                tone: '"Hi Sarah, just a gentle reminder about invoice #INV-042..."',
-                tools: ['draft_polite_reminder', 'check_invoice_status', 'escalate_dispute'],
+                tone: '"Hi Sarah, just a gentle reminder about invoice #INV-042 — let me know if you need anything to release payment."',
+                summary: 'A warm, friendly nudge. Keeps the relationship intact.',
               },
               {
                 level: 2, name: 'Formal', color: '#f59e0b', bgFrom: '#fffbeb', bgTo: '#fef3c7',
                 icon: <Shield className="w-5 h-5 text-white" />,
-                tone: '"Per our agreement, payment of $5,000 was due 45 days ago. A late fee of $225 has accrued..."',
-                tools: ['+ draft_formal_demand_letter', '+ calculate_late_fees'],
+                tone: '"Per our agreement, payment of $5,000 was due 45 days ago. A late fee of $225 has now accrued."',
+                summary: 'Firm, businesslike, with late fees calculated for you.',
               },
               {
                 level: 3, name: 'Legal', color: '#ef4444', bgFrom: '#fef2f2', bgTo: '#fecaca',
                 icon: <Scale className="w-5 h-5 text-white" />,
-                tone: '"This constitutes formal notice pursuant to California Civil Code. Failure to remit within 10 days will result in Small Claims filing..."',
-                tools: ['+ draft_final_notice', '+ lookup_small_claims', '+ court_filing_guide'],
+                tone: '"This constitutes formal notice. Failure to remit within 10 days will result in a small-claims filing in California."',
+                summary: 'Final notice + the actual small-claims filing path for your jurisdiction.',
               },
             ].map((l, i) => (
               <div key={i} className="animate-fade-up" style={{ animationDelay: `${i * 150}ms` }}>
@@ -539,22 +547,12 @@ export default function LandingPage() {
                   </div>
                   <div className="p-5 space-y-4">
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Sample Tone</p>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Sample tone</p>
                       <p className="text-xs text-gray-600 italic leading-relaxed">
                         {l.tone}
                       </p>
                     </div>
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Tools Unlocked</p>
-                      <div className="space-y-1">
-                        {l.tools.map((t) => (
-                          <div key={t} className="flex items-center gap-1.5 text-[11px] font-mono font-medium text-gray-600">
-                            <ChevronRight className="w-3 h-3 flex-shrink-0" style={{ color: l.color }} />
-                            {t}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed">{l.summary}</p>
                   </div>
                 </div>
               </div>
@@ -599,7 +597,7 @@ export default function LandingPage() {
                 Ready to recover what you're owed?
               </h3>
               <p className="text-gray-400 mb-8 max-w-md mx-auto">
-                Start chasing payments with AI in seconds. No sign-up required for guest access.
+                Start chasing payments with AI in seconds. No sign-up required to try the live demo.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-4">
                 <button
@@ -607,7 +605,7 @@ export default function LandingPage() {
                   className="inline-flex items-center gap-2.5 btn-gradient text-white text-sm font-bold rounded-xl px-8 py-4 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 transition-all font-[family-name:var(--font-heading)] group"
                 >
                   <Users className="w-4 h-4" />
-                  Try as Guest
+                  Live Demo
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
                 <button
@@ -662,9 +660,9 @@ export default function LandingPage() {
                   <Users className="w-7 h-7 text-white" />
                 </div>
                 <h2 className="text-xl font-bold text-white font-[family-name:var(--font-heading)]">
-                  Guest Access
+                  Live Demo
                 </h2>
-                <p className="text-white/70 text-xs mt-1.5">Try InvoiceChaser without signing up</p>
+                <p className="text-white/70 text-xs mt-1.5">Explore InvoiceChaser without signing up — perfect for a quick walkthrough</p>
               </div>
             </div>
 
@@ -689,7 +687,7 @@ export default function LandingPage() {
                 className="w-full btn-gradient disabled:opacity-50 text-white font-bold rounded-xl py-3.5 text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-300/40 font-[family-name:var(--font-heading)]"
               >
                 <ArrowRight className="w-4 h-4" />
-                Enter as Guest
+                Start Demo
               </button>
 
               <div className="relative">
