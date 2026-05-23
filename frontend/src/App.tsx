@@ -4,6 +4,7 @@ import Dashboard from './components/Dashboard'
 import ChatPanel from './components/ChatPanel'
 import LandingPage from './components/LandingPage'
 import GoogleCallback from './pages/GoogleCallback'
+import { InvoiceGeneratorPage } from './components/invoice-generator/InvoiceGeneratorPage'
 import { useAuth } from './contexts/AuthContext'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -32,6 +33,11 @@ function App() {
       <Route path="/invoice/:invoiceId" element={
         <ProtectedRoute>
           <Layout><ChatPanel /></Layout>
+        </ProtectedRoute>
+      } />
+      <Route path="/generate-invoice" element={
+        <ProtectedRoute>
+          <Layout><InvoiceGeneratorPage /></Layout>
         </ProtectedRoute>
       } />
     </Routes>

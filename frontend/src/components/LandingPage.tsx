@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext'
 import {
   Zap, ArrowRight, Shield, Mail, Scale,
   CheckCircle2, Clock, DollarSign, MessageSquare,
-  Sparkles, Eye, Users, TrendingUp, Lock, Play, FileText
+  Sparkles, Eye, Users, TrendingUp, Lock, Play, FileText, FilePlus
 } from 'lucide-react'
 
 // ─── Animated Agent Flow (3D Isometric CSS) ──────────────────────────────────
@@ -192,6 +192,14 @@ function AgentFlowVisualization() {
 // ─── Feature Cards ───────────────────────────────────────────────────────────
 
 const features = [
+  {
+    icon: <FilePlus className="w-5 h-5" />,
+    title: 'Create polished invoices in seconds',
+    desc: 'Skip the spreadsheet. Pick from three professionally designed templates, add your Stripe or LemonSqueezy link, and download a clean PDF — ready to send. Saved invoices flow straight into the chase pipeline if the client ghosts.',
+    color: '#8b5cf6',
+    bg: 'from-violet-50 to-purple-50',
+    border: 'border-violet-200/60',
+  },
   {
     icon: <FileText className="w-5 h-5" />,
     title: 'Just drop the invoice PDF',
