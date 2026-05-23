@@ -1,0 +1,37 @@
+# InvoiceChaser
+
+InvoiceChaser is an AI payment recovery web app for freelancers, consultants, and small studios that need to recover overdue invoices without writing awkward follow-up emails manually.
+
+## Primary Use Cases
+
+- Parse invoice PDFs and DOCX files to extract client, amount, due date, and jurisdiction.
+- Draft overdue invoice follow-up emails in escalating tones.
+- Send approved reminders from the user's connected Gmail account.
+- Keep client replies attached to the invoice timeline.
+- Calculate late fees when payment terms allow.
+- Prepare small-claims guidance when escalation is necessary.
+
+## Product Positioning
+
+InvoiceChaser helps users recover overdue invoices while keeping them in control. The AI drafts emails and escalation steps, but nothing is sent until the user approves it.
+
+## Audience
+
+- Freelancers
+- Independent consultants
+- Small agencies
+- Two-person studios
+- Solo service businesses
+
+## Important Pages
+
+- `/` — landing page, product demo, FAQs, comparison, and demo CTA
+- `/dashboard` — authenticated dashboard for invoice tracking
+- `/invoice/:invoiceId` — authenticated invoice conversation and timeline
+
+## Key Claims
+
+- Draft an overdue invoice follow-up in under 60 seconds.
+- Human approval is required before every send.
+- Emails are sent from the user's Gmail, not a no-reply address.
+- Escalation can move from friendly reminder to formal demand to small-claims preparation.

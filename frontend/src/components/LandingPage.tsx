@@ -4,210 +4,10 @@ import { useAuth } from '../contexts/AuthContext'
 import {
   Zap, ArrowRight, Shield, Mail, Scale,
   CheckCircle2, Clock, DollarSign, MessageSquare,
-  Sparkles, Eye, Users, TrendingUp, Lock, Play, FileText, FilePlus
+  Sparkles, Eye, Users, TrendingUp, Lock, Play, FileText, FilePlus, XCircle
 } from 'lucide-react'
+import ProductDemoReel from './ProductDemoReel'
 
-// ─── Animated Agent Flow (3D Isometric CSS) ──────────────────────────────────
-
-function AgentFlowVisualization() {
-  const [activeLevel, setActiveLevel] = useState(1)
-  const [particlePhase, setParticlePhase] = useState(0)
-
-  useEffect(() => {
-    // Cadence slowed 50% so viewers have time to read each stage.
-    const levelTimer = setInterval(() => {
-      setActiveLevel(prev => prev >= 3 ? 1 : prev + 1)
-    }, 6000)
-    const particleTimer = setInterval(() => {
-      setParticlePhase(prev => (prev + 1) % 6)
-    }, 1600)
-    return () => { clearInterval(levelTimer); clearInterval(particleTimer) }
-  }, [])
-
-  const levels = [
-    {
-      level: 1, label: 'Friendly', color: '#10b981', bgFrom: '#ecfdf5', bgTo: '#d1fae5',
-      tools: ['Polite reminder', 'Status check'],
-      icon: <Mail className="w-4 h-4" />,
-    },
-    {
-      level: 2, label: 'Formal', color: '#f59e0b', bgFrom: '#fffbeb', bgTo: '#fef3c7',
-      tools: ['Formal demand', 'Late fee math'],
-      icon: <Shield className="w-4 h-4" />,
-    },
-    {
-      level: 3, label: 'Legal', color: '#ef4444', bgFrom: '#fef2f2', bgTo: '#fecaca',
-      tools: ['Final notice', 'Small-claims path'],
-      icon: <Scale className="w-4 h-4" />,
-    },
-  ]
-
-  return (
-    <div className="agent-flow-container relative w-full max-w-[600px] mx-auto" style={{ perspective: '1200px' }}>
-      <div
-        className="relative py-4"
-        style={{
-          transform: 'rotateX(8deg) rotateY(-4deg)',
-          transformStyle: 'preserve-3d',
-        }}
-      >
-        {/* Step 0 — Invoice Generator (new!) */}
-        <div className="flex items-center justify-center mb-3 animate-fade-up">
-          <div className="relative flex items-center gap-3 bg-white rounded-2xl px-4 py-2.5 shadow-md shadow-violet-100/50 border border-violet-200/60">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center shadow-md shadow-violet-200/50">
-              <FilePlus className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">Step 1 · Generate</p>
-              <p className="text-sm font-bold text-gray-800 font-[family-name:var(--font-heading)]">Pick template · Add payment link · PDF</p>
-            </div>
-            <div className="flex gap-1 ml-1">
-              <span className="w-2 h-3 rounded-sm bg-gradient-to-b from-violet-400 to-purple-500" title="Modern" />
-              <span className="w-2 h-3 rounded-sm bg-gradient-to-b from-slate-700 to-slate-900" title="Classic" />
-              <span className="w-2 h-3 rounded-sm bg-gradient-to-b from-gray-300 to-gray-500" title="Minimal" />
-            </div>
-            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-px h-3 bg-gradient-to-b from-violet-300 to-transparent" />
-          </div>
-        </div>
-
-        {/* Input node — Step 2 (chase) */}
-        <div className="flex items-center justify-center mb-6 animate-fade-up" style={{ animationDelay: '400ms' }}>
-          <div className="relative flex items-center gap-3 bg-white rounded-2xl px-5 py-3 shadow-lg shadow-gray-200/60 border border-gray-100">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center shadow-md shadow-orange-200/50">
-              <MessageSquare className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Step 2 · Chase if unpaid</p>
-              <p className="text-sm font-bold text-gray-800 font-[family-name:var(--font-heading)]">"Chase this payment"</p>
-            </div>
-            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-px h-3 bg-gradient-to-b from-gray-300 to-transparent" />
-          </div>
-        </div>
-
-        {/* Middleware pipeline */}
-        <div className="relative mx-auto max-w-[480px]">
-          <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-[#FF6B35]/30 via-gray-200 to-transparent -translate-x-1/2" />
-
-          {/* Dynamic Prompt */}
-          <div className="flex items-center justify-center mb-4 animate-fade-up" style={{ animationDelay: '800ms' }}>
-            <div className="middleware-node relative bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200/60 rounded-xl px-4 py-2.5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
-                  <Sparkles className="w-3 h-3 text-white" />
-                </div>
-                <div>
-                  <p className="text-[9px] font-bold text-violet-500 uppercase tracking-widest">Middleware</p>
-                  <p className="text-xs font-bold text-gray-700">Dynamic Prompt</p>
-                </div>
-                <span className="ml-2 text-[10px] font-semibold text-violet-600 bg-violet-100 px-2 py-0.5 rounded-full">
-                  Tone: {levels[activeLevel - 1].label}
-                </span>
-              </div>
-              {/* Pulse ring */}
-              <div className="absolute inset-0 rounded-xl border-2 border-violet-300/40 animate-middleware-pulse" />
-            </div>
-          </div>
-
-          {/* Dynamic Tools */}
-          <div className="flex items-center justify-center mb-4 animate-fade-up" style={{ animationDelay: '1200ms' }}>
-            <div className="middleware-node relative bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200/60 rounded-xl px-4 py-2.5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center">
-                  <Lock className="w-3 h-3 text-white" />
-                </div>
-                <div>
-                  <p className="text-[9px] font-bold text-teal-500 uppercase tracking-widest">Middleware</p>
-                  <p className="text-xs font-bold text-gray-700">Dynamic Tool Gate</p>
-                </div>
-                <span className="ml-2 text-[10px] font-semibold text-teal-600 bg-teal-100 px-2 py-0.5 rounded-full">
-                  Level {activeLevel} tools
-                </span>
-              </div>
-              <div className="absolute inset-0 rounded-xl border-2 border-teal-300/40 animate-middleware-pulse" style={{ animationDelay: '500ms' }} />
-            </div>
-          </div>
-
-          {/* HITL */}
-          <div className="flex items-center justify-center mb-6 animate-fade-up" style={{ animationDelay: '1600ms' }}>
-            <div className="middleware-node relative bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 rounded-xl px-4 py-2.5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-                  <Eye className="w-3 h-3 text-white" />
-                </div>
-                <div>
-                  <p className="text-[9px] font-bold text-amber-500 uppercase tracking-widest">Middleware</p>
-                  <p className="text-xs font-bold text-gray-700">Human-in-the-Loop</p>
-                </div>
-                <span className="ml-2 text-[10px] font-semibold text-amber-600 bg-amber-100 px-2 py-0.5 rounded-full">
-                  Approve / Edit / Reject
-                </span>
-              </div>
-              <div className="absolute inset-0 rounded-xl border-2 border-amber-300/40 animate-middleware-pulse" style={{ animationDelay: '1000ms' }} />
-            </div>
-          </div>
-        </div>
-
-        {/* Escalation Level Cards */}
-        <div className="flex items-stretch gap-3 justify-center animate-fade-up" style={{ animationDelay: '2000ms' }}>
-          {levels.map((l) => (
-            <div
-              key={l.level}
-              className="level-card relative rounded-xl px-4 py-3 transition-all duration-500 border-2 flex-1 max-w-[160px]"
-              style={{
-                background: activeLevel === l.level
-                  ? `linear-gradient(135deg, ${l.bgFrom}, ${l.bgTo})`
-                  : '#fafafa',
-                borderColor: activeLevel === l.level ? l.color + '40' : '#e5e7eb',
-                transform: activeLevel === l.level ? 'translateY(-4px) scale(1.04)' : 'translateY(0) scale(1)',
-                boxShadow: activeLevel === l.level ? `0 8px 30px -8px ${l.color}30` : 'none',
-              }}
-            >
-              {/* Active indicator */}
-              {activeLevel === l.level && (
-                <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 rounded-full animate-pulse-dot"
-                  style={{ background: l.color, boxShadow: `0 0 12px ${l.color}60` }}
-                />
-              )}
-              <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 rounded-lg flex items-center justify-center"
-                  style={{ background: activeLevel === l.level ? l.color : '#d1d5db', color: 'white' }}>
-                  {l.icon}
-                </div>
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-widest" style={{ color: activeLevel === l.level ? l.color : '#9ca3af' }}>Level {l.level}</p>
-                  <p className="text-xs font-bold text-gray-800">{l.label}</p>
-                </div>
-              </div>
-              <div className="space-y-1">
-                {l.tools.map((t) => (
-                  <div key={t} className="text-[10px] font-medium text-gray-600 bg-white/80 rounded-md px-2 py-0.5 truncate border border-gray-100">
-                    {t}
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Floating particles */}
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div
-            key={i}
-            className="flow-particle absolute w-2 h-2 rounded-full"
-            style={{
-              background: `linear-gradient(135deg, #FF6B35, #FF8F65)`,
-              left: `${20 + i * 15}%`,
-              top: `${10 + (particlePhase + i) % 6 * 14}%`,
-              opacity: ((particlePhase + i) % 6) < 4 ? 0.6 : 0,
-              transition: 'all 0.8s ease-in-out',
-              boxShadow: '0 0 8px rgba(255, 107, 53, 0.4)',
-            }}
-          />
-        ))}
-      </div>
-    </div>
-  )
-}
 
 // ─── Feature Cards ───────────────────────────────────────────────────────────
 
@@ -255,7 +55,7 @@ const features = [
   {
     icon: <DollarSign className="w-5 h-5" />,
     title: 'Late fees, calculated',
-    desc: 'When it&apos;s time to add interest, the math is done for you — based on your terms, the balance, and how long it&apos;s been overdue.',
+    desc: "When it's time to add interest, the math is done for you — based on your terms, the balance, and how long it's been overdue.",
     color: '#0d9488',
     bg: 'from-teal-50 to-emerald-50',
     border: 'border-teal-200/60',
@@ -263,15 +63,15 @@ const features = [
   {
     icon: <Scale className="w-5 h-5" />,
     title: 'Ready for small-claims, if you need it',
-    desc: 'When a dispute really has to go legal, the agent looks up the actual filing procedure for the client&apos;s jurisdiction and gives you a step-by-step path to court.',
+    desc: "When a dispute really has to go legal, the agent looks up the actual filing procedure for the client's jurisdiction and gives you a step-by-step path to court.",
     color: '#ef4444',
     bg: 'from-rose-50 to-red-50',
     border: 'border-rose-200/60',
   },
   {
     icon: <MessageSquare className="w-5 h-5" />,
-    title: 'Telegram alerts when it matters',
-    desc: 'The moment a client replies — or the agent decides it&apos;s time to escalate — you get a ping on Telegram so nothing slips.',
+    title: 'Replies thread back to you',
+    desc: 'Clients reply to your Gmail like normal — those replies show up in the dashboard timeline next to the invoice so you always know where every conversation stands.',
     color: '#8b5cf6',
     bg: 'from-violet-50 to-purple-50',
     border: 'border-violet-200/60',
@@ -287,28 +87,132 @@ const stats = [
   { value: '100%', label: 'Human control over drafts' },
 ]
 
+const heroOutcomes = [
+  'Drafts ready in under 60 seconds',
+  '3-step escalation path',
+  'Human approval before every send',
+]
+
+const trustSignals = [
+  { label: 'Google Gmail API', detail: 'sends from your inbox' },
+  { label: 'OpenAI', detail: 'drafting and research' },
+  { label: 'Supabase', detail: 'secure invoice records' },
+  { label: 'Vercel', detail: 'fast product experience' },
+]
+
+const chaseScenarios = [
+  {
+    label: 'Just overdue',
+    headline: 'Keep the relationship warm',
+    pain: 'You need to follow up without sounding annoyed.',
+    outcome: 'InvoiceChaser drafts a friendly reminder and keeps the thread human.',
+    proof: 'Best for invoices 7-30 days late',
+  },
+  {
+    label: 'Being ignored',
+    headline: 'Make the payment feel urgent',
+    pain: 'You have already followed up and the client has gone quiet.',
+    outcome: 'The next draft gets firmer, cites the invoice terms, and asks for a clear payment date.',
+    proof: 'Best for invoices 30-60 days late',
+  },
+  {
+    label: 'Last chance',
+    headline: 'Prepare the serious next step',
+    pain: 'The client keeps delaying and you need leverage without losing control.',
+    outcome: 'InvoiceChaser calculates late fees and prepares the small-claims path for review.',
+    proof: 'Best for invoices 60+ days late',
+  },
+]
+
 // ─── How It Works Steps ──────────────────────────────────────────────────────
 
 const steps = [
   { step: '01', title: 'Drop the invoice PDF', desc: 'Upload the original invoice (PDF or DOCX). InvoiceChaser reads it and pre-fills the client, amount, due date, and jurisdiction — no retyping.' },
-  { step: '02', title: 'AI drafts the email', desc: 'The agent writes a reminder tuned to how overdue the invoice is and to your client&apos;s tone. No blank-page anxiety.' },
+  { step: '02', title: 'AI drafts the email', desc: "The agent writes a reminder tuned to how overdue the invoice is and to your client's tone. No blank-page anxiety." },
   { step: '03', title: 'You approve in one click', desc: 'Read the draft, edit anything you want, or reject it. Nothing leaves your Gmail until you say so.' },
   { step: '04', title: 'It escalates if needed', desc: 'No response after a few rounds? The agent gets firmer, calculates late fees, and prepares a small-claims notice when the time is right.' },
 ]
 
-// ─── Tech Stack Badges ───────────────────────────────────────────────────────
+// ─── Testimonials ────────────────────────────────────────────────────────────
+// Portrait images are AI-styled stock headshots hosted on Unsplash's free CDN —
+// stable URLs, no API key, no attribution required for editorial/product use.
 
-const techStack = [
-  { name: 'LangChain', color: '#1C3C3C' },
-  { name: 'LangGraph', color: '#1C3C3C' },
-  { name: 'Groq', color: '#F55036' },
-  { name: 'LLaMA 3.3', color: '#0467C8' },
-  { name: 'Tavily', color: '#5B21B6' },
-  { name: 'FastAPI', color: '#009688' },
-  { name: 'React', color: '#61DAFB' },
-  { name: 'Tailwind', color: '#38BDF8' },
-  { name: 'Vercel', color: '#000000' },
-  { name: 'MCP', color: '#FF6B35' },
+const testimonials = [
+  {
+    name: 'Maya Chen',
+    role: 'Brand designer, freelance',
+    location: 'Portland, OR',
+    quote: 'I used to dread the "second reminder" email — staring at a draft for an hour and still sending something awkward. Now I just upload the PDF, the agent writes it, I tweak a word or two, hit approve. Three of my late clients paid within a week.',
+    photo: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&h=200&fit=facearea&facepad=2&q=80&auto=format',
+  },
+  {
+    name: 'Daniel Okafor',
+    role: 'Co-founder, two-person studio',
+    location: 'London, UK',
+    quote: 'A client owed us £8,400 for 90 days. Their accounts team kept saying "next week". InvoiceChaser drafted a formal demand with the late-fee math already done, then prepared the small-claims notice. We never had to file — they paid two days after the demand went out.',
+    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=facearea&facepad=2&q=80&auto=format',
+  },
+  {
+    name: 'Priya Raman',
+    role: 'Independent consultant',
+    location: 'Singapore',
+    quote: 'What sold me is that nothing goes out from a "noreply" — every reminder is from my own Gmail, in my own thread. My clients reply like normal. I just don\'t have to be the one writing the awkward part anymore.',
+    photo: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&h=200&fit=facearea&facepad=2&q=80&auto=format',
+  },
+]
+
+const comparisonRows = [
+  {
+    label: 'Follow-up timing',
+    without: 'Manual calendar reminders that are easy to miss',
+    with: 'Automated cadence matched to invoice age',
+  },
+  {
+    label: 'Email quality',
+    without: 'Awkward blank-page writing every time',
+    with: 'Polished drafts tuned from friendly to formal',
+  },
+  {
+    label: 'Late-fee math',
+    without: 'Spreadsheet work and second-guessing',
+    with: 'Fees calculated from terms, balance, and days overdue',
+  },
+  {
+    label: 'Legal readiness',
+    without: 'Start researching only after things get bad',
+    with: 'Small-claims path prepared when escalation is needed',
+  },
+]
+
+const faqs = [
+  {
+    question: 'Will InvoiceChaser send emails without my approval?',
+    answer: 'No. InvoiceChaser drafts follow-ups for review. You can edit, reject, or approve each message before anything leaves your Gmail.',
+  },
+  {
+    question: 'Do clients know I am using an AI tool?',
+    answer: 'Emails are sent from your own Gmail account in the existing thread. Clients see a normal email from you, not a bot or no-reply address.',
+  },
+  {
+    question: 'What if a client replies with a dispute?',
+    answer: 'Replies stay attached to the invoice timeline so you can review the thread, adjust the next draft, pause escalation, or resolve the invoice manually.',
+  },
+  {
+    question: 'Can it handle different escalation tones?',
+    answer: 'Yes. The agent starts with a friendly reminder, moves to a firmer demand when needed, and can prepare a legal-style notice for serious non-payment.',
+  },
+  {
+    question: 'Does it calculate late fees?',
+    answer: 'Yes. When your payment terms support fees or interest, InvoiceChaser can calculate the amount based on the overdue balance and elapsed time.',
+  },
+  {
+    question: 'Is this a replacement for a lawyer?',
+    answer: 'No. InvoiceChaser helps you organize evidence, draft communications, and understand small-claims next steps. It does not provide legal representation.',
+  },
+  {
+    question: 'What do I need to get started?',
+    answer: 'Upload an invoice PDF or DOCX, confirm the extracted details, and choose whether to try the demo or connect Gmail for real follow-ups.',
+  },
 ]
 
 // ─── Main Landing Page ───────────────────────────────────────────────────────
@@ -317,7 +221,18 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const { signIn, enterAsGuest } = useAuth()
   const [showGuestModal, setShowGuestModal] = useState(false)
+  const [showStickyCta, setShowStickyCta] = useState(false)
+  const [selectedScenario, setSelectedScenario] = useState(1)
   const [guestName, setGuestName] = useState('')
+
+  const activeScenario = chaseScenarios[selectedScenario]
+
+  useEffect(() => {
+    const handleScroll = () => setShowStickyCta(window.scrollY > 560)
+    handleScroll()
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   const handleGuestEntry = () => {
     if (!guestName.trim()) return
@@ -379,9 +294,18 @@ export default function LandingPage() {
                 </span>
               </h2>
 
-              <p className="text-lg text-gray-500 leading-relaxed mb-8 max-w-lg">
-                Late invoices kill freelancers and small businesses. InvoiceChaser handles the awkward follow-ups for you — it drafts polite reminders, firm demand letters, even small-claims notices when needed. You stay in control: nothing leaves your inbox until you say yes.
+              <p className="text-lg text-gray-500 leading-relaxed mb-6 max-w-lg">
+                Turn an overdue invoice into an approved follow-up in under a minute. InvoiceChaser drafts the reminder, calculates the next escalation, and keeps every send under your control.
               </p>
+
+              <div className="grid sm:grid-cols-3 gap-2.5 mb-8 max-w-xl">
+                {heroOutcomes.map((outcome) => (
+                  <div key={outcome} className="flex items-start gap-2 rounded-xl bg-white/75 border border-orange-100/70 px-3 py-2.5 shadow-sm">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                    <span className="text-xs font-semibold leading-snug text-gray-600">{outcome}</span>
+                  </div>
+                ))}
+              </div>
 
               <div className="flex flex-wrap gap-3 mb-10">
                 <button
@@ -389,12 +313,12 @@ export default function LandingPage() {
                   className="inline-flex items-center gap-2.5 btn-gradient text-white text-sm font-bold rounded-xl px-7 py-3.5 shadow-lg shadow-orange-300/40 hover:shadow-orange-400/60 transition-all font-[family-name:var(--font-heading)] group"
                 >
                   <Play className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  Live Demo
+                  Try live demo
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
                 <button
                   onClick={handleGoogleSignIn}
-                  className="inline-flex items-center gap-2.5 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold rounded-xl px-7 py-3.5 shadow-sm border border-gray-200 transition-all font-[family-name:var(--font-heading)]"
+                  className="inline-flex items-center gap-2.5 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold rounded-xl px-6 py-3.5 shadow-sm border border-gray-200 transition-all font-[family-name:var(--font-heading)]"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24">
                     <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -402,7 +326,7 @@ export default function LandingPage() {
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                   </svg>
-                  Sign in with Google
+                  Connect Gmail
                 </button>
               </div>
 
@@ -423,9 +347,29 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Right — 3D Agent Flow Animation */}
+            {/* Right — Product demo reel (auto-playing walkthrough) */}
             <div className="animate-fade-up" style={{ animationDelay: '300ms' }}>
-              <AgentFlowVisualization />
+              <ProductDemoReel />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ──── Trust Strip ──── */}
+      <section className="py-6 bg-white/65 border-y border-orange-100/70">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-5">
+            <div className="flex items-center gap-2.5 text-sm font-extrabold text-gray-900 font-[family-name:var(--font-heading)] shrink-0">
+              <Lock className="w-4 h-4 text-[#FF6B35]" />
+              You&apos;re in good company
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
+              {trustSignals.map((signal) => (
+                <div key={signal.label} className="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
+                  <p className="text-sm font-bold text-gray-800">{signal.label}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{signal.detail}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
@@ -447,6 +391,66 @@ export default function LandingPage() {
                 <p className="text-xs sm:text-sm text-gray-400 font-medium">{s.label}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ──── Situation Selector ──── */}
+      <section className="py-20 bg-white/35 border-b border-orange-100/50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-10 items-center">
+            <div className="animate-fade-up">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF6B35] bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200/60 mb-4">
+                <Eye className="w-3 h-3" />
+                PICK YOUR CHASE
+              </span>
+              <h3 className="text-3xl sm:text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
+                Different late invoices need different pressure.
+              </h3>
+              <p className="text-gray-500 mt-4 leading-relaxed">
+                Choose the situation closest to yours. The product demo stays the same, but the message changes because the follow-up should match the client&apos;s behavior.
+              </p>
+            </div>
+
+            <div className="animate-fade-up" style={{ animationDelay: '120ms' }}>
+              <div className="grid sm:grid-cols-3 gap-3 mb-4">
+                {chaseScenarios.map((scenario, i) => (
+                  <button
+                    key={scenario.label}
+                    onClick={() => setSelectedScenario(i)}
+                    className={`rounded-2xl border p-4 text-left transition-all ${
+                      selectedScenario === i
+                        ? 'border-orange-300 bg-orange-50 shadow-lg shadow-orange-200/35'
+                        : 'border-gray-100 bg-white hover:border-orange-200 hover:bg-orange-50/40'
+                    }`}
+                  >
+                    <p className={`text-xs font-extrabold uppercase tracking-wider ${
+                      selectedScenario === i ? 'text-[#FF6B35]' : 'text-gray-400'
+                    }`}>
+                      {scenario.label}
+                    </p>
+                    <p className="mt-2 text-sm font-bold text-gray-900 leading-snug">{scenario.headline}</p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center text-white shrink-0">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">{activeScenario.proof}</p>
+                    <h4 className="text-xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)]">{activeScenario.headline}</h4>
+                    <p className="text-sm text-gray-500 mt-2 leading-relaxed">{activeScenario.pain}</p>
+                    <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3 flex gap-2.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                      <p className="text-sm font-medium text-gray-700 leading-relaxed">{activeScenario.outcome}</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -589,25 +593,130 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ──── Tech Stack ──── */}
-      <section className="py-20 bg-gradient-to-b from-transparent to-white/30">
+      {/* ──── Testimonials ──── */}
+      <section className="py-24 bg-gradient-to-b from-transparent to-white/30">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-10 animate-fade-up">
-            <h3 className="text-2xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight mb-3">
-              Built with
+          <div className="text-center mb-14 animate-fade-up">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200/60 mb-4">
+              <Users className="w-3 h-3" />
+              REAL FREELANCERS, REAL RESULTS
+            </span>
+            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
+              Loved by people who hate chasing
             </h3>
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              {techStack.map((t, i) => (
-                <span
-                  key={i}
-                  className="inline-flex items-center gap-1.5 text-xs font-bold px-4 py-2 rounded-full border shadow-sm bg-white animate-fade-up"
-                  style={{ animationDelay: `${i * 60}ms`, borderColor: t.color + '20', color: t.color }}
-                >
-                  <span className="w-2 h-2 rounded-full" style={{ background: t.color }} />
-                  {t.name}
-                </span>
-              ))}
+            <p className="text-gray-500 mt-3 max-w-lg mx-auto">
+              Designers, agencies, and consultants who finally stopped writing awkward "just following up" emails.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+            {testimonials.map((t, i) => (
+              <figure
+                key={t.name}
+                className="relative bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-shadow p-6 animate-fade-up flex flex-col"
+                style={{ animationDelay: `${i * 120}ms` }}
+              >
+                {/* 5-star rating */}
+                <div className="flex items-center gap-0.5 mb-4">
+                  {[0, 1, 2, 3, 4].map((s) => (
+                    <svg key={s} className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.953a1 1 0 00.95.69h4.156c.969 0 1.371 1.24.588 1.81l-3.362 2.443a1 1 0 00-.364 1.118l1.286 3.953c.3.921-.755 1.688-1.54 1.118l-3.362-2.443a1 1 0 00-1.176 0l-3.362 2.443c-.784.57-1.838-.197-1.54-1.118l1.287-3.953a1 1 0 00-.364-1.118L2.93 8.38c-.783-.57-.38-1.81.588-1.81h4.156a1 1 0 00.95-.69l1.286-3.953z" />
+                    </svg>
+                  ))}
+                </div>
+
+                {/* Quote */}
+                <blockquote className="text-sm text-gray-700 leading-relaxed mb-6 flex-1">
+                  &ldquo;{t.quote}&rdquo;
+                </blockquote>
+
+                {/* Author */}
+                <figcaption className="flex items-center gap-3 pt-4 border-t border-gray-100">
+                  <img
+                    src={t.photo}
+                    alt={t.name}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-md ring-1 ring-gray-100"
+                  />
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-900 truncate">{t.name}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {t.role} <span className="text-gray-300">·</span> {t.location}
+                    </p>
+                  </div>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ──── Comparison ──── */}
+      <section className="py-24 bg-gradient-to-b from-white/35 to-transparent">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12 animate-fade-up">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF6B35] bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200/60 mb-4">
+              <Shield className="w-3 h-3" />
+              LESS CHASING, MORE CONTROL
+            </span>
+            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
+              With vs. without InvoiceChaser
+            </h3>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm animate-fade-up">
+            <div className="grid grid-cols-[1fr] md:grid-cols-[1.05fr_1fr_1fr] bg-gray-900 text-white">
+              <div className="hidden md:block px-5 py-4 text-xs font-bold uppercase tracking-wider text-gray-400">Workflow</div>
+              <div className="px-5 py-4 text-sm font-extrabold font-[family-name:var(--font-heading)]">Without InvoiceChaser</div>
+              <div className="px-5 py-4 text-sm font-extrabold font-[family-name:var(--font-heading)] bg-[#FF6B35]">With InvoiceChaser</div>
             </div>
+            {comparisonRows.map((row) => (
+              <div key={row.label} className="grid grid-cols-1 md:grid-cols-[1.05fr_1fr_1fr] border-t border-gray-100">
+                <div className="px-5 py-4 bg-gray-50/80">
+                  <p className="text-sm font-bold text-gray-900">{row.label}</p>
+                </div>
+                <div className="px-5 py-4 flex gap-2.5">
+                  <XCircle className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
+                  <p className="text-sm text-gray-500 leading-relaxed">{row.without}</p>
+                </div>
+                <div className="px-5 py-4 flex gap-2.5 bg-orange-50/45">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
+                  <p className="text-sm font-medium text-gray-700 leading-relaxed">{row.with}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ──── FAQ ──── */}
+      <section className="py-24">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-12 animate-fade-up">
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1.5 rounded-full border border-teal-200/60 mb-4">
+              <MessageSquare className="w-3 h-3" />
+              QUESTIONS BEFORE YOU CHASE
+            </span>
+            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
+              Common objections, answered
+            </h3>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-4">
+            {faqs.map((faq, i) => (
+              <details
+                key={faq.question}
+                className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm animate-fade-up open:border-orange-200/80 open:shadow-md"
+                style={{ animationDelay: `${i * 60}ms` }}
+              >
+                <summary className="flex cursor-pointer list-none items-start justify-between gap-4">
+                  <span className="text-sm font-extrabold text-gray-900 font-[family-name:var(--font-heading)] leading-snug">{faq.question}</span>
+                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[#FF6B35] text-lg leading-none transition-transform group-open:rotate-45">+</span>
+                </summary>
+                <p className="mt-4 text-sm leading-relaxed text-gray-500">{faq.answer}</p>
+              </details>
+            ))}
           </div>
         </div>
       </section>
@@ -633,7 +742,7 @@ export default function LandingPage() {
                   className="inline-flex items-center gap-2.5 btn-gradient text-white text-sm font-bold rounded-xl px-8 py-4 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 transition-all font-[family-name:var(--font-heading)] group"
                 >
                   <Users className="w-4 h-4" />
-                  Live Demo
+                  Try live demo
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </button>
                 <button
@@ -646,7 +755,7 @@ export default function LandingPage() {
                     <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#fff"/>
                     <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#fff"/>
                   </svg>
-                  Sign in with Google
+                  Connect Gmail
                 </button>
               </div>
             </div>
@@ -660,12 +769,12 @@ export default function LandingPage() {
           <div className="flex items-center gap-2 text-sm text-gray-400">
             <Zap className="w-4 h-4 text-[#FF6B35]" />
             <span className="font-semibold text-gray-600 font-[family-name:var(--font-heading)]">InvoiceChaser</span>
-            <span>&middot; Built with LangChain &amp; Groq</span>
+            <span>&middot; AI-powered invoice recovery</span>
           </div>
           <div className="flex items-center gap-4 text-xs text-gray-400">
             <a href="https://github.com" target="_blank" rel="noopener" className="hover:text-[#FF6B35] transition-colors font-medium">GitHub</a>
             <span>&middot;</span>
-            <span>Powered by LLaMA 3.3 70B</span>
+            <span>Made for freelancers &amp; small studios</span>
           </div>
         </div>
       </footer>
@@ -743,6 +852,32 @@ export default function LandingPage() {
               <p className="text-[11px] text-gray-400 text-center">
                 Guest sessions are temporary. Sign in with Google to save your data.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showStickyCta && !showGuestModal && (
+        <div className="fixed bottom-4 left-0 right-0 z-40 px-4 sm:px-6">
+          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-2xl border border-orange-200/70 bg-white/90 p-3 shadow-2xl shadow-orange-200/40 backdrop-blur-xl">
+            <div className="min-w-0">
+              <p className="text-sm font-extrabold text-gray-900 font-[family-name:var(--font-heading)]">Recover overdue invoices faster</p>
+              <p className="hidden sm:block text-xs text-gray-500">Try the demo or connect Gmail when you&apos;re ready to send real follow-ups.</p>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                onClick={() => setShowGuestModal(true)}
+                className="inline-flex items-center gap-2 btn-gradient text-white text-xs sm:text-sm font-bold rounded-xl px-4 py-3 shadow-lg shadow-orange-300/40 font-[family-name:var(--font-heading)]"
+              >
+                Try demo
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleGoogleSignIn}
+                className="hidden sm:inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold rounded-xl px-4 py-3 transition-all font-[family-name:var(--font-heading)]"
+              >
+                Connect Gmail
+              </button>
             </div>
           </div>
         </div>
