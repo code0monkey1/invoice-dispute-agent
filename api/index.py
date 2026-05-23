@@ -999,6 +999,112 @@ async def upload_invoice_and_create(
     )
 
 
+# ─── Invoice Generator endpoints ─────────────────────────────────────────────
+
+class GenerateInvoicePayload(BaseModel):
+    """Schema for creating a generated invoice from an already-uploaded PDF."""
+    model_config = {"extra": "forbid"}
+
+    invoice_id: str
+    client_name: str
+    client_email: str
+    invoice_amount_cents: int
+    due_date: str  # yyyy-mm-dd
+    jurisdiction: Optional[str] = None
+    storage_path: str
+    file_name: str
+    file_size: int
+
+
+@app.post("/api/invoices/generated/upload")
+async def upload_generated_invoice_pdf(
+    request: Request,
+    response: Response,
+    file: UploadFile = File(...),
+    invoice_id: str = Form(...),
+    authorization: str | None = Header(None),
+):
+    """Upload a generated PDF blob to Supabase Storage under generated/{user_id}/...
+
+    Returns the storage path which the frontend then passes to POST /api/invoices/generated.
+    """
+    _user, user_id = resolve_user_id(request, response, authorization)
+
+    content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Generated PDF is too large.")
+    if file.content_type != "application/pdf":
+        raise HTTPException(status_code=400, detail="Only application/pdf accepted")
+
+    filename = safe_filename(file.filename or f"{invoice_id}.pdf")
+    object_path = f"generated/{user_id}/{uuid.uuid4().hex}/{filename}"
+    try:
+        stored_path = upload_invoice_file(
+            INVOICE_FILE_BUCKET, object_path, content, file.content_type
+        )
+    except Exception as exc:
+        logger.exception("Generated invoice PDF upload failed")
+        raise HTTPException(status_code=500, detail="Could not store the PDF.") from exc
+
+    return {
+        "storage_path": stored_path,
+        "file_name": filename,
+        "file_size": len(content),
+    }
+
+
+@app.post("/api/invoices/generated", status_code=201)
+def create_generated_invoice(
+    payload: GenerateInvoicePayload,
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(None),
+):
+    """Create an invoices row for a PDF already uploaded via /api/invoices/generated/upload.
+
+    The chase agent is NOT started here (escalation_level=0). The invoice
+    appears in /dashboard and the agent kicks in when the user opens chat.
+    """
+    _user, user_id = resolve_user_id(request, response, authorization)
+
+    # Storage path ownership check.
+    prefix = f"generated/{user_id}/"
+    if not payload.storage_path.startswith(prefix):
+        raise HTTPException(
+            status_code=403,
+            detail=f"Storage path must be under {prefix}",
+        )
+
+    storage_invoice_id = build_invoice_storage_id(user_id, payload.invoice_id)
+    if get_invoice(storage_invoice_id):
+        raise HTTPException(status_code=409, detail=f"Invoice '{payload.invoice_id}' already exists")
+
+    # Compute days_overdue from due_date (negative becomes 0 — not overdue yet).
+    try:
+        due = datetime.strptime(payload.due_date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid due_date")
+    today = datetime.now(timezone.utc).date()
+    days_overdue = max(0, (today - due).days)
+
+    invoice = db_create_invoice(
+        invoice_id=storage_invoice_id,
+        user_id=user_id,
+        client_name=payload.client_name,
+        client_email=payload.client_email,
+        invoice_amount=payload.invoice_amount_cents / 100,
+        amount_paid=0,
+        days_overdue=days_overdue,
+        jurisdiction=payload.jurisdiction,
+        status="active",
+        invoice_file_path=payload.storage_path,
+        invoice_file_name=payload.file_name,
+        invoice_file_mime="application/pdf",
+        invoice_file_size=payload.file_size,
+    )
+    return present_invoice(invoice)
+
+
 @app.get("/api/invoices")
 def list_invoices(
     request: Request,

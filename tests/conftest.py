@@ -85,6 +85,11 @@ class FakeDB:
             return rows
         if method == "POST":
             row = dict(payload or {})
+            # Apply DB defaults that the real schema would supply.
+            row.setdefault("escalation_level", 0)
+            row.setdefault("amount_paid", 0)
+            row.setdefault("days_overdue", 0)
+            row.setdefault("status", "active")
             self.invoices[row["id"]] = row
             return [row]
         if method == "PATCH":
