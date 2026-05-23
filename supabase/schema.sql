@@ -11,17 +11,15 @@ CREATE TABLE IF NOT EXISTS users (
     gmail_refresh_token   TEXT,
     gmail_connected_at    TEXT,
     gmail_history_id      TEXT,
-    telegram_chat_id      TEXT,
-    telegram_link_token   TEXT,
     is_guest              BOOLEAN NOT NULL DEFAULT FALSE,
     created_at            TEXT DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
 );
 
 -- Migrations for tables that may pre-date the columns above.
-ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_link_token TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS is_guest BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE users ALTER COLUMN email DROP NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_users_telegram_link_token ON users(telegram_link_token);
+-- Legacy Telegram columns are left in place if they already exist; we just
+-- stop reading or writing them. They can be dropped manually later if desired.
 
 CREATE TABLE IF NOT EXISTS invoices (
     id                TEXT PRIMARY KEY,
@@ -84,3 +82,6 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('invoice-files', 'invoice-files', false)
 ON CONFLICT (id) DO NOTHING;
+
+-- Sender profile (used by the Invoice Generator module).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sender_profile JSONB NOT NULL DEFAULT '{}'::jsonb;
