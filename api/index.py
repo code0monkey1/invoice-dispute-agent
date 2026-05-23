@@ -35,13 +35,12 @@ from src.agent import agent
 from src.state import FreelancerContext
 from src.db import (
     init_db, upsert_user, get_user, get_user_gmail_tokens,
-    update_user_history_id, get_user_by_email,
+    update_user_history_id, update_user_sender_profile, get_user_by_email,
     create_invoice as db_create_invoice, get_invoice, get_invoices_by_user,
     update_invoice, get_invoices_by_client_email,
     add_communication, get_communications,
     build_invoice_storage_id, parse_public_invoice_id, upload_invoice_file,
-    set_user_telegram_link_token, get_user_by_telegram_link_token,
-    update_user_telegram_chat_id, ensure_guest_user, migrate_guest_to_user,
+    ensure_guest_user, migrate_guest_to_user,
 )
 from src.invoice_parser import (
     extract_text_from_invoice,
@@ -50,9 +49,6 @@ from src.invoice_parser import (
     validate_invoice_upload,
 )
 from src.services.gmail_service import GmailService, SCOPES
-from src.services.telegram_service import (
-    send_telegram_notification, send_telegram_to_chat, TELEGRAM_BOT_TOKEN,
-)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("invoicechaser")
@@ -63,10 +59,6 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5173/auth/google/callback")
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-in-production")
-
-# Telegram
-TELEGRAM_BOT_USERNAME = os.getenv("TELEGRAM_BOT_USERNAME", "")
-TELEGRAM_WEBHOOK_SECRET = os.getenv("TELEGRAM_WEBHOOK_SECRET", "")
 
 # Guest session cookie
 GUEST_COOKIE_NAME = "ic_guest_session"
@@ -799,6 +791,52 @@ def get_me_route(authorization: str | None = Header(None)):
     }
 
 
+# ─── Sender profile (Invoice Generator) ──────────────────────────────────────
+
+class SenderProfilePayload(BaseModel):
+    """Pydantic schema for the per-user sender profile used by generated invoices."""
+    model_config = {"extra": "forbid"}
+
+    business_name: Optional[str] = None
+    your_name: Optional[str] = None
+    your_email: Optional[str] = None
+    address: Optional[str] = None
+    logo_url: Optional[str] = None
+    tax_id: Optional[str] = None
+
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+@app.get("/api/users/me/sender-profile")
+def get_sender_profile_route(
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(None),
+):
+    _user, user_id = resolve_user_id(request, response, authorization)
+    user = get_user(user_id) or {}
+    return user.get("sender_profile") or {}
+
+
+@app.patch("/api/users/me/sender-profile")
+def patch_sender_profile_route(
+    payload: SenderProfilePayload,
+    request: Request,
+    response: Response,
+    authorization: str | None = Header(None),
+):
+    _user, user_id = resolve_user_id(request, response, authorization)
+
+    incoming = payload.model_dump(exclude_unset=True)
+    if "your_email" in incoming and incoming["your_email"]:
+        if not _EMAIL_RE.match(incoming["your_email"]):
+            raise HTTPException(status_code=422, detail="Invalid email format")
+
+    existing = (get_user(user_id) or {}).get("sender_profile") or {}
+    merged = {**existing, **incoming}
+    return update_user_sender_profile(user_id, merged)
+
 
 @app.get("/api/invoices/{invoice_id}/history")
 def get_invoice_history(
@@ -1073,17 +1111,11 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
         logger.exception("Agent invocation failed")
         raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
 
-    # Notify on escalation level change
+    # Persist escalation level changes from the agent response.
     new_level = response.get("escalation_level", 0)
     invoice_data = get_invoice(inv_id)
     if invoice_data and new_level > invoice_data.get("escalation_level", 0):
         update_invoice(inv_id, escalation_level=new_level)
-        level_names = {1: "Friendly", 2: "Formal", 3: "Legal"}
-        send_telegram_notification(
-            invoice_data.get("user_id"),
-            f"⚠️ <b>Escalation</b>\n"
-            f"Invoice #{inv_id} escalated to Level {new_level} ({level_names.get(new_level, 'Unknown')})"
-        )
 
     return {
         "messages": serialize_messages(response["messages"]),
@@ -1294,20 +1326,6 @@ def gmail_webhook(payload: PubSubMessage):
                     direction="inbound",
                 )
 
-                # Notify immediately after saving — before any potentially-failing calls
-                import html as _html
-                safe_body = _html.escape(msg.get("body", "")[:200])
-                safe_from = _html.escape(from_addr)
-                safe_subject = _html.escape(msg.get("subject", "No subject"))
-                send_telegram_notification(
-                    invoice.get("user_id"),
-                    f"📩 <b>Client Reply</b>\n"
-                    f"Invoice: #{invoice['id']}\n"
-                    f"From: {safe_from}\n"
-                    f"Subject: {safe_subject}\n\n"
-                    f"{safe_body}"
-                )
-
                 try:
                     config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
                     invoice_owner = get_user(invoice["user_id"]) if invoice.get("user_id") else None
@@ -1332,103 +1350,6 @@ def gmail_webhook(payload: PubSubMessage):
     except Exception as e:
         logger.error(f"Gmail webhook error: {e}", exc_info=True)
         return {"status": "error"}
-
-
-@app.post("/api/telegram/connect")
-def telegram_connect(authorization: str | None = Header(None)):
-    """Generate a one-time token and return a deep link to bind the user's Telegram chat.
-
-    Flow:
-    1. Frontend calls this endpoint → receives ``{deep_link, token}``.
-    2. User opens the deep link → Telegram starts a chat with the bot and sends ``/start TOKEN``.
-    3. Bot receives the message via /api/telegram/webhook, looks up the token,
-       persists ``users.telegram_chat_id``, and clears the token.
-    """
-    user = get_current_user(authorization)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_BOT_USERNAME:
-        raise HTTPException(
-            status_code=500,
-            detail="Telegram is not configured on the server (TELEGRAM_BOT_TOKEN / TELEGRAM_BOT_USERNAME).",
-        )
-
-    token = secrets.token_urlsafe(24)
-    set_user_telegram_link_token(user["id"], token)
-    return {
-        "deep_link": f"https://t.me/{TELEGRAM_BOT_USERNAME}?start={token}",
-        "token": token,
-    }
-
-
-@app.get("/api/telegram/status")
-def telegram_status(authorization: str | None = Header(None)):
-    user = get_current_user(authorization)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    chat_id = user.get("telegram_chat_id")
-    return {"connected": bool(chat_id), "chat_id": chat_id}
-
-
-@app.post("/api/telegram/disconnect")
-def telegram_disconnect(authorization: str | None = Header(None)):
-    user = get_current_user(authorization)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    update_user_telegram_chat_id(user["id"], None)
-    return {"connected": False}
-
-
-@app.post("/api/telegram/webhook")
-async def telegram_webhook(request: Request):
-    """Handle Telegram bot updates. Used during the connect handshake to bind chat_id.
-
-    Telegram POSTs every incoming message here. We only care about ``/start TOKEN``
-    messages — those bind the sender's chat_id to the user that minted the token.
-    All other messages are ignored.
-    """
-    if TELEGRAM_WEBHOOK_SECRET:
-        header_secret = request.headers.get("x-telegram-bot-api-secret-token", "")
-        if header_secret != TELEGRAM_WEBHOOK_SECRET:
-            raise HTTPException(status_code=403, detail="Invalid webhook secret")
-
-    try:
-        payload = await request.json()
-    except Exception:
-        return {"ok": True}
-
-    message = payload.get("message") or {}
-    chat = message.get("chat") or {}
-    chat_id = chat.get("id")
-    text = (message.get("text") or "").strip()
-
-    if not chat_id or not text.startswith("/start"):
-        return {"ok": True}
-
-    parts = text.split(maxsplit=1)
-    if len(parts) < 2:
-        send_telegram_to_chat(
-            str(chat_id),
-            "Please open the connect link from the InvoiceChaser dashboard to link this chat.",
-        )
-        return {"ok": True}
-
-    token = parts[1].strip()
-    user = get_user_by_telegram_link_token(token)
-    if not user:
-        send_telegram_to_chat(
-            str(chat_id),
-            "That link has expired or is invalid. Please generate a new one from the dashboard.",
-        )
-        return {"ok": True}
-
-    update_user_telegram_chat_id(user["id"], str(chat_id))
-    display_name = user.get("name") or user.get("email") or "your account"
-    send_telegram_to_chat(
-        str(chat_id),
-        f"✅ Connected to <b>{display_name}</b>. You'll receive invoice notifications here.",
-    )
-    return {"ok": True}
 
 
 @app.post("/api/gmail/rewatch")
