@@ -14,12 +14,13 @@ function AgentFlowVisualization() {
   const [particlePhase, setParticlePhase] = useState(0)
 
   useEffect(() => {
+    // Cadence slowed 50% so viewers have time to read each stage.
     const levelTimer = setInterval(() => {
       setActiveLevel(prev => prev >= 3 ? 1 : prev + 1)
-    }, 3000)
+    }, 6000)
     const particleTimer = setInterval(() => {
       setParticlePhase(prev => (prev + 1) % 6)
-    }, 800)
+    }, 1600)
     return () => { clearInterval(levelTimer); clearInterval(particleTimer) }
   }, [])
 
@@ -50,14 +51,33 @@ function AgentFlowVisualization() {
           transformStyle: 'preserve-3d',
         }}
       >
-        {/* Input node */}
-        <div className="flex items-center justify-center mb-6 animate-fade-up">
+        {/* Step 0 — Invoice Generator (new!) */}
+        <div className="flex items-center justify-center mb-3 animate-fade-up">
+          <div className="relative flex items-center gap-3 bg-white rounded-2xl px-4 py-2.5 shadow-md shadow-violet-100/50 border border-violet-200/60">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center shadow-md shadow-violet-200/50">
+              <FilePlus className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">Step 1 · Generate</p>
+              <p className="text-sm font-bold text-gray-800 font-[family-name:var(--font-heading)]">Pick template · Add payment link · PDF</p>
+            </div>
+            <div className="flex gap-1 ml-1">
+              <span className="w-2 h-3 rounded-sm bg-gradient-to-b from-violet-400 to-purple-500" title="Modern" />
+              <span className="w-2 h-3 rounded-sm bg-gradient-to-b from-slate-700 to-slate-900" title="Classic" />
+              <span className="w-2 h-3 rounded-sm bg-gradient-to-b from-gray-300 to-gray-500" title="Minimal" />
+            </div>
+            <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-px h-3 bg-gradient-to-b from-violet-300 to-transparent" />
+          </div>
+        </div>
+
+        {/* Input node — Step 2 (chase) */}
+        <div className="flex items-center justify-center mb-6 animate-fade-up" style={{ animationDelay: '400ms' }}>
           <div className="relative flex items-center gap-3 bg-white rounded-2xl px-5 py-3 shadow-lg shadow-gray-200/60 border border-gray-100">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center shadow-md shadow-orange-200/50">
               <MessageSquare className="w-5 h-5 text-white" />
             </div>
             <div>
-              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Input</p>
+              <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Step 2 · Chase if unpaid</p>
               <p className="text-sm font-bold text-gray-800 font-[family-name:var(--font-heading)]">"Chase this payment"</p>
             </div>
             <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-px h-3 bg-gradient-to-b from-gray-300 to-transparent" />
@@ -69,7 +89,7 @@ function AgentFlowVisualization() {
           <div className="absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-[#FF6B35]/30 via-gray-200 to-transparent -translate-x-1/2" />
 
           {/* Dynamic Prompt */}
-          <div className="flex items-center justify-center mb-4 animate-fade-up" style={{ animationDelay: '200ms' }}>
+          <div className="flex items-center justify-center mb-4 animate-fade-up" style={{ animationDelay: '800ms' }}>
             <div className="middleware-node relative bg-gradient-to-r from-violet-50 to-purple-50 border border-violet-200/60 rounded-xl px-4 py-2.5 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-violet-500 to-purple-500 flex items-center justify-center">
@@ -89,7 +109,7 @@ function AgentFlowVisualization() {
           </div>
 
           {/* Dynamic Tools */}
-          <div className="flex items-center justify-center mb-4 animate-fade-up" style={{ animationDelay: '400ms' }}>
+          <div className="flex items-center justify-center mb-4 animate-fade-up" style={{ animationDelay: '1200ms' }}>
             <div className="middleware-node relative bg-gradient-to-r from-teal-50 to-emerald-50 border border-teal-200/60 rounded-xl px-4 py-2.5 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center">
@@ -108,7 +128,7 @@ function AgentFlowVisualization() {
           </div>
 
           {/* HITL */}
-          <div className="flex items-center justify-center mb-6 animate-fade-up" style={{ animationDelay: '600ms' }}>
+          <div className="flex items-center justify-center mb-6 animate-fade-up" style={{ animationDelay: '1600ms' }}>
             <div className="middleware-node relative bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/60 rounded-xl px-4 py-2.5 shadow-sm">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
@@ -128,7 +148,7 @@ function AgentFlowVisualization() {
         </div>
 
         {/* Escalation Level Cards */}
-        <div className="flex items-stretch gap-3 justify-center animate-fade-up" style={{ animationDelay: '800ms' }}>
+        <div className="flex items-stretch gap-3 justify-center animate-fade-up" style={{ animationDelay: '2000ms' }}>
           {levels.map((l) => (
             <div
               key={l.level}
