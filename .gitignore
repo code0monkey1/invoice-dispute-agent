@@ -11,3 +11,5 @@ frontend/dist/
 data/
 .vercel
 /public/
+frontend/coverage/
+.pytest_cache/
