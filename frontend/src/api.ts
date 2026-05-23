@@ -18,13 +18,15 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     ...options,
   });
   if (!res.ok) {
-    if (res.status === 401) {
+    // Only force-logout if a real auth session has expired. For guests (no token)
+    // hitting an auth-only endpoint, surface the error to the caller instead of
+    // kicking the visitor back to the landing page mid-demo.
+    if (res.status === 401 && localStorage.getItem('invoicechaser_token')) {
       localStorage.removeItem('invoicechaser_token');
       localStorage.removeItem('invoicechaser_user');
       window.location.href = '/';
     }
     const text = await res.text();
-    // Try to extract a user-friendly detail message from JSON responses
     let detail = text;
     try {
       const json = JSON.parse(text);
@@ -45,7 +47,7 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
     body: formData,
   });
   if (!res.ok) {
-    if (res.status === 401) {
+    if (res.status === 401 && localStorage.getItem('invoicechaser_token')) {
       localStorage.removeItem('invoicechaser_token');
       localStorage.removeItem('invoicechaser_user');
       window.location.href = '/';

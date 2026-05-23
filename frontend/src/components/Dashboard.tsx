@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Sparkles } from 'lucide-react'
+import { Plus, Sparkles, Info } from 'lucide-react'
 import StatsCards from './StatsCards'
 import InvoiceTable from './InvoiceTable'
 import InvoiceForm from './InvoiceForm'
@@ -10,7 +10,7 @@ import { useAuth } from '../contexts/AuthContext'
 
 export default function Dashboard() {
   const { invoices, loading: fetchLoading, createInvoice } = useInvoices()
-  const { user } = useAuth()
+  const { user, isGuest, signIn } = useAuth()
   const [formOpen, setFormOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
@@ -69,11 +69,34 @@ export default function Dashboard() {
         </button>
       </div>
 
+      {/* Guest-mode banner — visible only when running without Google sign-in */}
+      {isGuest && (
+        <div className="bg-gradient-to-r from-violet-50 to-orange-50 border border-violet-200/60 rounded-2xl p-4 flex items-start gap-3">
+          <div className="w-9 h-9 rounded-xl bg-white border border-violet-200 flex items-center justify-center text-violet-600 shrink-0">
+            <Info className="w-4 h-4" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-gray-900">
+              You're in demo mode{user?.name ? `, ${user.name}` : ''}.
+            </p>
+            <p className="text-xs text-gray-600 mt-0.5">
+              Create invoices, chat with the AI agent, and review escalation drafts — all your data is private to this browser session. To actually send emails from your Gmail and get Telegram alerts, sign in with Google.
+            </p>
+          </div>
+          <button
+            onClick={() => signIn()}
+            className="shrink-0 text-xs font-bold text-white bg-gray-900 hover:bg-gray-800 px-3 py-2 rounded-lg transition"
+          >
+            Sign in
+          </button>
+        </div>
+      )}
+
       {/* Stats */}
       <StatsCards invoices={invoices} />
 
-      {/* Telegram connect — authenticated users only */}
-      {user && <TelegramConnect />}
+      {/* Telegram connect — real users only (guests can't connect Telegram without auth) */}
+      {user && !isGuest && <TelegramConnect />}
 
       {/* Table */}
       <div>

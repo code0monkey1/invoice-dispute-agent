@@ -1,0 +1,474 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ModernTemplate > matches the snapshot for a full invoice 1`] = `
+{
+  "children": {
+    "children": [
+      {
+        "children": null,
+        "props": {
+          "style": [
+            {
+              "height": 40,
+              "marginBottom": 24,
+            },
+            {
+              "backgroundColor": "#FF6B35",
+            },
+          ],
+        },
+        "type": "VIEW",
+      },
+      {
+        "children": [
+          {
+            "children": [
+              null,
+              {
+                "children": "Acme Studio",
+                "props": {
+                  "style": {
+                    "fontSize": 14,
+                    "fontWeight": "bold",
+                    "marginBottom": 4,
+                  },
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "Jane Doe",
+                "props": {
+                  "style": {
+                    "color": "#555",
+                    "fontSize": 9,
+                    "lineHeight": 1.4,
+                  },
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "1 Main St
+Springfield",
+                "props": {
+                  "style": {
+                    "color": "#555",
+                    "fontSize": 9,
+                    "lineHeight": 1.4,
+                  },
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "jane@acme.example",
+                "props": {
+                  "style": {
+                    "color": "#555",
+                    "fontSize": 9,
+                    "lineHeight": 1.4,
+                  },
+                },
+                "type": "TEXT",
+              },
+              null,
+            ],
+            "props": {
+              "style": {
+                "flexDirection": "column",
+                "maxWidth": 280,
+              },
+            },
+            "type": "VIEW",
+          },
+          {
+            "children": [
+              {
+                "children": "INVOICE",
+                "props": {
+                  "style": {
+                    "color": "#888",
+                    "fontSize": 9,
+                    "letterSpacing": 1,
+                  },
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "INV-2026-001",
+                "props": {
+                  "style": {
+                    "fontSize": 22,
+                    "fontWeight": "bold",
+                    "marginTop": 2,
+                  },
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": [
+                  "Issued: ",
+                  "May 1, 2026",
+                ],
+                "props": {
+                  "style": {
+                    "color": "#555",
+                    "fontSize": 9,
+                    "lineHeight": 1.4,
+                    "marginTop": 6,
+                  },
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": [
+                  "Due: ",
+                  "May 15, 2026",
+                ],
+                "props": {
+                  "style": {
+                    "color": "#555",
+                    "fontSize": 9,
+                    "lineHeight": 1.4,
+                    "marginTop": 6,
+                  },
+                },
+                "type": "TEXT",
+              },
+            ],
+            "props": {
+              "style": {
+                "textAlign": "right",
+              },
+            },
+            "type": "VIEW",
+          },
+        ],
+        "props": {
+          "style": {
+            "flexDirection": "row",
+            "justifyContent": "space-between",
+            "marginBottom": 24,
+          },
+        },
+        "type": "VIEW",
+      },
+      {
+        "children": [
+          {
+            "children": "BILL TO",
+            "props": {
+              "style": {
+                "color": "#888",
+                "fontSize": 9,
+                "letterSpacing": 1,
+                "marginBottom": 4,
+              },
+            },
+            "type": "TEXT",
+          },
+          {
+            "children": "BigCorp",
+            "props": {
+              "style": {
+                "fontSize": 11,
+                "fontWeight": "bold",
+              },
+            },
+            "type": "TEXT",
+          },
+          {
+            "children": "ap@bigcorp.example",
+            "props": {
+              "style": {
+                "color": "#444",
+                "fontSize": 9,
+                "lineHeight": 1.4,
+              },
+            },
+            "type": "TEXT",
+          },
+          null,
+        ],
+        "props": {
+          "style": {
+            "marginBottom": 16,
+          },
+        },
+        "type": "VIEW",
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": "DESCRIPTION",
+                "props": {
+                  "style": [
+                    {
+                      "color": "#888",
+                      "fontSize": 9,
+                      "fontWeight": "bold",
+                    },
+                    {
+                      "flex": 4,
+                    },
+                  ],
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "QTY",
+                "props": {
+                  "style": [
+                    {
+                      "color": "#888",
+                      "fontSize": 9,
+                      "fontWeight": "bold",
+                    },
+                    {
+                      "flex": 1,
+                      "textAlign": "right",
+                    },
+                  ],
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "UNIT",
+                "props": {
+                  "style": [
+                    {
+                      "color": "#888",
+                      "fontSize": 9,
+                      "fontWeight": "bold",
+                    },
+                    {
+                      "flex": 1.5,
+                      "textAlign": "right",
+                    },
+                  ],
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "TOTAL",
+                "props": {
+                  "style": [
+                    {
+                      "color": "#888",
+                      "fontSize": 9,
+                      "fontWeight": "bold",
+                    },
+                    {
+                      "flex": 1.5,
+                      "textAlign": "right",
+                    },
+                  ],
+                },
+                "type": "TEXT",
+              },
+            ],
+            "props": {
+              "style": {
+                "borderBottomWidth": 1,
+                "flexDirection": "row",
+                "paddingBottom": 4,
+              },
+            },
+            "type": "VIEW",
+          },
+          [
+            {
+              "children": [
+                {
+                  "children": "Design work",
+                  "props": {
+                    "style": [
+                      {
+                        "fontSize": 10,
+                      },
+                      {
+                        "flex": 4,
+                      },
+                    ],
+                  },
+                  "type": "TEXT",
+                },
+                {
+                  "children": 10,
+                  "props": {
+                    "style": [
+                      {
+                        "fontSize": 10,
+                      },
+                      {
+                        "flex": 1,
+                        "textAlign": "right",
+                      },
+                    ],
+                  },
+                  "type": "TEXT",
+                },
+                {
+                  "children": "$150.00",
+                  "props": {
+                    "style": [
+                      {
+                        "fontSize": 10,
+                      },
+                      {
+                        "flex": 1.5,
+                        "textAlign": "right",
+                      },
+                    ],
+                  },
+                  "type": "TEXT",
+                },
+                {
+                  "children": "$1,500.00",
+                  "props": {
+                    "style": [
+                      {
+                        "fontSize": 10,
+                      },
+                      {
+                        "flex": 1.5,
+                        "textAlign": "right",
+                      },
+                    ],
+                  },
+                  "type": "TEXT",
+                },
+              ],
+              "props": {
+                "style": [
+                  {
+                    "flexDirection": "row",
+                    "paddingVertical": 4,
+                  },
+                  {},
+                ],
+              },
+              "type": "VIEW",
+            },
+          ],
+        ],
+        "props": {
+          "style": {
+            "marginTop": 8,
+          },
+        },
+        "type": "VIEW",
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": "Subtotal",
+                "props": {
+                  "style": {
+                    "color": "#666",
+                    "marginRight": 12,
+                    "textAlign": "right",
+                    "width": 100,
+                  },
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "$1,500.00",
+                "props": {
+                  "style": {
+                    "textAlign": "right",
+                    "width": 80,
+                  },
+                },
+                "type": "TEXT",
+              },
+            ],
+            "props": {
+              "style": {
+                "flexDirection": "row",
+                "marginBottom": 2,
+              },
+            },
+            "type": "VIEW",
+          },
+          null,
+          null,
+          {
+            "children": [
+              {
+                "children": "Total",
+                "props": {
+                  "style": [
+                    {
+                      "color": "#666",
+                      "marginRight": 12,
+                      "textAlign": "right",
+                      "width": 100,
+                    },
+                    {
+                      "fontSize": 14,
+                      "fontWeight": "bold",
+                      "marginTop": 4,
+                    },
+                  ],
+                },
+                "type": "TEXT",
+              },
+              {
+                "children": "$1,500.00",
+                "props": {
+                  "style": [
+                    {
+                      "textAlign": "right",
+                      "width": 80,
+                    },
+                    {
+                      "fontSize": 14,
+                      "fontWeight": "bold",
+                      "marginTop": 4,
+                    },
+                  ],
+                },
+                "type": "TEXT",
+              },
+            ],
+            "props": {
+              "style": {
+                "flexDirection": "row",
+                "marginBottom": 2,
+              },
+            },
+            "type": "VIEW",
+          },
+        ],
+        "props": {
+          "style": {
+            "alignItems": "flex-end",
+            "marginTop": 12,
+          },
+        },
+        "type": "VIEW",
+      },
+      null,
+      null,
+      null,
+    ],
+    "props": {
+      "size": "A4",
+      "style": {
+        "fontFamily": "Helvetica",
+        "fontSize": 10,
+        "paddingBottom": 40,
+        "paddingHorizontal": 40,
+        "paddingTop": 0,
+      },
+    },
+    "type": "PAGE",
+  },
+  "props": {},
+  "type": "DOCUMENT",
+}
+`;
