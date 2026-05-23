@@ -105,3 +105,55 @@ export interface User {
   name: string;
   picture: string;
 }
+
+// ─── Invoice Generator ───────────────────────────────────────────
+
+export type TemplateId = 'modern' | 'classic' | 'minimal';
+
+export type Currency = 'USD' | 'EUR' | 'GBP' | 'INR' | 'CAD' | 'AUD';
+
+export interface SenderProfile {
+  business_name?: string;
+  your_name?: string;
+  your_email?: string;
+  address?: string;
+  logo_url?: string;
+  tax_id?: string;
+}
+
+export interface LineItem {
+  description: string;
+  quantity: number;
+  unit_price_cents: number;
+}
+
+export interface InvoiceData {
+  sender: SenderProfile;
+  client: { name: string; email: string; address?: string };
+  meta: {
+    invoice_number: string;
+    issue_date: string;  // yyyy-mm-dd
+    due_date: string;    // yyyy-mm-dd
+    currency: Currency;
+  };
+  line_items: LineItem[];
+  tax_rate_pct?: number;
+  discount?: { kind: 'flat' | 'pct'; value: number };
+  payment?: { url: string; label?: string };
+  payment_instructions?: string;
+  notes?: string;
+  template: TemplateId;
+  accent_color?: string;  // honored by Modern only
+}
+
+export interface GenerateInvoiceRequest {
+  invoice_id: string;
+  client_name: string;
+  client_email: string;
+  invoice_amount_cents: number;
+  due_date: string;
+  jurisdiction?: string;
+  storage_path: string;  // path within invoice-files bucket
+  file_name: string;
+  file_size: number;
+}
