@@ -4,7 +4,6 @@ import { Plus, Sparkles, Info, FileText } from 'lucide-react'
 import StatsCards from './StatsCards'
 import InvoiceTable from './InvoiceTable'
 import InvoiceForm from './InvoiceForm'
-import TelegramConnect from './TelegramConnect'
 import { useInvoices } from '../hooks/useInvoices'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -104,8 +103,6 @@ export default function Dashboard() {
       {/* Stats */}
       <StatsCards invoices={invoices} />
 
-      {/* Telegram connect — real users only (guests can't connect Telegram without auth) */}
-      {user && !isGuest && <TelegramConnect />}
 
       {/* Table */}
       <div>

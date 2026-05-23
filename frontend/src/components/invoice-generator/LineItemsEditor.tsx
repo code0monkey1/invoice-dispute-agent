@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Trash2, Plus } from 'lucide-react';
 import type { LineItem } from '../../types';
 
@@ -37,11 +37,6 @@ function PriceInput({
   onChangeCents: (c: number) => void;
 }) {
   const [raw, setRaw] = useState(() => cents === 0 ? '' : (cents / 100).toFixed(2));
-
-  // Sync if the external value changes (e.g. row added/reset from parent)
-  useEffect(() => {
-    setRaw(cents === 0 ? '' : (cents / 100).toFixed(2));
-  }, [cents]);
 
   return (
     <input
