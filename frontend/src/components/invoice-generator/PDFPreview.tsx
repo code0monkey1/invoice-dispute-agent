@@ -9,20 +9,25 @@ interface Props {
 }
 
 /**
- * Live PDF preview without the flicker of <PDFViewer>.
+ * Flicker-free live PDF preview.
  *
- * <PDFViewer> from @react-pdf/renderer recreates its iframe on every prop
- * change, producing a visible blank-and-redraw flash on each keystroke.
- *
- * Instead we render a plain <iframe> whose `src` is a Blob URL we generate
- * ourselves. When `data` changes we kick off a background `pdf().toBlob()`,
- * and only update the iframe src once the new blob is ready — the iframe
- * DOM element itself stays mounted, so the browser swaps the document in
- * place. Old object URLs are revoked to keep memory bounded.
+ * Two iframes are stacked. One is "visible" (opacity 1) and holds the
+ * current PDF; the other is "buffer" (opacity 0) and is used to preload
+ * the next PDF off-screen. Once the buffer iframe fires `onLoad`, we
+ * swap which one is visible and revoke the now-unused blob URL. The user
+ * never sees a blank frame — the old PDF stays on screen until the new
+ * one is fully painted.
  */
 export function PDFPreview({ data, className }: Props) {
-  const [url, setUrl] = useState<string | null>(null);
+  // Which iframe slot ("a" or "b") is currently visible.
+  const [activeSlot, setActiveSlot] = useState<'a' | 'b'>('a');
+  // URLs and the data shape behind each slot.
+  const [urlA, setUrlA] = useState<string | null>(null);
+  const [urlB, setUrlB] = useState<string | null>(null);
+  // Track in-flight renders so a slower one can't overwrite a newer one.
   const generation = useRef(0);
+  // Track the next pending URL so the iframe's onLoad knows when to swap.
+  const pendingSlot = useRef<'a' | 'b' | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,43 +38,72 @@ export function PDFPreview({ data, className }: Props) {
       .then((blob) => {
         if (cancelled || myGen !== generation.current) return;
         const next = URL.createObjectURL(blob);
-        setUrl((prev) => {
-          if (prev) URL.revokeObjectURL(prev);
-          return next;
-        });
+        // Write the new URL into the inactive slot.
+        if (activeSlot === 'a') {
+          setUrlB((old) => { if (old) URL.revokeObjectURL(old); return next; });
+          pendingSlot.current = 'b';
+        } else {
+          setUrlA((old) => { if (old) URL.revokeObjectURL(old); return next; });
+          pendingSlot.current = 'a';
+        }
       })
       .catch((err) => {
         if (cancelled) return;
         console.error('PDF preview render failed:', err);
       });
 
-    return () => {
-      cancelled = true;
-    };
-  }, [data]);
+    return () => { cancelled = true; };
+  }, [data, activeSlot]);
 
-  // Revoke the last URL on unmount.
+  // Cleanup all URLs on unmount.
   useEffect(() => {
     return () => {
-      if (url) URL.revokeObjectURL(url);
+      if (urlA) URL.revokeObjectURL(urlA);
+      if (urlB) URL.revokeObjectURL(urlB);
     };
-    // We intentionally only run this cleanup on unmount; on each render the
-    // value of `url` is captured via closure and the per-update revoke
-    // happens inside the data effect above.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const handleLoaded = (slot: 'a' | 'b') => {
+    // Only flip if this is the slot we were waiting on.
+    if (pendingSlot.current === slot) {
+      pendingSlot.current = null;
+      setActiveSlot(slot);
+    }
+  };
+
   return (
-    <div className={className ?? 'w-full h-full min-h-[600px]'}>
-      {url ? (
+    <div className={`${className ?? 'w-full h-full min-h-[600px]'} relative`}>
+      {urlA && (
         <iframe
-          title="Invoice PDF preview"
-          src={`${url}#toolbar=0&navpanes=0&scrollbar=1`}
-          className="w-full h-full"
-          style={{ border: 'none', background: '#fff' }}
+          title="Invoice PDF preview A"
+          src={`${urlA}#toolbar=0&navpanes=0&scrollbar=1`}
+          onLoad={() => handleLoaded('a')}
+          className="absolute inset-0 w-full h-full transition-opacity duration-150"
+          style={{
+            border: 'none',
+            background: '#fff',
+            opacity: activeSlot === 'a' ? 1 : 0,
+            pointerEvents: activeSlot === 'a' ? 'auto' : 'none',
+          }}
         />
-      ) : (
-        <div className="w-full h-full flex items-center justify-center text-sm text-slate-400">
+      )}
+      {urlB && (
+        <iframe
+          title="Invoice PDF preview B"
+          src={`${urlB}#toolbar=0&navpanes=0&scrollbar=1`}
+          onLoad={() => handleLoaded('b')}
+          className="absolute inset-0 w-full h-full transition-opacity duration-150"
+          style={{
+            border: 'none',
+            background: '#fff',
+            opacity: activeSlot === 'b' ? 1 : 0,
+            pointerEvents: activeSlot === 'b' ? 'auto' : 'none',
+          }}
+        />
+      )}
+      {!urlA && !urlB && (
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
           Generating preview…
         </div>
       )}
