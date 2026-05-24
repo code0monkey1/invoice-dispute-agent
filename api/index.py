@@ -833,6 +833,12 @@ def patch_sender_profile_route(
         if not _EMAIL_RE.match(incoming["your_email"]):
             raise HTTPException(status_code=422, detail="Invalid email format")
 
+    if "logo_url" in incoming and incoming["logo_url"]:
+        import urllib.parse
+        parsed = urllib.parse.urlparse(incoming["logo_url"])
+        if parsed.scheme not in ("http", "https") or not parsed.netloc:
+            raise HTTPException(status_code=422, detail="logo_url must be an http(s) URL")
+
     existing = (get_user(user_id) or {}).get("sender_profile") or {}
     merged = {**existing, **incoming}
     return update_user_sender_profile(user_id, merged)
@@ -1028,6 +1034,7 @@ async def upload_generated_invoice_pdf(
 
     Returns the storage path which the frontend then passes to POST /api/invoices/generated.
     """
+    enforce_rate_limit(_client_key(request, authorization), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
     _user, user_id = resolve_user_id(request, response, authorization)
 
     content = await file.read()
@@ -1065,11 +1072,19 @@ def create_generated_invoice(
     The chase agent is NOT started here (escalation_level=0). The invoice
     appears in /dashboard and the agent kicks in when the user opens chat.
     """
+    enforce_rate_limit(_client_key(request, authorization), "generated_invoice", PARSE_LIMIT_PER_MINUTE)
     _user, user_id = resolve_user_id(request, response, authorization)
 
     # Storage path ownership check.
+    #
+    # Use posixpath.normpath to collapse `..` and double-slashes BEFORE the
+    # prefix check — a raw startswith("generated/{user}/") would happily
+    # accept "generated/{user}/../victim/foo.pdf", letting an attacker
+    # register an invoice row pointing at someone else's stored file.
+    import posixpath
     prefix = f"generated/{user_id}/"
-    if not payload.storage_path.startswith(prefix):
+    normalized = posixpath.normpath(payload.storage_path)
+    if not normalized.startswith(prefix) or ".." in normalized.split("/"):
         raise HTTPException(
             status_code=403,
             detail=f"Storage path must be under {prefix}",

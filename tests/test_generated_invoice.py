@@ -71,6 +71,18 @@ async def test_rejects_storage_path_for_other_user(client, fake_db):
 
 
 @pytest.mark.asyncio
+async def test_rejects_storage_path_traversal(client, fake_db):
+    """`startswith` alone would accept ../ traversal; normpath collapse blocks it."""
+    user_id = await _get_user_id(client)
+    payload = {
+        **VALID_BODY,
+        "storage_path": f"generated/{user_id}/../other-user/legit.pdf",
+    }
+    r = await client.post("/api/invoices/generated", json=payload)
+    assert r.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_rejects_duplicate_invoice_id(client, fake_db):
     user_id = await _get_user_id(client)
     payload = {**VALID_BODY, "storage_path": f"generated/{user_id}/abc/INV.pdf"}

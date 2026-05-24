@@ -43,6 +43,25 @@ async def test_patch_rejects_invalid_email(client, fake_db):
 
 
 @pytest.mark.asyncio
+async def test_patch_rejects_non_http_logo_url(client, fake_db):
+    """`logo_url` must be http(s) — prevent file://, javascript:, IMDS, etc."""
+    r = await client.patch("/api/users/me/sender-profile", json={"logo_url": "file:///etc/passwd"})
+    assert r.status_code == 422
+    r = await client.patch("/api/users/me/sender-profile", json={"logo_url": "javascript:alert(1)"})
+    assert r.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_patch_accepts_https_logo_url(client, fake_db):
+    r = await client.patch(
+        "/api/users/me/sender-profile",
+        json={"logo_url": "https://example.com/logo.png"},
+    )
+    assert r.status_code == 200
+    assert r.json()["logo_url"] == "https://example.com/logo.png"
+
+
+@pytest.mark.asyncio
 async def test_patch_merges_with_existing(client, fake_db):
     """A PATCH only sets the supplied fields; others persist."""
     await client.patch(
