@@ -195,30 +195,26 @@ function getPresenterMood(sceneIdx: number, progress: number): PresenterMood {
 }
 
 function AnimatedPresenter({ mood }: { mood: PresenterMood }) {
-  const moods = Object.entries(PRESENTER_PHOTOS) as Array<[PresenterMood, string]>
-
+  // Exactly one photo on screen at any time; React swaps the img src as the
+  // mood prop changes, so the expression tracks the scene progress.
   return (
     <div
-      className={`presenter-photo-avatar presenter-photo-avatar--${mood} h-24 w-24 rounded-2xl border-2 border-white bg-white shadow-lg shadow-orange-200/45 sm:h-[108px] sm:w-[108px]`}
+      className="relative h-24 w-24 overflow-hidden rounded-2xl border-2 border-white bg-white shadow-lg shadow-orange-200/45 sm:h-[108px] sm:w-[108px] transition-shadow duration-500"
       aria-label={`InvoiceChaser product guide, ${mood} expression`}
       role="img"
     >
-      {moods.map(([photoMood, src]) => (
-        <img
-          key={photoMood}
-          src={src}
-          alt=""
-          width={108}
-          height={108}
-          loading="eager"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          className={`presenter-photo ${photoMood === mood ? 'presenter-photo--active' : ''}`}
-          aria-hidden="true"
-        />
-      ))}
-      <span className="presenter-spark presenter-spark-one" />
-      <span className="presenter-spark presenter-spark-two" />
+      <img
+        key={mood}
+        src={PRESENTER_PHOTOS[mood]}
+        alt=""
+        width={108}
+        height={108}
+        loading="eager"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        className="h-full w-full object-cover"
+        aria-hidden="true"
+      />
     </div>
   )
 }
