@@ -1,10 +1,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Sparkles, Info } from 'lucide-react'
+import { Plus, Sparkles, Info, FileText } from 'lucide-react'
 import StatsCards from './StatsCards'
 import InvoiceTable from './InvoiceTable'
 import InvoiceForm from './InvoiceForm'
-import TelegramConnect from './TelegramConnect'
 import { useInvoices } from '../hooks/useInvoices'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -57,16 +56,25 @@ export default function Dashboard() {
             Track, escalate, and resolve overdue invoice disputes with AI assistance
           </p>
         </div>
-        <button
-          onClick={() => {
-            setCreateError(null)
-            setFormOpen(true)
-          }}
-          className="btn-gradient inline-flex items-center gap-2 text-white font-bold rounded-xl px-5 py-3 text-sm transition-all shadow-lg shadow-orange-300/40 hover:shadow-orange-400/50 font-[family-name:var(--font-heading)]"
-        >
-          <Plus className="w-4 h-4" strokeWidth={3} />
-          New Invoice
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/generate-invoice')}
+            className="inline-flex items-center gap-2 text-white font-bold rounded-xl px-5 py-3 text-sm transition-all bg-violet-600 hover:bg-violet-700 shadow-lg shadow-violet-300/40 hover:shadow-violet-400/50 font-[family-name:var(--font-heading)]"
+          >
+            <FileText className="w-4 h-4" strokeWidth={3} />
+            Generate Invoice
+          </button>
+          <button
+            onClick={() => {
+              setCreateError(null)
+              setFormOpen(true)
+            }}
+            className="btn-gradient inline-flex items-center gap-2 text-white font-bold rounded-xl px-5 py-3 text-sm transition-all shadow-lg shadow-orange-300/40 hover:shadow-orange-400/50 font-[family-name:var(--font-heading)]"
+          >
+            <Plus className="w-4 h-4" strokeWidth={3} />
+            Chase Existing
+          </button>
+        </div>
       </div>
 
       {/* Guest-mode banner — visible only when running without Google sign-in */}
@@ -95,8 +103,6 @@ export default function Dashboard() {
       {/* Stats */}
       <StatsCards invoices={invoices} />
 
-      {/* Telegram connect — real users only (guests can't connect Telegram without auth) */}
-      {user && !isGuest && <TelegramConnect />}
 
       {/* Table */}
       <div>

@@ -254,38 +254,16 @@ def update_user_history_id(user_id: str, history_id: str) -> None:
     )
 
 
-# ---------------------------------------------------------------------------
-# Telegram helpers (per-user routing)
-# ---------------------------------------------------------------------------
-
-def set_user_telegram_link_token(user_id: str, token: str) -> None:
-    """Store a one-time link token used to bind a Telegram chat to *user_id*."""
+def update_user_sender_profile(user_id: str, profile: dict) -> dict:
+    """Replace the user's sender_profile JSONB column and return the merged result."""
     _supabase_rest_request(
         "PATCH",
         "users",
         query=[("id", f"eq.{user_id}")],
-        payload={"telegram_link_token": token},
+        payload={"sender_profile": profile},
     )
-
-
-def get_user_by_telegram_link_token(token: str) -> Optional[dict]:
-    """Return the user row whose telegram_link_token matches, or None."""
-    rows = _supabase_rest_request(
-        "GET",
-        "users",
-        query=[("select", "*"), ("telegram_link_token", f"eq.{token}")],
-    ) or []
-    return rows[0] if rows else None
-
-
-def update_user_telegram_chat_id(user_id: str, chat_id: Optional[str]) -> None:
-    """Persist (or clear) the Telegram chat_id for *user_id* and clear the link token."""
-    _supabase_rest_request(
-        "PATCH",
-        "users",
-        query=[("id", f"eq.{user_id}")],
-        payload={"telegram_chat_id": chat_id, "telegram_link_token": None},
-    )
+    user = get_user(user_id) or {}
+    return user.get("sender_profile") or {}
 
 
 # ---------------------------------------------------------------------------
@@ -503,7 +481,7 @@ def add_communication(
     """
     Append a communication record and return it as a ``dict``.
 
-    *comm_type* is a free-form string (e.g. ``"email"``, ``"telegram"``).
+    *comm_type* is a free-form string (e.g. ``"email"``, ``"client_reply"``).
     *direction* is ``"outbound"`` or ``"inbound"``.
 
     *user_id* is the owner of the invoice. If omitted, it's derived from the

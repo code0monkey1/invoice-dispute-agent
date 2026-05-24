@@ -155,17 +155,30 @@ export const api = {
       }
     ),
 
-  // Telegram
-  telegramStatus: () =>
-    request<{ connected: boolean; chat_id: string | null }>('/api/telegram/status'),
+  // Invoice Generator
+  getSenderProfile: () =>
+    request<import('./types').SenderProfile>('/api/users/me/sender-profile'),
 
-  telegramConnect: () =>
-    request<{ deep_link: string; token: string }>('/api/telegram/connect', {
-      method: 'POST',
+  updateSenderProfile: (data: Partial<import('./types').SenderProfile>) =>
+    request<import('./types').SenderProfile>('/api/users/me/sender-profile', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
 
-  telegramDisconnect: () =>
-    request<{ connected: boolean }>('/api/telegram/disconnect', {
+  createGeneratedInvoice: (data: import('./types').GenerateInvoiceRequest) =>
+    request<import('./types').Invoice>('/api/invoices/generated', {
       method: 'POST',
+      body: JSON.stringify(data),
     }),
+
+  uploadGeneratedInvoicePdf: (blob: Blob, invoiceId: string) => {
+    const form = new FormData();
+    const file_name = `${invoiceId}.pdf`;
+    form.append('file', new File([blob], file_name, { type: 'application/pdf' }));
+    form.append('invoice_id', invoiceId);
+    return requestForm<{ storage_path: string; file_name: string; file_size: number }>(
+      '/api/invoices/generated/upload',
+      form,
+    );
+  },
 };
