@@ -9,24 +9,24 @@ interface Props {
 }
 
 /**
- * Flicker-free live PDF preview.
+ * Flicker-free live PDF preview using two stacked iframes (A / B).
  *
- * Two iframes are stacked. One is "visible" (opacity 1) and holds the
- * current PDF; the other is "buffer" (opacity 0) and is used to preload
- * the next PDF off-screen. Once the buffer iframe fires `onLoad`, we
- * swap which one is visible and revoke the now-unused blob URL. The user
- * never sees a blank frame — the old PDF stays on screen until the new
- * one is fully painted.
+ * One iframe is visible; the other preloads the next PDF off-screen.
+ * On `onLoad` of the off-screen iframe we flip which one is visible —
+ * the user never sees a blank frame.
+ *
+ * Critical: this effect must only re-fire when `data` changes. We read
+ * which slot is currently active via a ref, not via state, so that a
+ * swap (which mutates state) doesn't re-trigger the effect.
  */
 export function PDFPreview({ data, className }: Props) {
-  // Which iframe slot ("a" or "b") is currently visible.
   const [activeSlot, setActiveSlot] = useState<'a' | 'b'>('a');
-  // URLs and the data shape behind each slot.
+  const activeSlotRef = useRef<'a' | 'b'>('a');
+  useEffect(() => { activeSlotRef.current = activeSlot; }, [activeSlot]);
+
   const [urlA, setUrlA] = useState<string | null>(null);
   const [urlB, setUrlB] = useState<string | null>(null);
-  // Track in-flight renders so a slower one can't overwrite a newer one.
   const generation = useRef(0);
-  // Track the next pending URL so the iframe's onLoad knows when to swap.
   const pendingSlot = useRef<'a' | 'b' | null>(null);
 
   useEffect(() => {
@@ -38,8 +38,8 @@ export function PDFPreview({ data, className }: Props) {
       .then((blob) => {
         if (cancelled || myGen !== generation.current) return;
         const next = URL.createObjectURL(blob);
-        // Write the new URL into the inactive slot.
-        if (activeSlot === 'a') {
+        // Write into the slot that is NOT currently visible.
+        if (activeSlotRef.current === 'a') {
           setUrlB((old) => { if (old) URL.revokeObjectURL(old); return next; });
           pendingSlot.current = 'b';
         } else {
@@ -53,9 +53,9 @@ export function PDFPreview({ data, className }: Props) {
       });
 
     return () => { cancelled = true; };
-  }, [data, activeSlot]);
+  }, [data]);
 
-  // Cleanup all URLs on unmount.
+  // Revoke remaining URLs on unmount.
   useEffect(() => {
     return () => {
       if (urlA) URL.revokeObjectURL(urlA);
@@ -65,7 +65,6 @@ export function PDFPreview({ data, className }: Props) {
   }, []);
 
   const handleLoaded = (slot: 'a' | 'b') => {
-    // Only flip if this is the slot we were waiting on.
     if (pendingSlot.current === slot) {
       pendingSlot.current = null;
       setActiveSlot(slot);
