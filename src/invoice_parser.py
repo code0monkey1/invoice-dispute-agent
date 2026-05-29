@@ -127,8 +127,24 @@ def _llm_parse(text: str) -> ParsedInvoice:
             return ParsedInvoice(**json.loads(str(result)))
         except Exception as exc:
             last_error = exc
+            # Retry on anything that looks transient — rate limits (429),
+            # upstream/server errors (5xx), timeouts, and dropped connections.
+            # A single Groq hiccup otherwise dumps the user into the much
+            # weaker heuristic fallback (wrong email/jurisdiction). Only a
+            # clearly-permanent error (e.g. 401 bad key, 400 bad request)
+            # short-circuits the loop.
             message = str(exc).lower()
-            if "429" not in message and "rate_limit" not in message:
+            transient = any(s in message for s in (
+                "429", "rate_limit", "rate limit",
+                "500", "502", "503", "504",
+                "timeout", "timed out", "connection",
+                "temporarily", "overloaded", "unavailable",
+            ))
+            permanent = any(s in message for s in (
+                "401", "invalid api key", "unauthorized", "authentication",
+                "400", "invalid request",
+            ))
+            if permanent or (not transient and attempt >= 1):
                 break
             time.sleep(1.5 * (attempt + 1))
     raise last_error or RuntimeError("Invoice extraction failed")
