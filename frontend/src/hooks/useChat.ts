@@ -2,6 +2,17 @@ import { useState, useCallback, useEffect } from 'react'
 import { api } from '../api'
 import type { Message, Interrupt, AgentState, SupabaseCommEntry } from '../types'
 
+function mergeMessages(current: Message[], incoming?: Message[]) {
+  if (!incoming) return current
+  return incoming.length >= current.length ? incoming : current
+}
+
+function mergeHistoryMessages(current: Message[], incoming?: Message[]) {
+  if (!incoming) return current
+  if (current.length === 0 || incoming.length > current.length) return incoming
+  return current
+}
+
 export function useChat(invoiceId: string) {
   const [messages, setMessages] = useState<Message[]>([])
   const [interrupt, setInterrupt] = useState<Interrupt | null>(null)
@@ -46,7 +57,7 @@ export function useChat(invoiceId: string) {
       setMessages(prev => [...prev, userMsg])
 
       const res = await api.chat(threadId, text)
-      setMessages(res.messages)
+      setMessages(prev => mergeMessages(prev, res.messages))
       setInterrupt(res.interrupt)
       setAgentState(res.state)
     } catch (err) {
@@ -62,7 +73,7 @@ export function useChat(invoiceId: string) {
     setError(null)
     try {
       const res = await api.resume(invoiceId, 'approve', approvedDraft)
-      setMessages(res.messages)
+      setMessages(prev => mergeMessages(prev, res.messages))
       setInterrupt(res.interrupt)
       setAgentState(res.state)
       if (res.email_sent !== undefined) {
@@ -85,7 +96,7 @@ export function useChat(invoiceId: string) {
     setError(null)
     try {
       const res = await api.resume(invoiceId, 'reject', message || 'Please revise.')
-      setMessages(res.messages)
+      setMessages(prev => mergeMessages(prev, res.messages))
       setInterrupt(res.interrupt)
       setAgentState(res.state)
     } catch (err) {
@@ -108,7 +119,7 @@ export function useChat(invoiceId: string) {
     if (!invoiceId) return
     try {
       const res = await api.getHistory(invoiceId)
-      if (res.messages) setMessages(res.messages)
+      if (res.messages) setMessages(prev => mergeHistoryMessages(prev, res.messages))
       setInterrupt(res.interrupt)
       if (res.state) setAgentState(res.state)
       if (res.communications) setCommunications(res.communications)

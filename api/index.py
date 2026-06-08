@@ -297,13 +297,39 @@ def create_invoice_and_start_agent(
     }
 
 
+def serialize_message_content(content) -> str:
+    """Normalize LangChain message content into text React can render safely."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                text = item.get("text") or item.get("content")
+                if text is not None:
+                    parts.append(str(text))
+                else:
+                    parts.append(json_lib.dumps(item, ensure_ascii=False))
+            else:
+                parts.append(str(item))
+        return "\n".join(part for part in parts if part)
+    if isinstance(content, dict):
+        text = content.get("text") or content.get("content")
+        return str(text) if text is not None else json_lib.dumps(content, ensure_ascii=False)
+    return str(content)
+
+
 def serialize_messages(messages):
     """Extract serializable message data from LangChain messages."""
     result = []
     for msg in messages:
         entry = {
             "type": msg.__class__.__name__,
-            "content": msg.content if hasattr(msg, "content") else str(msg),
+            "content": serialize_message_content(msg.content) if hasattr(msg, "content") else str(msg),
         }
         if hasattr(msg, "tool_calls") and msg.tool_calls:
             entry["tool_calls"] = [

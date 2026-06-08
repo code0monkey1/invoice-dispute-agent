@@ -66,6 +66,7 @@ export default function ChatPanel() {
     agentState?.invoice_id &&
     agentState.status !== 'paid' &&
     !interrupt &&
+    messages.length === 0 &&
     !hasOutboundCommunication
   )
 

@@ -35,7 +35,7 @@ export interface SupabaseCommEntry {
 
 export interface Message {
   type: string;
-  content: string;
+  content: unknown;
   name?: string;
   tool_calls?: { name: string; args: Record<string, unknown> }[];
 }
