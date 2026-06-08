@@ -40,6 +40,7 @@ from src.db import (
     update_invoice, get_invoices_by_client_email,
     add_communication, get_communications,
     build_invoice_storage_id, parse_public_invoice_id, upload_invoice_file,
+    download_invoice_file,
     ensure_guest_user, migrate_guest_to_user,
 )
 from src.invoice_parser import (
@@ -275,45 +276,24 @@ def create_invoice_and_start_agent(
         "communication_history": [],
     }
 
-    if balance_due <= 0:
-        agent.update_state(config, initial_state)
-        return {
-            "invoice": invoice,
-            "messages": [],
-            "interrupt": None,
-            "state": initial_state,
-        }
-
     try:
-        response = invoke_agent_with_retry(
-            {
-                "messages": [HumanMessage(content=build_initial_invoice_message(req))],
-                **initial_state,
-            },
-            context=context,
-            config=config,
-        )
+        agent.update_state(config, initial_state)
     except Exception:
-        logger.exception("Initial agent invocation failed for invoice %s", storage_invoice_id)
-        try:
-            agent.update_state(config, initial_state)
-        except Exception:
-            logger.exception("Failed to initialize fallback state for invoice %s", storage_invoice_id)
-
+        logger.exception("Failed to initialize agent state for invoice %s", storage_invoice_id)
         return {
             "invoice": invoice,
             "messages": [],
             "interrupt": None,
             "state": initial_state,
-            "initialization_error": "The dispute was created, but the first AI draft could not be generated yet.",
+            "initialization_error": "The dispute was created, but the AI chat state could not be initialized yet.",
         }
 
     invoice["communication_history"] = []
     return {
         "invoice": invoice,
-        "messages": serialize_messages(response["messages"]),
-        "interrupt": extract_interrupt(response, context),
-        "state": extract_state(response),
+        "messages": [],
+        "interrupt": None,
+        "state": initial_state,
     }
 
 
@@ -336,9 +316,15 @@ def serialize_messages(messages):
     return result
 
 
-def generate_draft_preview(tool_name: str, state: dict, context: FreelancerContext) -> str:
+def generate_draft_preview(
+    tool_name: str,
+    state: dict,
+    context: FreelancerContext,
+    action_args: dict | None = None,
+) -> str:
     """Generate the actual email draft that the tool would produce, so users can review it."""
     try:
+        action_args = action_args or {}
         client_name = state.get("client_name", "Client")
         client_email = state.get("client_email", "")
         invoice_id = state.get("invoice_id", "N/A")
@@ -350,6 +336,21 @@ def generate_draft_preview(tool_name: str, state: dict, context: FreelancerConte
         days_overdue = state.get("days_overdue", 0)
         jurisdiction = state.get("jurisdiction", "")
 
+        if tool_name == "draft_invoice_delivery_email":
+            subject = str(action_args.get("subject") or f"Invoice #{invoice_id} from {context.business_name}").strip()
+            body = str(action_args.get("body") or "").strip()
+            if not body:
+                body = (
+                    f"Hi {client_name},\n\n"
+                    f"Please find Invoice #{invoice_id} attached for ${invoice_amount:,.2f}. "
+                    f"The remaining balance due is ${balance_due:,.2f}.\n\n"
+                    f"Please review it when you have a chance and let me know if you have any questions.\n\n"
+                    f"Best regards,\n"
+                    f"{context.freelancer_name}\n"
+                    f"{context.business_name}\n"
+                    f"{context.freelancer_email}"
+                )
+            return f"Subject: {subject}\n\n{body}"
         if tool_name == "draft_polite_reminder":
             return (
                 f"Subject: Friendly Reminder - Invoice #{invoice_id} Payment\n\n"
@@ -417,8 +418,30 @@ def generate_draft_preview(tool_name: str, state: dict, context: FreelancerConte
     return ""
 
 
-def send_email_via_gmail(user_id: str, to_email: str, subject: str, body: str,
-                         thread_id: str | None = None) -> dict | None:
+def build_invoice_attachment(invoice: dict | None) -> dict | None:
+    """Return a Gmail attachment dict for the invoice file, or None if unavailable."""
+    if not invoice or not invoice.get("invoice_file_path"):
+        return None
+    try:
+        content = download_invoice_file(INVOICE_FILE_BUCKET, invoice["invoice_file_path"])
+    except Exception:
+        logger.exception("Failed to download invoice attachment for %s", invoice.get("id"))
+        return None
+    return {
+        "filename": invoice.get("invoice_file_name") or "invoice.pdf",
+        "mime_type": invoice.get("invoice_file_mime") or "application/pdf",
+        "content": content,
+    }
+
+
+def send_email_via_gmail(
+    user_id: str,
+    to_email: str,
+    subject: str,
+    body: str,
+    thread_id: str | None = None,
+    attachments: list[dict] | None = None,
+) -> dict | None:
     """Send an email via Gmail API. Returns {id, threadId} or None on failure."""
     tokens = get_user_gmail_tokens(user_id)
     if not tokens:
@@ -426,7 +449,7 @@ def send_email_via_gmail(user_id: str, to_email: str, subject: str, body: str,
         return None
     try:
         gmail = GmailService(user_id, tokens[0], tokens[1])
-        result = gmail.send_email(to_email, subject, body, thread_id)
+        result = gmail.send_email(to_email, subject, body, thread_id, attachments=attachments)
         logger.info(f"Email sent via Gmail: {result}")
         return result
     except Exception as e:
@@ -451,6 +474,43 @@ def parse_draft_subject_and_body(draft: str) -> tuple[str, str]:
     return subject, body
 
 
+def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
+    """Build a compact invoice-only context summary for the agent."""
+    if not user_id:
+        return ""
+    try:
+        invoices = get_invoices_by_user(user_id)
+    except Exception:
+        logger.exception("Failed to build invoice context for user %s", user_id)
+        return ""
+
+    lines = []
+    for invoice in invoices[:12]:
+        public_id = parse_public_invoice_id(invoice["id"])
+        marker = "current" if invoice["id"] == current_invoice_id else "other"
+        amount = float(invoice.get("invoice_amount", 0) or 0)
+        paid = float(invoice.get("amount_paid", 0) or 0)
+        balance = compute_balance(amount, paid)
+        lines.append(
+            f"- [{marker}] Invoice #{public_id}: {invoice.get('client_name', '')} "
+            f"<{invoice.get('client_email', '')}>, status {invoice.get('status', 'active')}, "
+            f"balance ${balance:,.2f}, {invoice.get('days_overdue', 0) or 0} days overdue."
+        )
+        try:
+            comms = get_communications(invoice["id"])
+        except Exception:
+            comms = []
+        recent_subjects = [
+            c.get("subject")
+            for c in comms[-3:]
+            if c.get("subject")
+        ]
+        if recent_subjects:
+            lines.append(f"  Recent communications: {'; '.join(recent_subjects)}")
+
+    return "\n".join(lines)
+
+
 def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> FreelancerContext:
     """Get FreelancerContext for an invoice.
 
@@ -460,6 +520,7 @@ def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> Freela
     """
     invoice = get_invoice(invoice_id)
     owner_id = (invoice or {}).get("user_id") or (user or {}).get("id", "")
+    invoice_context_summary = build_user_invoice_context(invoice_id, owner_id)
 
     if invoice and invoice.get("sender_name"):
         return FreelancerContext(
@@ -467,6 +528,7 @@ def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> Freela
             freelancer_email=invoice.get("sender_email") or (user or {}).get("email", "unknown@example.com"),
             business_name=invoice.get("sender_business") or invoice["sender_name"],
             user_id=owner_id,
+            invoice_context_summary=invoice_context_summary,
         )
     if user:
         return FreelancerContext(
@@ -474,8 +536,9 @@ def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> Freela
             freelancer_email=user.get("email") or "unknown@example.com",
             business_name=user.get("name", "My Business"),
             user_id=owner_id,
+            invoice_context_summary=invoice_context_summary,
         )
-    return FreelancerContext(user_id=owner_id)
+    return FreelancerContext(user_id=owner_id, invoice_context_summary=invoice_context_summary)
 
 
 def extract_interrupt(response, ctx: FreelancerContext | None = None):
@@ -501,7 +564,12 @@ def extract_interrupt(response, ctx: FreelancerContext | None = None):
         "status": response.get("status", "active"),
         "communication_history": response.get("communication_history", []),
     }
-    draft_preview = generate_draft_preview(tool_name, state, ctx or FreelancerContext())
+    draft_preview = generate_draft_preview(
+        tool_name,
+        state,
+        ctx or FreelancerContext(),
+        action.get("args", {}),
+    )
 
     return {
         "tool": tool_name,
@@ -644,6 +712,45 @@ def authorize_invoice_access(
     if invoice.get("user_id") != caller_id:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return invoice
+
+
+INVOICE_CHAT_KEYWORDS = {
+    "invoice", "invoices", "payment", "paid", "pay", "payer", "balance", "due",
+    "overdue", "client", "customer", "email", "mail", "draft", "send", "sent",
+    "reminder", "deliver", "delivery", "attach", "attachment", "pdf", "amount",
+    "status", "dispute", "chase", "follow", "follow-up", "escalate", "late",
+    "fee", "fees", "legal", "demand", "notice", "owe", "owed", "owing",
+}
+
+
+def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -> bool:
+    """Return True when a message is plausibly about the user's invoices."""
+    normalized = message.lower()
+    tokens = set(re.findall(r"[a-z0-9_-]+", normalized))
+    if tokens & INVOICE_CHAT_KEYWORDS:
+        return True
+
+    candidates = [
+        parse_public_invoice_id(current_invoice["id"]),
+        current_invoice.get("client_name", ""),
+        current_invoice.get("client_email", ""),
+    ]
+    try:
+        for invoice in get_invoices_by_user(user_id):
+            candidates.extend([
+                parse_public_invoice_id(invoice["id"]),
+                invoice.get("client_name", ""),
+                invoice.get("client_email", ""),
+            ])
+    except Exception:
+        logger.exception("Failed to load invoices for chat guard")
+
+    for value in candidates:
+        value = str(value or "").strip().lower()
+        if len(value) >= 3 and value in normalized:
+            return True
+
+    return False
 
 
 def _parse_google_http_error(exc: urllib.error.HTTPError) -> tuple[str, str]:
@@ -875,7 +982,7 @@ def get_invoice_history(
                 action = intr.value["action_requests"][0]
                 tool_name = action["name"]
                 ctx = get_context_for_invoice(invoice_id, user)
-                draft_preview = generate_draft_preview(tool_name, state, ctx)
+                draft_preview = generate_draft_preview(tool_name, state, ctx, action.get("args", {}))
                 interrupt_data = {
                     "tool": tool_name,
                     "args": action.get("args", {}),
@@ -1197,7 +1304,24 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
     enforce_rate_limit(_client_key(request, authorization), "chat", CHAT_LIMIT_PER_MINUTE)
     # thread_id format is "invoice-{invoice_id}"
     inv_id = req.thread_id.removeprefix("invoice-")
-    authorize_invoice_access(inv_id, request, authorization)
+    invoice = authorize_invoice_access(inv_id, request, authorization)
+    if not is_invoice_chat_message(req.message, invoice, invoice.get("user_id", "")):
+        config = {"configurable": {"thread_id": req.thread_id}}
+        persisted_state = sync_agent_state_from_invoice(inv_id, config)
+        try:
+            snapshot = agent.get_state(config)
+            messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
+        except Exception:
+            messages = []
+        messages.append({
+            "type": "AIMessage",
+            "content": "I can only answer questions about your invoices.",
+        })
+        return {
+            "messages": messages,
+            "interrupt": None,
+            "state": persisted_state or invoice_state_from_db(invoice),
+        }
     user = get_current_user(authorization)
     context = get_context_for_invoice(inv_id, user)
     config = {"configurable": {"thread_id": req.thread_id}}
@@ -1263,6 +1387,7 @@ def resume(
     approved_tool_name = None
     approved_subject = None
     approved_args = {}
+    approved_draft_text = None
     if req.decision == "approve":
         try:
             snapshot = agent.get_state(config)
@@ -1277,7 +1402,14 @@ def resume(
                         approved_tool_name = action["name"]
                         approved_args = action.get("args", {}) or {}
                         logger.info(f"[RESUME] tool={approved_tool_name}, action={action}")
-                        draft = generate_draft_preview(approved_tool_name, state, context)
+                        generated_draft = generate_draft_preview(approved_tool_name, state, context, approved_args)
+                        draft = req.message if req.message and approved_tool_name in {
+                            "draft_invoice_delivery_email",
+                            "draft_polite_reminder",
+                            "draft_formal_demand_letter",
+                            "draft_final_notice",
+                        } else generated_draft
+                        approved_draft_text = draft
                         logger.info(f"[RESUME] draft length={len(draft) if draft else 0}, client_email='{client_email}'")
                         if draft and client_email:
                             approved_subject, body = parse_draft_subject_and_body(draft)
@@ -1286,7 +1418,19 @@ def resume(
                             if user_id:
                                 invoice_data = get_invoice(invoice_id)
                                 gmail_thread_id = invoice_data.get("gmail_thread_id") if invoice_data else None
-                                email_result = send_email_via_gmail(user_id, client_email, approved_subject, body, gmail_thread_id)
+                                attachments = []
+                                if approved_tool_name == "draft_invoice_delivery_email":
+                                    attachment = build_invoice_attachment(invoice_data)
+                                    if attachment:
+                                        attachments.append(attachment)
+                                email_result = send_email_via_gmail(
+                                    user_id,
+                                    client_email,
+                                    approved_subject,
+                                    body,
+                                    gmail_thread_id,
+                                    attachments=attachments or None,
+                                )
                                 logger.info(f"[RESUME] email_result={email_result}")
                                 if email_result and not gmail_thread_id:
                                     update_invoice(invoice_id, gmail_thread_id=email_result["threadId"])
@@ -1349,6 +1493,7 @@ def resume(
     # Log the approved communication into agent state
     if req.decision == "approve" and approved_tool_name:
         tool_labels = {
+            "draft_invoice_delivery_email": "Invoice Delivery",
             "draft_polite_reminder": "Polite Reminder",
             "draft_formal_demand_letter": "Formal Demand",
             "draft_final_notice": "Final Notice",
@@ -1365,6 +1510,21 @@ def resume(
         history.append(entry)
         agent.update_state(config, {"communication_history": history})
         response["communication_history"] = history
+        EMAIL_DRAFT_TOOLS = {
+            "draft_invoice_delivery_email",
+            "draft_polite_reminder",
+            "draft_formal_demand_letter",
+            "draft_final_notice",
+        }
+        if approved_tool_name in EMAIL_DRAFT_TOOLS and email_result is not None:
+            add_communication(
+                invoice_id=invoice_id,
+                comm_type=tool_labels.get(approved_tool_name, approved_tool_name),
+                subject=approved_subject or "Email approved",
+                content=parse_draft_subject_and_body(approved_draft_text or "")[1],
+                direction="outbound",
+                user_id=(get_invoice(invoice_id) or {}).get("user_id"),
+            )
 
     # Persist latest escalation level to SQLite
     update_invoice(invoice_id, escalation_level=response.get("escalation_level", 1))
@@ -1376,7 +1536,7 @@ def resume(
     }
 
     # Only report email send status for email draft approvals
-    EMAIL_DRAFT_TOOLS = {"draft_polite_reminder", "draft_formal_demand_letter", "draft_final_notice"}
+    EMAIL_DRAFT_TOOLS = {"draft_invoice_delivery_email", "draft_polite_reminder", "draft_formal_demand_letter", "draft_final_notice"}
     if approved_tool_name in EMAIL_DRAFT_TOOLS:
         if email_result is not None:
             result["email_sent"] = True

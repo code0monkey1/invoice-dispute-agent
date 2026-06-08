@@ -56,12 +56,12 @@ export function useChat(invoiceId: string) {
     }
   }, [threadId])
 
-  const approve = useCallback(async () => {
+  const approve = useCallback(async (approvedDraft?: string) => {
     setLoading(true)
     setLastEmailSent(null)
     setError(null)
     try {
-      const res = await api.resume(invoiceId, 'approve')
+      const res = await api.resume(invoiceId, 'approve', approvedDraft)
       setMessages(res.messages)
       setInterrupt(res.interrupt)
       setAgentState(res.state)
@@ -98,25 +98,6 @@ export function useChat(invoiceId: string) {
     }
   }, [invoiceId])
 
-  const edit = useCallback(async (editedText: string) => {
-    setLoading(true)
-    setError(null)
-    try {
-      // Use reject with the edited text as feedback so the agent redrafts
-      const res = await api.resume(invoiceId, 'reject', `Please use this version instead: ${editedText}`)
-      setMessages(res.messages)
-      setInterrupt(res.interrupt)
-      setAgentState(res.state)
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong'
-      setError(msg)
-      setTimeout(() => setError(null), 10000)
-      console.error('Edit error:', err)
-    } finally {
-      setLoading(false)
-    }
-  }, [invoiceId])
-
   const initMessages = useCallback((msgs: Message[], inter: Interrupt | null, state: AgentState) => {
     setMessages(msgs)
     setInterrupt(inter)
@@ -136,5 +117,5 @@ export function useChat(invoiceId: string) {
     }
   }, [invoiceId])
 
-  return { messages, interrupt, agentState, communications, loading, lastEmailSent, error, sendMessage, approve, reject, edit, initMessages, refreshHistory }
+  return { messages, interrupt, agentState, communications, loading, lastEmailSent, error, sendMessage, approve, reject, initMessages, refreshHistory }
 }

@@ -1,7 +1,12 @@
 from langchain.agents.middleware import wrap_model_call, ModelRequest, ModelResponse
 from typing import Callable
 
-from src.tools.drafting import draft_polite_reminder, draft_formal_demand_letter, draft_final_notice
+from src.tools.drafting import (
+    draft_invoice_delivery_email,
+    draft_polite_reminder,
+    draft_formal_demand_letter,
+    draft_final_notice,
+)
 from src.tools.invoice import check_invoice_status, calculate_late_fees
 from src.tools.legal import lookup_small_claims_procedures, generate_court_filing_guide
 from src.tools.escalation import escalate_dispute, update_invoice_details
@@ -10,10 +15,15 @@ from src.tools.payment_tools import mark_invoice_pending, mark_invoice_paid, rec
 PAYMENT_TOOLS = [mark_invoice_pending, mark_invoice_paid, record_partial_payment]
 
 # Tools available at each escalation level (progressive unlocking)
-LEVEL_0_TOOLS = [update_invoice_details]
+LEVEL_0_TOOLS = [
+    update_invoice_details,
+    check_invoice_status,
+    draft_invoice_delivery_email,
+]
 
 LEVEL_1_TOOLS = [
     check_invoice_status,
+    draft_invoice_delivery_email,
     draft_polite_reminder,
     escalate_dispute,
     update_invoice_details,

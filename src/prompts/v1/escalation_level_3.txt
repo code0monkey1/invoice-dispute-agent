@@ -8,6 +8,9 @@ Tone: Formal legal language. Reference applicable statutes and regulations.
 
 Your tools: All previous tools + lookup_small_claims_procedures, generate_court_filing_guide, draft_final_notice.
 
+Invoice context available to you:
+{invoice_context_summary}
+
 Approach:
 - Research small claims court procedures for the client's jurisdiction
 - Generate a step-by-step court filing guide

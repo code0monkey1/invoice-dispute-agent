@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Check, X, Pencil, FileText, Mail, CreditCard, Clock } from 'lucide-react'
 import type { Interrupt } from '../types'
 
@@ -25,9 +25,8 @@ const PAYMENT_TOOLS: Record<string, { label: string; description: string; icon: 
 
 interface Props {
   interrupt: Interrupt
-  onApprove: () => void
+  onApprove: (approvedDraft?: string) => void
   onReject: (message: string) => void
-  onEdit: (editedText: string) => void
   loading: boolean
 }
 
@@ -106,9 +105,10 @@ function reassemble(parts: { subject: string; body: string; senderName: string; 
   return result
 }
 
-export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, loading }: Props) {
+export default function DraftApproval({ interrupt, onApprove, onReject, loading }: Props) {
   const paymentAction = PAYMENT_TOOLS[interrupt.tool]
-  const draftContent = interrupt.description || JSON.stringify(interrupt.args, null, 2)
+  const initialDraft = interrupt.description || JSON.stringify(interrupt.args, null, 2)
+  const [draftContent, setDraftContent] = useState(initialDraft)
   const parsed = useMemo(() => parseDraft(draftContent), [draftContent])
 
   const [editing, setEditing] = useState(false)
@@ -119,6 +119,12 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
   const [email, setEmail] = useState(parsed.email)
   const [rejectReason, setRejectReason] = useState('')
   const [showReject, setShowReject] = useState(false)
+
+  useEffect(() => {
+    setDraftContent(initialDraft)
+    setEditing(false)
+    setShowReject(false)
+  }, [initialDraft])
 
   const handleStartEdit = () => {
     setSubject(parsed.subject)
@@ -131,7 +137,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
 
   const handleSendEdit = () => {
     const assembled = reassemble({ subject, body, senderName, business, email })
-    onEdit(assembled)
+    setDraftContent(assembled)
     setEditing(false)
   }
 
@@ -165,7 +171,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
           </div>
           <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
             <button
-              onClick={onApprove}
+              onClick={() => onApprove()}
               disabled={loading}
               className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-green-500 disabled:opacity-50 text-white text-sm font-bold rounded-xl py-3 transition-all shadow-md shadow-emerald-200/40"
             >
@@ -266,7 +272,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
                 disabled={loading || !subject.trim() || !body.trim()}
                 className="flex-1 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50 text-white text-sm font-bold rounded-xl py-2.5 transition-all shadow-md shadow-amber-200/40"
               >
-                Send Edited Version
+                Save Edits
               </button>
               <button
                 onClick={() => setEditing(false)}
@@ -302,7 +308,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, onEdit, 
           ) : (
             <div className="flex gap-3">
               <button
-                onClick={onApprove}
+                onClick={() => onApprove(draftContent)}
                 disabled={loading}
                 className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-green-500 hover:from-emerald-600 hover:to-green-600 disabled:opacity-50 text-white text-sm font-bold rounded-xl py-3 transition-all shadow-md shadow-emerald-200/40 font-[family-name:var(--font-heading)]"
               >
