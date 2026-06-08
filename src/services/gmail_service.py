@@ -1,6 +1,9 @@
 import os
 import base64
 import logging
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from google.oauth2.credentials import Credentials
@@ -45,9 +48,35 @@ class GmailService:
             update_user_gmail_tokens(self.user_id, self.creds.token, self.creds.refresh_token)
             logger.info(f"Refreshed Gmail token for user {self.user_id}")
 
-    def send_email(self, to: str, subject: str, body: str, thread_id: str | None = None) -> dict:
+    def send_email(
+        self,
+        to: str,
+        subject: str,
+        body: str,
+        thread_id: str | None = None,
+        attachments: list[dict] | None = None,
+    ) -> dict:
         """Send email. Returns {id, threadId}."""
-        message = MIMEText(body.replace("\n", "<br>"), "html")
+        if attachments:
+            message = MIMEMultipart()
+            message.attach(MIMEText(body.replace("\n", "<br>"), "html"))
+            for attachment in attachments:
+                mime_type = attachment.get("mime_type") or "application/octet-stream"
+                if "/" in mime_type:
+                    maintype, subtype = mime_type.split("/", 1)
+                else:
+                    maintype, subtype = "application", "octet-stream"
+                part = MIMEBase(maintype, subtype)
+                part.set_payload(attachment["content"])
+                encoders.encode_base64(part)
+                part.add_header(
+                    "Content-Disposition",
+                    "attachment",
+                    filename=attachment.get("filename") or "invoice",
+                )
+                message.attach(part)
+        else:
+            message = MIMEText(body.replace("\n", "<br>"), "html")
         message["to"] = to
         message["subject"] = subject
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode()

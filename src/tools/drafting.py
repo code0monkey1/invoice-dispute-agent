@@ -2,6 +2,12 @@ from langchain.tools import tool, ToolRuntime
 
 
 @tool
+def draft_invoice_delivery_email(subject: str, body: str, runtime: ToolRuntime) -> str:
+    """Draft the first email that sends an invoice to the client. Include a concise subject and body."""
+    return f"Subject: {subject.strip()}\n\n{body.strip()}"
+
+
+@tool
 def draft_polite_reminder(runtime: ToolRuntime) -> str:
     """Draft a polite payment reminder email for an overdue invoice. Use at escalation level 1."""
     state = runtime.state

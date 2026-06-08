@@ -7,13 +7,16 @@ import EscalationBadge from './EscalationBadge'
 import { useChat } from '../hooks/useChat'
 import { api } from '../api'
 
-const DRAFT_TOOLS = ['draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
+const DRAFT_TOOLS = ['draft_invoice_delivery_email', 'draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
 const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid', 'record_partial_payment']
+const INVOICE_DELIVERY_PROMPT = 'Please draft the first invoice delivery email for this invoice. The email should tell the client the invoice is attached, reference the invoice number and amount due, and ask them to review and pay it.'
 
 export default function ChatPanel() {
   const { invoiceId } = useParams<{ invoiceId: string }>()
   const [input, setInput] = useState('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [chatFocused, setChatFocused] = useState(false)
   const [editingDetails, setEditingDetails] = useState(false)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
@@ -37,7 +40,6 @@ export default function ChatPanel() {
     sendMessage,
     approve,
     reject,
-    edit,
     initMessages,
     refreshHistory,
   } = useChat(invoiceId || '')
@@ -59,6 +61,13 @@ export default function ChatPanel() {
   }, [messages, interrupt])
 
   const displayInvoiceId = agentState?.invoice_id || invoiceId
+  const hasOutboundCommunication = communications.some(entry => entry.direction === 'outbound')
+  const showFirstOpenActions = Boolean(
+    agentState?.invoice_id &&
+    agentState.status !== 'paid' &&
+    !interrupt &&
+    !hasOutboundCommunication
+  )
 
   // Auto-approve non-draft interrupts silently (e.g. mark_invoice_pending)
   useEffect(() => {
@@ -93,6 +102,16 @@ export default function ChatPanel() {
     sendMessage('Please escalate this dispute to the next level.')
   }
 
+  const handleCreateDeliveryDraft = () => {
+    if (loading || interrupt) return
+    sendMessage(INVOICE_DELIVERY_PROMPT)
+  }
+
+  const handleChatAboutInvoice = () => {
+    setChatFocused(true)
+    inputRef.current?.focus()
+  }
+
   return (
     <div className="flex gap-6 h-[calc(100vh-7rem)] animate-fade-up">
       {/* Chat Area */}
@@ -115,7 +134,7 @@ export default function ChatPanel() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto py-4 space-y-1 bg-gradient-to-b from-orange-50/20 to-white">
-          {messages.length === 0 && !loading && (
+          {messages.length === 0 && !loading && !showFirstOpenActions && (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <div className="w-14 h-14 bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-orange-200/40">
                 <ArrowUpCircle className="w-7 h-7 text-white" />
@@ -128,6 +147,38 @@ export default function ChatPanel() {
               </p>
             </div>
           )}
+          {showFirstOpenActions && (
+            <div className="mx-5 mb-4 rounded-2xl border border-orange-200 bg-white shadow-sm overflow-hidden animate-fade-up">
+              <div className="px-5 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
+                <p className="text-sm font-bold text-gray-800 font-[family-name:var(--font-heading)]">
+                  Start with this invoice
+                </p>
+                <p className="text-xs text-gray-500 mt-1">
+                  Create the first email for this invoice or ask invoice-specific questions.
+                </p>
+              </div>
+              <div className="p-4 grid sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={handleCreateDeliveryDraft}
+                  disabled={loading}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#FF6B35] to-[#FF8F65] px-4 py-3 text-sm font-bold text-white shadow-md shadow-orange-200/40 disabled:opacity-50 font-[family-name:var(--font-heading)]"
+                >
+                  <FileText className="w-4 h-4" />
+                  Create invoice email draft
+                </button>
+                <button
+                  type="button"
+                  onClick={handleChatAboutInvoice}
+                  disabled={loading}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50 font-[family-name:var(--font-heading)]"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Chat about this invoice
+                </button>
+              </div>
+            </div>
+          )}
           {messages
             .filter(msg => msg.type !== 'ToolMessage' && !(msg.type === 'AIMessage' && !msg.content && msg.tool_calls?.length))
             .map((msg, i) => (
@@ -138,7 +189,6 @@ export default function ChatPanel() {
               interrupt={interrupt}
               onApprove={approve}
               onReject={reject}
-              onEdit={edit}
               loading={loading}
             />
           )}
@@ -188,10 +238,11 @@ export default function ChatPanel() {
         <div className="border-t border-gray-100 px-4 py-3 bg-white">
           <div className="flex gap-2">
             <input
+              ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={interrupt && APPROVAL_TOOLS.includes(interrupt.tool) ? 'Approve or reject the draft above...' : 'Type your message...'}
+              placeholder={interrupt && APPROVAL_TOOLS.includes(interrupt.tool) ? 'Approve or reject the draft above...' : chatFocused ? 'Ask about this invoice or your other invoices...' : 'Type your message...'}
               disabled={loading || !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))}
               className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35]/50 disabled:opacity-50 transition-all"
             />

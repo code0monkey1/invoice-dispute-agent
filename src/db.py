@@ -466,6 +466,28 @@ def upload_invoice_file(
     return path
 
 
+def download_invoice_file(bucket: str, path: str) -> bytes:
+    """Download a private invoice file from Supabase Storage."""
+    key = os.environ.get("SUPABASE_KEY")
+    base_url = os.environ.get("SUPABASE_URL")
+    if not base_url or not key:
+        raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
+
+    encoded_path = "/".join(urllib.parse.quote(part, safe="") for part in path.split("/"))
+    url = f"{base_url.rstrip('/')}/storage/v1/object/{bucket}/{encoded_path}"
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+    }
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(request, timeout=_SUPABASE_TIMEOUT_SECONDS) as response:
+            return response.read()
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Supabase Storage download failed: {exc.code} {details}") from exc
+
+
 # ---------------------------------------------------------------------------
 # Communication history helpers
 # ---------------------------------------------------------------------------

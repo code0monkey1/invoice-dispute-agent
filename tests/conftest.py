@@ -40,6 +40,7 @@ class FakeDB:
     def __init__(self):
         self.users: dict = {}
         self.invoices: dict = {}
+        self.communications: list[dict] = []
         self.storage: dict = {}  # path -> bytes
 
     def handle(self, method, path_segments, query=None, payload=None, prefer=None):
@@ -50,6 +51,8 @@ class FakeDB:
             return self._users(method, params, payload)
         if table == "invoices":
             return self._invoices(method, params, payload)
+        if table == "communication_history":
+            return self._communications(method, params, payload)
         return None
 
     def _filter(self, rows, params):
@@ -99,6 +102,19 @@ class FakeDB:
             return rows
         return None
 
+    def _communications(self, method, params, payload):
+        if method == "GET":
+            rows = self._filter(list(self.communications), params)
+            if params.get("order") == "timestamp.asc":
+                rows = sorted(rows, key=lambda r: r.get("timestamp", ""))
+            return rows
+        if method == "POST":
+            row = dict(payload or {})
+            row["id"] = len(self.communications) + 1
+            self.communications.append(row)
+            return [row]
+        return None
+
 
 @pytest.fixture
 def fake_db():
@@ -112,10 +128,14 @@ def fake_db():
         db.storage[object_path] = content
         return object_path
 
+    def fake_download(bucket, object_path):
+        return db.storage[object_path]
+
     # Import lazily so env vars are set first.
     import src.db as db_module
     with patch.object(db_module, "_supabase_rest_request", side_effect=fake_request), \
-         patch.object(db_module, "upload_invoice_file", side_effect=fake_upload):
+         patch.object(db_module, "upload_invoice_file", side_effect=fake_upload), \
+         patch.object(db_module, "download_invoice_file", side_effect=fake_download):
         yield db
 
 

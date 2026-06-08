@@ -11,7 +11,12 @@ from src.state import InvoiceDisputeState, FreelancerContext
 from src.middleware.dynamic_tools import dynamic_tool_middleware
 from src.middleware.dynamic_prompts import escalation_prompt
 
-from src.tools.drafting import draft_polite_reminder, draft_formal_demand_letter, draft_final_notice
+from src.tools.drafting import (
+    draft_invoice_delivery_email,
+    draft_polite_reminder,
+    draft_formal_demand_letter,
+    draft_final_notice,
+)
 from src.tools.invoice import check_invoice_status, calculate_late_fees
 from src.tools.legal import lookup_small_claims_procedures, generate_court_filing_guide
 from src.tools.escalation import escalate_dispute, update_invoice_details
@@ -20,6 +25,7 @@ from src.tools.payment_tools import mark_invoice_pending, mark_invoice_paid, rec
 ALL_TOOLS = [
     update_invoice_details,
     check_invoice_status,
+    draft_invoice_delivery_email,
     draft_polite_reminder,
     escalate_dispute,
     draft_formal_demand_letter,
@@ -78,6 +84,7 @@ agent = create_agent(
         HumanInTheLoopMiddleware(
             interrupt_on={
                 "draft_polite_reminder": True,
+                "draft_invoice_delivery_email": True,
                 "draft_formal_demand_letter": True,
                 "draft_final_notice": True,
                 "update_invoice_details": False,
