@@ -115,6 +115,24 @@ def test_delivery_draft_interrupt_uses_tool_args():
     assert interrupt["description"] == "Subject: Invoice INV-9\n\nHi Acme,\n\nPlease see the attached invoice."
 
 
+def test_serialize_messages_flattens_structured_content():
+    import api.index as api_index
+
+    messages = [
+        AIMessage(content=[
+            {"type": "text", "text": "This invoice is for design work."},
+            {"type": "text", "text": "The client is Northwind Apparel LLC."},
+        ])
+    ]
+
+    serialized = api_index.serialize_messages(messages)
+
+    assert serialized[0]["content"] == (
+        "This invoice is for design work.\n"
+        "The client is Northwind Apparel LLC."
+    )
+
+
 @pytest.mark.asyncio
 async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, monkeypatch):
     import api.index as api_index

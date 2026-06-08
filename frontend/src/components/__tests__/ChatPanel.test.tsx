@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ChatPanel from '../ChatPanel';
-import type { AgentState, SupabaseCommEntry } from '../../types';
+import type { AgentState, Message, SupabaseCommEntry } from '../../types';
 
 const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
   initMessages: vi.fn(),
   refreshHistory: vi.fn(),
   hookState: {} as {
-    messages: never[];
+    messages: Message[];
     interrupt: null | {
       tool: string;
       args: Record<string, unknown>;
@@ -147,5 +147,17 @@ describe('ChatPanel first-open invoice actions', () => {
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /create invoice email draft/i })).not.toBeInTheDocument();
     });
+  });
+
+  it('hides first-open actions after chat messages exist', () => {
+    mocks.hookState.messages = [
+      { type: 'HumanMessage', content: 'What is this invoice for?' },
+      { type: 'AIMessage', content: 'This invoice is for design work.' },
+    ];
+
+    renderChat();
+
+    expect(screen.queryByRole('button', { name: /create invoice email draft/i })).not.toBeInTheDocument();
+    expect(screen.getByText(/this invoice is for design work/i)).toBeInTheDocument();
   });
 });

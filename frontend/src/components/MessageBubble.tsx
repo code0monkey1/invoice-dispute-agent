@@ -1,13 +1,37 @@
 import { Bot, User, Wrench, Mail } from 'lucide-react'
 import type { Message } from '../types'
 
+function messageText(content: unknown): string {
+  if (content == null) return ''
+  if (typeof content === 'string') return content
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part
+        if (part && typeof part === 'object') {
+          const record = part as Record<string, unknown>
+          return String(record.text ?? record.content ?? JSON.stringify(record))
+        }
+        return String(part)
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+  if (typeof content === 'object') {
+    const record = content as Record<string, unknown>
+    return String(record.text ?? record.content ?? JSON.stringify(record))
+  }
+  return String(content)
+}
+
 export default function MessageBubble({ message }: { message: Message }) {
   const isUser = message.type === 'HumanMessage'
   const isTool = message.type === 'ToolMessage'
   const isAI = message.type === 'AIMessage'
+  const content = messageText(message.content)
 
   // Tool call trigger (no content, just calling tools)
-  if (isAI && !message.content && message.tool_calls?.length) {
+  if (isAI && !content && message.tool_calls?.length) {
     return (
       <div className="flex items-center gap-2 text-xs text-gray-400 py-1.5 px-5 font-medium">
         <div className="w-5 h-5 rounded-md bg-violet-50 flex items-center justify-center">
@@ -20,12 +44,11 @@ export default function MessageBubble({ message }: { message: Message }) {
     )
   }
 
-  if (!message.content) return null
+  if (!content) return null
 
   // Inbound client email reply
-  const isInboundEmail = typeof message.content === 'string' && message.content.startsWith('[INCOMING CLIENT REPLY]')
+  const isInboundEmail = content.startsWith('[INCOMING CLIENT REPLY]')
   if (isInboundEmail) {
-    const content = message.content as string
     const lines = content.split('\n')
     const fromLine = lines.find(l => l.startsWith('From:'))?.replace('From:', '').trim() || ''
     const subjectLine = lines.find(l => l.startsWith('Subject:'))?.replace('Subject:', '').trim() || ''
@@ -58,7 +81,7 @@ export default function MessageBubble({ message }: { message: Message }) {
             {message.name || 'Tool Result'}
           </div>
           <pre className="text-gray-600 whitespace-pre-wrap font-mono leading-relaxed text-[13px]">
-            {message.content}
+            {content}
           </pre>
         </div>
       </div>
@@ -78,7 +101,7 @@ export default function MessageBubble({ message }: { message: Message }) {
           ? 'bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] text-white shadow-md shadow-orange-200/30 rounded-br-md'
           : 'bg-white text-gray-700 border border-gray-100 shadow-sm rounded-bl-md'
       }`}>
-        <p className="whitespace-pre-wrap">{message.content}</p>
+        <p className="whitespace-pre-wrap">{content}</p>
       </div>
       {isUser && (
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-teal-200/40">
