@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import ChatPanel from '../ChatPanel';
 import type { AgentState, Message, SupabaseCommEntry } from '../../types';
+import { withQueryClient } from '../../test/queryClient';
 
 const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
@@ -25,6 +26,7 @@ const mocks = vi.hoisted(() => ({
     communications: SupabaseCommEntry[];
     loading: boolean;
     lastEmailSent: null | { sent: boolean; id?: string; status?: string; note?: string };
+    historyLoaded?: boolean;
     error: null;
   },
 }));
@@ -77,6 +79,7 @@ function renderChat() {
         <Route path="/" element={<div />} />
       </Routes>
     </MemoryRouter>,
+    { wrapper: withQueryClient() },
   );
 }
 
@@ -84,6 +87,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   Element.prototype.scrollIntoView = vi.fn();
   mocks.hookState = {
+    historyLoaded: true,
     messages: [],
     interrupt: null,
     agentState: baseState,
@@ -100,6 +104,15 @@ describe('ChatPanel first-open invoice actions', () => {
 
     expect(await screen.findByRole('button', { name: /create invoice email draft/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /chat about this invoice/i })).toBeInTheDocument();
+  });
+
+  it('waits for real history before offering the first email', async () => {
+    // Details shown from the dashboard row; the thread itself hasn't loaded yet.
+    mocks.hookState.historyLoaded = false;
+    renderChat();
+
+    expect(await screen.findByText('Acme Corp', { selector: 'dd' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /create invoice email draft/i })).not.toBeInTheDocument();
   });
 
   it('clicking delivery draft asks the agent for a first invoice email', async () => {

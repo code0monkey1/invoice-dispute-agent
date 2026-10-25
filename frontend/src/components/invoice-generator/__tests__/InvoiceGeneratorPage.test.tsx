@@ -3,6 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { InvoiceGeneratorPage } from '../InvoiceGeneratorPage';
+import { withQueryClient } from '../../../test/queryClient';
 
 // PDFViewer needs an iframe (jsdom can't host it); pdf() returns a real stream.
 // We stub both so the test environment doesn't try to generate a real PDF.
@@ -38,7 +39,8 @@ function renderPage(initialPath = '/generate-invoice') {
         <Route path="/invoice/:invoiceId" element={<div data-testid="invoice-detail" />} />
         <Route path="/dashboard" element={<div data-testid="dashboard" />} />
       </Routes>
-    </MemoryRouter>
+    </MemoryRouter>,
+    { wrapper: withQueryClient() },
   );
 }
 

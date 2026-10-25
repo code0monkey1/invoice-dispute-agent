@@ -1,5 +1,7 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
+import { qk } from '../../hooks/queries';
 import { pdf } from '@react-pdf/renderer';
 import { useSenderProfile } from '../../hooks/useSenderProfile';
 import { useInvoiceGeneratorForm } from '../../hooks/useInvoiceGeneratorForm';
@@ -47,6 +49,7 @@ function seed(sender: SenderProfile): InvoiceData {
 
 export function InvoiceGeneratorPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { profile, loading: loadingProfile, save: saveProfile } = useSenderProfile();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,13 +126,14 @@ export function InvoiceGeneratorPage() {
         file_size,
       });
       triggerDownload(blob, file_name);
+      void queryClient.invalidateQueries({ queryKey: qk.invoices });
       navigate(`/invoice/${invoice.id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSubmitting(false);
     }
-  }, [buildBlob, data, navigate, saveProfile]);
+  }, [buildBlob, data, navigate, queryClient, saveProfile]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
