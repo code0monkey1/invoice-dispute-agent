@@ -20,7 +20,7 @@ export function useChat(invoiceId: string) {
   const [communications, setCommunications] = useState<SupabaseCommEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [historyLoaded, setHistoryLoaded] = useState(false)
-  const [lastEmailSent, setLastEmailSent] = useState<{ sent: boolean; id?: string } | null>(null)
+  const [lastEmailSent, setLastEmailSent] = useState<{ sent: boolean; id?: string; status?: string; note?: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const threadId = `invoice-${invoiceId}`
@@ -67,6 +67,26 @@ export function useChat(invoiceId: string) {
     }
   }, [threadId])
 
+  // Escalation changes the level on the server directly, then the agent
+  // drafts the next email, which comes back as a normal approval.
+  const escalate = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await api.escalate(invoiceId)
+      setMessages(prev => mergeMessages(prev, res.messages))
+      setInterrupt(res.interrupt)
+      setAgentState(res.state)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not escalate this invoice.'
+      setError(msg)
+      setTimeout(() => setError(null), 10000)
+      console.error('Escalate error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [invoiceId])
+
   const approve = useCallback(async (approvedDraft?: string) => {
     setLoading(true)
     setLastEmailSent(null)
@@ -77,9 +97,9 @@ export function useChat(invoiceId: string) {
       setInterrupt(res.interrupt)
       setAgentState(res.state)
       if (res.email_sent !== undefined) {
-        setLastEmailSent({ sent: res.email_sent, id: res.email_id })
-        // Auto-clear after 8 seconds
-        setTimeout(() => setLastEmailSent(null), 8000)
+        setLastEmailSent({ sent: res.email_sent, id: res.email_id, status: res.email_status, note: res.email_note })
+        // A confirmation can go quickly; an explanation of why nothing was sent stays longer.
+        setTimeout(() => setLastEmailSent(null), res.email_sent ? 8000 : 20000)
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Something went wrong'
@@ -128,5 +148,5 @@ export function useChat(invoiceId: string) {
     }
   }, [invoiceId])
 
-  return { messages, interrupt, agentState, communications, loading, lastEmailSent, error, sendMessage, approve, reject, initMessages, refreshHistory }
+  return { messages, interrupt, agentState, communications, loading, lastEmailSent, error, sendMessage, escalate, approve, reject, initMessages, refreshHistory }
 }

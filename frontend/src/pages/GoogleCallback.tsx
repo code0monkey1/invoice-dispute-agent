@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../api'
-import { handleGoogleCallback } from '../contexts/AuthContext'
+import { handleGoogleCallback, OAUTH_STATE_KEY } from '../contexts/AuthContext'
 
 export default function GoogleCallback() {
   const [searchParams] = useSearchParams()
@@ -17,6 +17,14 @@ export default function GoogleCallback() {
     const code = searchParams.get('code')
     if (!code) {
       setError('No authorization code received')
+      return
+    }
+
+    // Only finish a sign-in this browser started (login CSRF protection).
+    const expectedState = sessionStorage.getItem(OAUTH_STATE_KEY)
+    sessionStorage.removeItem(OAUTH_STATE_KEY)
+    if (!expectedState || searchParams.get('state') !== expectedState) {
+      setError("This sign-in link expired or didn't come from this browser. Please sign in again.")
       return
     }
 

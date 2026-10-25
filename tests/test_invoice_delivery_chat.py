@@ -198,7 +198,7 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
         def __init__(self, *args, **kwargs):
             pass
 
-        def send_email(self, to, subject, body, thread_id=None, attachments=None):
+        def send_email(self, to, subject, body, thread_id=None, attachments=None, reply_to=None):
             sent.update({
                 "to": to,
                 "subject": subject,
@@ -229,3 +229,38 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
     assert fake_db.communications[0]["direction"] == "outbound"
     assert fake_db.communications[0]["subject"] == "Edited Invoice Subject"
     assert fake_db.communications[0]["content"] == "Edited invoice body."
+
+
+# ─── Chat guard: unit cases ───────────────────────────────────────────────────
+# The guard should only stop clearly off-topic questions. Inside an invoice's
+# own chat, steering the draft ("make it firmer") or answering the agent
+# ("yes") must reach the agent.
+
+GUARD_INVOICE = {"id": "guest-x__inv__SU5WLTE", "client_name": "Acme Corp", "client_email": "ap@acme.example"}
+
+
+@pytest.mark.parametrize("message", [
+    "make it firmer",
+    "Can you make the tone softer?",
+    "rewrite it to sound more formal",
+    "yes",
+    "go ahead",
+    "hi",
+    "should I take them to small claims court?",
+    "they asked for an extension until Friday",
+])
+def test_guard_lets_invoice_conversation_through(message, monkeypatch):
+    import api.index as api_index
+    monkeypatch.setattr(api_index, "get_invoices_by_user", lambda _uid: [])
+    assert api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
+
+
+@pytest.mark.parametrize("message", [
+    "What is the weather tomorrow?",
+    "write me a poem about cats please",
+    "who won the football match last night",
+])
+def test_guard_still_blocks_off_topic_questions(message, monkeypatch):
+    import api.index as api_index
+    monkeypatch.setattr(api_index, "get_invoices_by_user", lambda _uid: [])
+    assert not api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")

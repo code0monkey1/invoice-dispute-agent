@@ -2,757 +2,258 @@
 
 # InvoiceChaser
 
-### AI-Powered Invoice Dispute & Payment Recovery Agent
+### An AI agent that chases unpaid invoices. You approve the emails.
 
-An intelligent agent that helps freelancers chase overdue payments through **progressive escalation** — from friendly reminders to formal demands to legal action — with human-in-the-loop approval at every step.
+Drop in an overdue invoice. The agent reads it, drafts each reminder, reads the client's replies and suggests when to get firmer, from friendly to formal to legal. Nothing is sent from your Gmail until you approve it.
 
-**Built with LangChain | Groq | React | FastAPI** *(LangGraph used for checkpointing & state Commands)*
+**Built with LangChain · LangGraph · Groq · FastAPI · React · Supabase · Resend**
 
-[Live Demo](#) &nbsp;&bull;&nbsp; [Architecture](#architecture) &nbsp;&bull;&nbsp; [How It Works](#how-it-works) &nbsp;&bull;&nbsp; [Setup](#getting-started) &nbsp;&bull;&nbsp; [GenAI Deep Dive](#genai-technologies--how-they-help)
+[Live app](https://invoice-chaser-chi.vercel.app/) &nbsp;&bull;&nbsp; [How it works](#how-it-works) &nbsp;&bull;&nbsp; [Architecture](#architecture) &nbsp;&bull;&nbsp; [Setup](#getting-started) &nbsp;&bull;&nbsp; [Agent design](#how-the-agent-is-built)
 
 </div>
 
 ---
 
-## Why This Exists
+## How it works
 
-Freelancers lose **$825 billion annually** to late payments. Most either:
-- Give up chasing (lost revenue)
-- Send awkward manual follow-ups (uncomfortable + time-consuming)
-- Hire collections agencies too early (expensive + damages client relationships)
+<p align="center">
+  <img src="docs/how-it-works.svg" alt="Animated flow: you add the invoice, the agent reads it and drafts an email, you approve it, it sends from your Gmail, the client replies, the reply comes back through Resend Inbound, the agent reads it and you pick the next step." width="100%">
+</p>
 
-**InvoiceChaser fills the gap**: an AI agent that progressively escalates from gentle nudges to legal action, drafting every communication for you, while keeping you in full control with approve/edit/reject at every step.
+You do three things. The agent does the rest:
 
-> **What makes this unique:** Invoice tools and payment reminders exist separately. But an AI agent that **dynamically unlocks harder tools and shifts its communication tone based on dispute state** — progressively escalating its strategy as the situation demands — doesn't exist anywhere else. This is a genuinely novel approach to payment recovery.
+1. **You add the invoice.** Upload the PDF or DOCX you already sent, or create one with the built-in invoice generator.
+2. **You approve each email.** The agent drafts every message. You approve, edit or reject it before anything is sent.
+3. **You decide when to get firmer.** The agent reads each client reply and suggests the next step. Escalating from Friendly to Formal to Legal is always your call.
+
+### The full lifecycle, step by step
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor You
+    participant App as InvoiceChaser (React)
+    participant API as FastAPI
+    participant Agent as LangChain agent
+    participant Gmail as Your Gmail (send-only)
+    actor Client
+    participant Resend as Resend Inbound
+
+    You->>App: Drop in invoice PDF
+    App->>API: POST /api/invoices/parse
+    API-->>App: Client, email, amount, due date
+    You->>App: Confirm details
+    App->>API: POST /api/invoices/upload
+    API->>Agent: Start thread at Level 1 (Friendly)
+    Agent-->>API: Draft polite reminder (paused for approval)
+    API-->>App: Draft waiting for you
+    Note over App: Dashboard shows it under "Waiting for you"
+    You->>App: Approve (or edit / reject)
+    App->>API: POST /api/invoices/{id}/resume
+    API->>Gmail: Send, with Reply-To: you + inv-token@…resend.app
+    Gmail->>Client: Email from your own address
+    Client-->>Gmail: Reply lands in your inbox
+    Client-->>Resend: Same reply reaches the tracking address
+    Resend->>API: POST /api/email/inbound (signed webhook)
+    API->>Agent: Store reply on the invoice, analyse it
+    Agent-->>App: Summary and a suggested next step
+    You->>App: Escalate to Formal (your call)
+    App->>API: POST /api/invoices/{id}/escalate
+    API->>Agent: Level 2, draft a formal demand
+    Agent-->>App: New draft waiting for your approval
+```
 
 ---
 
-## Key Features
+## Features
 
-| Feature | Description |
-|---------|-------------|
-| **Progressive Escalation** | 3-level system: Friendly → Formal → Legal. Each level unlocks new AI capabilities |
-| **Dynamic Tool Gating** | Agent's available tools change based on escalation level — it literally cannot use legal tools at Level 1 |
-| **Tone-Shifting AI** | System prompt dynamically changes per level — warm at Level 1, firm at Level 2, legal language at Level 3 |
-| **Human-in-the-Loop** | Every outbound draft requires your explicit approval before "sending" |
-| **Late Fee Calculator** | Automatically computes late fees based on your contract terms |
-| **Legal Research** | At Level 3, uses Tavily web search to research small claims court procedures for the client's jurisdiction |
-| **Court Filing Guide** | Generates step-by-step filing instructions based on real jurisdiction data |
-| **Conversation Memory** | Full conversation history per client thread — the agent remembers everything |
-| **Real-Time Dashboard** | Track all disputes, amounts owed, escalation levels at a glance |
+| Feature | What it does |
+|---|---|
+| **Invoice PDF parsing** | Reads a PDF or DOCX (up to 10 MB) and fills in the invoice number, client, email, amount, due date and jurisdiction. Uses the LLM, with a pattern-matching fallback. Scanned images aren't supported. |
+| **Invoice generator** | Creates an invoice PDF from three templates (Modern, Classic, Minimal) with an optional payment link (Stripe, Lemon Squeezy, PayPal), then hands it straight to the agent. |
+| **Three escalation levels** | Friendly, Formal and Legal. Each level unlocks different tools and a different tone of voice. |
+| **Approval on every send** | Every email draft, and every payment-status change, pauses for your approval. You can edit the draft before it sends. |
+| **Escalation on your terms** | The "Escalate" button raises the level directly and asks the agent for a draft in the new tone. It doesn't depend on the model deciding to escalate. |
+| **Sends from your Gmail** | Uses Google's `gmail.send` scope only. InvoiceChaser can send the emails you approve, but it can't read your inbox. |
+| **Reply tracking** | Each email carries a unique Reply-To address. Client replies reach your inbox and, through Resend Inbound, the invoice's timeline, where the agent analyses them. |
+| **Small-claims research** | At the Legal level, the agent looks up small-claims procedures for the client's jurisdiction (Tavily web search) and can write a court-filing guide. This is information, not legal advice. |
+| **Dashboard** | A "Waiting for you" queue of drafts needing approval, the amount outstanding and collected, and every invoice's current status in plain language. |
+| **Demo mode** | Try everything without signing up. Demo data stays in your browser session, and no emails are sent. |
+
+> **Removed for now:** late-fee calculation and Telegram notifications. Neither is offered in the app or advertised on the site.
 
 ---
 
 ## Architecture
 
+```mermaid
+flowchart LR
+    subgraph Browser
+      UI["React 19 + Vite + Tailwind 4<br/>Landing · Dashboard · Chat · Invoice generator"]
+    end
+
+    subgraph Vercel["Vercel (serverless)"]
+      API["FastAPI<br/>api/index.py"]
+      AG["LangChain agent<br/>tool gating · tone · approvals"]
+      API --> AG
+    end
+
+    UI -- "/api/*" --> API
+    AG -- "LLM (GROQ_MODEL)" --> GROQ["Groq<br/>openai/gpt-oss-120b"]
+    AG -- "Legal level" --> TAV["Tavily<br/>web search"]
+    AG -- "checkpoints" --> PG[("LangGraph checkpointer<br/>Postgres or in-memory")]
+    API -- "users · invoices · replies · files" --> SB[("Supabase<br/>Postgres + Storage")]
+    API -- "send-only" --> GM["Gmail API"]
+    RS["Resend Inbound<br/>inv-token@…resend.app"] -- "signed webhook" --> API
 ```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                              VERCEL (Free Tier)                                  │
-│                                                                                  │
-│  ┌────────────────────────────┐         ┌──────────────────────────────────────┐  │
-│  │     React Frontend         │  fetch  │       FastAPI Serverless             │  │
-│  │     (Vite + Tailwind v4)   │ ──────▶ │       (api/index.py)                │  │
-│  │                            │         │                                      │  │
-│  │  ┌──────────────────────┐  │         │  POST /api/chat ──────────────────┐  │  │
-│  │  │ Dashboard            │  │         │  POST /api/invoices               │  │  │
-│  │  │ - Stats Cards        │  │         │  POST /api/invoices/{id}/resume   │  │  │
-│  │  │ - Invoice Table      │  │         │  GET  /api/invoices               │  │  │
-│  │  │ - Create Form        │  │         │                                   │  │  │
-│  │  └──────────────────────┘  │         │  ┌───────────────────────────┐    │  │  │
-│  │  ┌──────────────────────┐  │         │  │   LangChain/LangGraph    │    │  │  │
-│  │  │ Chat Panel           │  │ ◀────── │  │   Agent Pipeline         │    │  │  │
-│  │  │ - Message Bubbles    │  │   JSON  │  │                          │    │  │  │
-│  │  │ - HITL Approval Card │  │         │  │  ┌─ Dynamic Tools MW ──┐ │    │  │  │
-│  │  │ - Escalation Sidebar │  │         │  │  │  @wrap_model_call   │ │    │  │  │
-│  │  │ - Communication Log  │  │         │  │  │  Level-based gating │ │    │  │  │
-│  │  └──────────────────────┘  │         │  │  └─────────────────────┘ │    │  │  │
-│  └────────────────────────────┘         │  │  ┌─ Dynamic Prompt MW ─┐ │    │  │  │
-│                                         │  │  │  @dynamic_prompt    │ │    │  │  │
-│                                         │  │  │  Tone shifting      │ │    │  │  │
-│                                         │  │  └─────────────────────┘ │    │  │  │
-│                                         │  │  ┌─ HITL MW ───────────┐ │    │  │  │
-│                                         │  │  │  Interrupt on drafts│ │    │  │  │
-│                                         │  │  │  Approve/Edit/Reject│ │    │  │  │
-│                                         │  │  └─────────────────────┘ │    │  │  │
-│                                         │  │  ┌─ InMemorySaver ─────┐ │    │  │  │
-│                                         │  │  │  Thread-based memory│ │    │  │  │
-│                                         │  │  └─────────────────────┘ │    │  │  │
-│                                         │  └───────────────────────────┘    │  │  │
-│                                         └──────────────────────────────────────┘  │
-│                                                        │                         │
-│                                              ┌─────────┴──────────┐              │
-│                                              │                    │              │
-│                                         ┌────▼─────┐      ┌──────▼──────┐       │
-│                                         │ Groq API │      │ Tavily API  │       │
-│                                         │ (free)   │      │ (free)      │       │
-│                                         │ LLaMA 3  │      │ Web Search  │       │
-│                                         └──────────┘      └─────────────┘       │
-└──────────────────────────────────────────────────────────────────────────────────┘
+
+### API endpoints
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/auth/google/url` | Sign-in link with basic profile access only (no warning screen) |
+| `GET /api/auth/gmail/connect-url` | "Connect Gmail" link asking for `gmail.send` only (signed-in users) |
+| `POST /api/auth/google/callback` | Exchanges the OAuth code. Saves Gmail access only if `gmail.send` was granted |
+| `POST /api/invoices/parse` | Extracts invoice fields from a PDF or DOCX (works for guests too) |
+| `POST /api/invoices` · `POST /api/invoices/upload` | Creates an invoice and starts the agent thread |
+| `GET /api/invoices` | Lists invoices, including `awaiting_approval` for the dashboard queue |
+| `POST /api/chat` | Talks to the agent about one invoice. Clearly off-topic questions are filtered out |
+| `POST /api/invoices/{id}/escalate` | Raises the level and asks the agent for a draft in the new tone |
+| `POST /api/invoices/{id}/resume` | Approve, edit or reject the waiting draft. Approved emails are sent via Gmail |
+| `POST /api/email/inbound` | Resend webhook for client replies (Svix signature verified) |
+
+---
+
+## How the agent is built
+
+### Escalation levels and tool gating
+
+The agent only sees the tools for its current level (`src/middleware/dynamic_tools.py`), and its system prompt changes with the level (`src/middleware/dynamic_prompts.py`, prompts in `src/prompts/v1/`).
+
+| Level | Tone | Tools added |
+|---|---|---|
+| **0 · Setup** | n/a | `update_invoice_details`, `check_invoice_status`, `draft_invoice_delivery_email` |
+| **1 · Friendly** | Warm, assumes good faith | `draft_polite_reminder`, `escalate_dispute`, payment-status tools |
+| **2 · Formal** | Firm, businesslike | `draft_formal_demand_letter` |
+| **3 · Legal** | Final notice | `draft_final_notice`, `lookup_small_claims_procedures`, `generate_court_filing_guide` |
+
+The day ranges shown on the site (7–30, 30–60, 60+ days late) are guidance for you. They aren't thresholds in the code.
+
+### Human in the loop
+
+`HumanInTheLoopMiddleware` (in `src/agent.py`) pauses the agent whenever it calls one of these tools:
+
+| Pauses for your approval | Runs without approval |
+|---|---|
+| `draft_invoice_delivery_email`, `draft_polite_reminder`, `draft_formal_demand_letter`, `draft_final_notice` | `check_invoice_status`, `update_invoice_details`, `escalate_dispute` |
+| `mark_invoice_pending`, `mark_invoice_paid`, `record_partial_payment` | `lookup_small_claims_procedures`, `generate_court_filing_guide` |
+
+When you approve, `/resume` reads the waiting draft **before** syncing invoice details into the agent. LangGraph's `update_state()` clears a pending interrupt, so reading it afterwards would lose the draft. It then sends the email to the client address saved on the invoice, and reports `email_status`: `sent`, `demo`, `gmail_not_connected` or `failed`.
+
+### State, memory and context
+
+- **Agent state** (`src/state.py`): client, amounts, days overdue, jurisdiction, escalation level and status, persisted per invoice thread (`invoice-{id}`) by the LangGraph checkpointer (Postgres when `DATABASE_URL` is set).
+- **Source of truth:** the Supabase `invoices` table. Only fields that have changed are written into the agent, so a waiting draft isn't wiped when you open an invoice.
+- **Runtime context** (`FreelancerContext`): your name, business and payment terms, injected per request.
+
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| LLM | Groq, model set by `GROQ_MODEL` (default `openai/gpt-oss-120b`, which supports tool calling) |
+| Agent | LangChain (`create_agent`, middleware, tools); LangGraph for checkpoints and `Command` |
+| Backend | FastAPI on Vercel serverless (Python) |
+| Data | Supabase Postgres + Storage (invoice files) |
+| Email | Gmail API (send-only) for sending; Resend Inbound (free plan) for replies |
+| Search | Tavily (Legal level only) |
+| Frontend | React 19, Vite, Tailwind CSS 4, Vitest |
+
+---
+
+## Project structure
+
+```
+api/index.py                  FastAPI routes: auth, invoices, chat, escalate, resume, inbound email
+src/
+  agent.py                    Agent assembly, approval middleware, checkpointer
+  state.py                    Agent state + FreelancerContext
+  invoice_parser.py           PDF/DOCX text extraction + LLM field extraction (with fallback)
+  db.py                       Supabase REST access, encrypted Gmail tokens, reply-token lookup
+  tools/                      drafting, escalation, invoice status, legal research, payment status
+  middleware/                 dynamic tools and prompts per escalation level
+  prompts/v1/                 System prompts for levels 0–3
+  services/
+    gmail_service.py          Send-only Gmail client (supports Reply-To)
+    resend_inbound.py         Reply tokens, webhook signature check, received-email fetch
+frontend/src/
+  components/                 LandingPage, Dashboard, InvoiceTable, ChatPanel, DraftApproval, invoice-generator/
+  contexts/AuthContext.tsx    Sign-in, Connect Gmail, demo mode
+  hooks/                      useChat (approve, reject, escalate), useInvoices
+supabase/schema.sql           Tables, including invoices.reply_token
+tests/                        Backend tests (pytest)
+docs/how-it-works.svg         The animated flow above
 ```
 
 ---
 
-## How It Works
-
-### Sequence Diagram: Full Dispute Lifecycle
-
-```
-User                Frontend              Backend/Agent            Groq LLM           Tavily
- │                    │                       │                      │                  │
- │  Create Invoice    │                       │                      │                  │
- ├───────────────────▶│  POST /api/invoices   │                      │                  │
- │                    ├──────────────────────▶│                      │                  │
- │                    │                       │  invoke(HumanMsg)    │                  │
- │                    │                       ├─────────────────────▶│                  │
- │                    │                       │                      │                  │
- │                    │                       │  ◀── Tool Call: ─────┤                  │
- │                    │                       │  update_invoice_     │                  │
- │                    │                       │  details             │                  │
- │                    │                       │                      │                  │
- │                    │                       │  Command(update={    │                  │
- │                    │                       │    escalation: 1,    │                  │
- │                    │                       │    client_name: ...  │                  │
- │                    │                       │  })                  │                  │
- │                    │  ◀── state + msgs ────┤                      │                  │
- │  ◀── Dashboard ────┤                       │                      │                  │
- │                    │                       │                      │                  │
- │  "Draft a reminder"│                       │                      │                  │
- ├───────────────────▶│  POST /api/chat       │                      │                  │
- │                    ├──────────────────────▶│                      │                  │
- │                    │                       │                      │                  │
- │                    │                       │  ── Dynamic Tools MW ──────────────────────
- │                    │                       │  │ Level 1: only                        │
- │                    │                       │  │ [check_invoice_status,               │
- │                    │                       │  │  draft_polite_reminder,              │
- │                    │                       │  │  escalate_dispute,                   │
- │                    │                       │  │  update_invoice_details]             │
- │                    │                       │  └─────────────────────────────────────────
- │                    │                       │                      │                  │
- │                    │                       │  ── Dynamic Prompt MW ─────────────────────
- │                    │                       │  │ "Tone: Warm, empathetic.            │
- │                    │                       │  │  Assume best intentions."            │
- │                    │                       │  └─────────────────────────────────────────
- │                    │                       │                      │                  │
- │                    │                       │  invoke(tools=L1)    │                  │
- │                    │                       ├─────────────────────▶│                  │
- │                    │                       │                      │                  │
- │                    │                       │  ◀── Tool Call: ─────┤                  │
- │                    │                       │  draft_polite_       │                  │
- │                    │                       │  reminder            │                  │
- │                    │                       │                      │                  │
- │                    │                       │  ── HITL MW ───────────────────────────────
- │                    │                       │  │ INTERRUPT!                           │
- │                    │                       │  │ "draft_polite_reminder"              │
- │                    │                       │  │ requires human approval              │
- │                    │                       │  └─────────────────────────────────────────
- │                    │                       │                      │                  │
- │                    │  ◀── interrupt: ──────┤                      │                  │
- │                    │  {tool, args, draft}  │                      │                  │
- │                    │                       │                      │                  │
- │  ◀── HITL Card ────┤                       │                      │                  │
- │  [Approve] [Edit]  │                       │                      │                  │
- │  [Reject]          │                       │                      │                  │
- │                    │                       │                      │                  │
- │  Click "Approve"   │                       │                      │                  │
- ├───────────────────▶│ POST /resume          │                      │                  │
- │                    ├──────────────────────▶│                      │                  │
- │                    │                       │  Command(resume={    │                  │
- │                    │                       │    decisions:        │                  │
- │                    │                       │    [{type:"approve"}]│                  │
- │                    │                       │  })                  │                  │
- │                    │  ◀── response ────────┤                      │                  │
- │  ◀── "Email sent!" │                       │                      │                  │
- │                    │                       │                      │                  │
- │  Click "Escalate   │                       │                      │                  │
- │   to Level 2"      │                       │                      │                  │
- ├───────────────────▶│  POST /api/chat       │                      │                  │
- │                    ├──────────────────────▶│                      │                  │
- │                    │                       │  ◀── Tool Call: ─────┤                  │
- │                    │                       │  escalate_dispute    │                  │
- │                    │                       │                      │                  │
- │                    │                       │  Command(update={    │                  │
- │                    │                       │   escalation_level:2 │                  │
- │                    │                       │  })                  │                  │
- │                    │                       │                      │                  │
- │                    │                       │  ── Dynamic Tools ────────────────────────
- │                    │                       │  │ Level 2: UNLOCKS                    │
- │                    │                       │  │ + draft_formal_demand_letter         │
- │                    │                       │  │ + calculate_late_fees               │
- │                    │                       │  └─────────────────────────────────────────
- │                    │                       │                      │                  │
- │                    │                       │  ── Dynamic Prompt ───────────────────────
- │                    │                       │  │ "Tone: Professional, firm.          │
- │                    │                       │  │  Reference contract terms."          │
- │                    │                       │  └─────────────────────────────────────────
- │                    │                       │                      │                  │
- │  ◀── Level 2 ──────┤  Badge turns amber   │                      │                  │
- │                    │                       │                      │                  │
- │  "Draft a formal   │                       │                      │                  │
- │   demand letter"   │                       │                      │                  │
- ├───────────────────▶│ ────────────────────▶│ ────────────────────▶│                  │
- │                    │                       │  ◀── calculate_late_ │                  │
- │                    │                       │      fees + draft_   │                  │
- │                    │                       │      formal_demand   │                  │
- │                    │  ◀── HITL interrupt ──┤                      │                  │
- │  ◀── Approve Card  │                       │                      │                  │
- │                    │                       │                      │                  │
- │  Escalate to L3    │                       │                      │                  │
- ├───────────────────▶│ ────────────────────▶│ ────────────────────▶│                  │
- │                    │                       │                      │                  │
- │                    │                       │  ── Dynamic Tools ────────────────────────
- │                    │                       │  │ Level 3: UNLOCKS                    │
- │                    │                       │  │ + lookup_small_claims_procedures     │
- │                    │                       │  │ + generate_court_filing_guide        │
- │                    │                       │  │ + draft_final_notice                │
- │                    │                       │  └─────────────────────────────────────────
- │                    │                       │                      │                  │
- │  "Research court   │                       │                      │                  │
- │   procedures"      │                       │                      │                  │
- ├───────────────────▶│ ────────────────────▶│ ────────────────────▶│                  │
- │                    │                       │                      │   Tavily Search  │
- │                    │                       │                      ├─────────────────▶│
- │                    │                       │                      │  ◀── Results ────┤
- │                    │                       │  ◀── Legal research ─┤                  │
- │  ◀── Court filing  │  ◀── response ───────┤                      │                  │
- │     instructions   │                       │                      │                  │
- │                    │                       │                      │                  │
-```
-
-### Sequence Diagram: Human-in-the-Loop (HITL) Decision Flow
-
-```
-                          ┌──────────────┐
-                          │  Agent calls  │
-                          │  draft tool   │
-                          └──────┬───────┘
-                                 │
-                    ┌────────────▼────────────┐
-                    │   HITL Middleware        │
-                    │   Checks: is this tool  │
-                    │   in interrupt_on dict?  │
-                    └────────────┬────────────┘
-                                 │
-                          ┌──────▼──────┐
-                          │  INTERRUPT   │
-                          │  Agent pauses│
-                          │  Returns     │
-                          │  draft to UI │
-                          └──────┬──────┘
-                                 │
-               ┌─────────────────▼─────────────────┐
-               │        User Reviews Draft          │
-               │                                    │
-               │  ┌──────────────────────────────┐  │
-               │  │  "Subject: Payment Reminder  │  │
-               │  │   Dear [Client Name],        │  │
-               │  │   I hope this finds you..."  │  │
-               │  └──────────────────────────────┘  │
-               │                                    │
-               │  [Approve & Send]  [Edit]  [Reject]│
-               └──────┬──────────────┬──────────┬───┘
-                      │              │          │
-              ┌───────▼──┐    ┌──────▼───┐  ┌───▼───────┐
-              │ APPROVE  │    │  EDIT    │  │  REJECT   │
-              │          │    │          │  │           │
-              │ Command( │    │ User     │  │ Command(  │
-              │  resume: │    │ modifies │  │  resume:  │
-              │  {type:  │    │ the text │  │  {type:   │
-              │  approve}│    │          │  │  reject,  │
-              │ )        │    │ Command( │  │  message: │
-              │          │    │  resume: │  │  "reason"}│
-              │ Agent    │    │  {type:  │  │ )         │
-              │ continues│    │  edit,   │  │           │
-              │ & "sends"│    │  edited} │  │ Agent     │
-              │ the draft│    │ )        │  │ revises & │
-              └──────────┘    └──────────┘  │ re-drafts │
-                                            └───────────┘
-```
-
-### Sequence Diagram: Dynamic Tool Gating (State Machine)
-
-```
-                    ┌─────────────────────────┐
-                    │      Level 0            │
-                    │      (No Invoice)       │
-                    │                         │
-                    │  Tools:                 │
-                    │  - update_invoice_      │
-                    │    details              │
-                    └───────────┬─────────────┘
-                                │
-                    update_invoice_details()
-                    Command(update={
-                      escalation_level: 1
-                    })
-                                │
-                    ┌───────────▼─────────────┐
-                    │      Level 1            │
-                    │      (Friendly)         │
-                    │                         │
-                    │  Tone: Warm, empathetic │
-                    │                         │
-                    │  Tools:                 │
-                    │  - check_invoice_status │
-                    │  - draft_polite_        │
-                    │    reminder             │──── HITL interrupt
-                    │  - escalate_dispute     │
-                    │  - update_invoice_      │
-                    │    details              │
-                    └───────────┬─────────────┘
-                                │
-                    escalate_dispute()
-                    Command(update={
-                      escalation_level: 2
-                    })
-                                │
-                    ┌───────────▼─────────────┐
-                    │      Level 2            │
-                    │      (Formal)           │
-                    │                         │
-                    │  Tone: Firm, direct     │
-                    │                         │
-                    │  Tools (all L1 plus):   │
-                    │  - draft_formal_demand_ │
-                    │    letter               │──── HITL interrupt
-                    │  - calculate_late_fees  │
-                    └───────────┬─────────────┘
-                                │
-                    escalate_dispute()
-                    Command(update={
-                      escalation_level: 3
-                    })
-                                │
-                    ┌───────────▼─────────────┐
-                    │      Level 3            │
-                    │      (Legal)            │
-                    │                         │
-                    │  Tone: Legal language   │
-                    │                         │
-                    │  Tools (all L2 plus):   │
-                    │  - draft_final_notice   │──── HITL interrupt
-                    │  - lookup_small_claims_ │
-                    │    procedures           │──── Tavily web search
-                    │  - generate_court_      │
-                    │    filing_guide         │──── Tavily web search
-                    │                         │
-                    │  [MAX LEVEL - cannot    │
-                    │   escalate further]     │
-                    └─────────────────────────┘
-```
-
----
-
-## GenAI Technologies & How They Help
-
-This project is a showcase of **production-grade GenAI patterns** — not just "chat with an LLM" but a fully orchestrated agent system with state management, middleware pipelines, and human oversight.
-
-### 1. LangChain Agent with Custom State (`create_agent` + `AgentState`)
-
-```python
-class InvoiceDisputeState(AgentState):
-    client_name: str
-    client_email: str
-    invoice_amount: float
-    invoice_id: str
-    days_overdue: int
-    escalation_level: int          # 1=friendly, 2=formal, 3=legal
-    communication_history: list
-    jurisdiction: str
-```
-
-**Why it matters for the customer:** The agent maintains full context across the entire dispute lifecycle. It remembers every detail — the client's name, how much they owe, what communications have been sent, and the current escalation level. The customer never has to repeat themselves.
-
-**Technical detail:** The state is not just a chat history — it's a structured schema that middleware reads to make dynamic decisions. The `escalation_level` field is the key that unlocks the entire progressive escalation system.
-
-### 2. Dynamic Tool Gating (`@wrap_model_call` Middleware)
-
-```python
-@wrap_model_call
-def dynamic_tool_middleware(request: ModelRequest, handler) -> ModelResponse:
-    level = request.state.get("escalation_level", 0)
-
-    if level <= 0:   tools = [update_invoice_details]
-    elif level == 1: tools = LEVEL_1_TOOLS  # friendly tools only
-    elif level == 2: tools = LEVEL_2_TOOLS  # + formal demand, late fees
-    else:            tools = LEVEL_3_TOOLS  # + legal research, court filing
-
-    return handler(request.override(tools=tools))
-```
-
-**Why it matters for the customer:** The AI literally *cannot* jump to legal threats on Day 1. Tools are physically gated — at Level 1, the model doesn't even know `draft_final_notice` exists. This prevents premature escalation that could damage client relationships, and ensures a structured, professional approach to payment recovery.
-
-**Technical detail:** This uses LangChain's `@wrap_model_call` middleware to intercept the model request and replace the available tools based on the current state. The model's tool schema is rewritten on every call.
-
-### 3. Dynamic Prompt Engineering (`@dynamic_prompt` Middleware)
-
-```python
-@dynamic_prompt
-def escalation_prompt(request: ModelRequest) -> str:
-    level = request.state.get("escalation_level", 0)
-    ctx = request.runtime.context  # FreelancerContext dataclass
-
-    if level == 1:
-        return f"Tone: Warm, empathetic. Assume best intentions..."
-    elif level == 2:
-        return f"Tone: Professional, firm. Reference contract terms..."
-    elif level == 3:
-        return f"Tone: Formal legal language. Reference statutes..."
-```
-
-**Why it matters for the customer:** The AI's personality shifts with the situation. At Level 1, it's understanding and gentle ("I'm sure this was an oversight"). At Level 3, it's using legal language ("Pursuant to the terms of agreement..."). The customer doesn't need to coach the AI on tone — it adapts automatically.
-
-**Technical detail:** The `@dynamic_prompt` middleware replaces the system prompt dynamically based on state. It also injects the freelancer's business context (name, payment terms, late fee rate) from the runtime context dataclass.
-
-### 4. Human-in-the-Loop (`HumanInTheLoopMiddleware`)
-
-```python
-HumanInTheLoopMiddleware(
-    interrupt_on={
-        "draft_polite_reminder": True,      # HITL required
-        "draft_formal_demand_letter": True,  # HITL required
-        "draft_final_notice": True,          # HITL required
-        "calculate_late_fees": False,        # Auto-execute
-        "escalate_dispute": False,           # Auto-execute
-    },
-    description_prefix="APPROVAL REQUIRED: Review this draft before sending",
-)
-```
-
-**Why it matters for the customer:** No email or letter is ever sent without explicit human approval. The customer can:
-- **Approve** — send as-is
-- **Edit** — modify the draft and send
-- **Reject** — tell the agent to revise with specific feedback
-
-This is crucial for legal communications where a wrong word could have consequences. The customer stays in full control while the AI does the heavy lifting of drafting.
-
-**Technical detail:** When the agent calls a draft tool, the HITL middleware interrupts execution, serializes the pending tool call, and returns it to the frontend. The frontend displays an approval card. When the user decides, the backend resumes with `Command(resume={"decisions": [...]})`.
-
-### 5. Command Pattern for State Updates
-
-```python
-@tool
-def escalate_dispute(runtime: ToolRuntime) -> Command:
-    current = runtime.state.get("escalation_level", 1)
-    return Command(update={
-        "escalation_level": current + 1,
-        "messages": [ToolMessage(
-            f"Escalated to level {current + 1}. New tools available.",
-            tool_call_id=runtime.tool_call_id
-        )]
-    })
-```
-
-**Why it matters for the customer:** State changes (escalation, invoice details) are atomic and auditable. When you escalate, the new level takes effect immediately — the next model call sees the updated state, gets new tools, and adopts a new tone.
-
-**Technical detail:** Tools return `Command(update={...})` from `langgraph.types` to modify the agent's state. This is one of the few places LangGraph is directly used — `Command` is LangGraph's declarative state mutation primitive, imported here into an otherwise LangChain-driven agent.
-
-### 6. Runtime Context Injection (`@dataclass` + `context_schema`)
-
-```python
-@dataclass
-class FreelancerContext:
-    freelancer_name: str = "Alex Rivera"
-    freelancer_email: str = "alex@riveraconsulting.com"
-    business_name: str = "Rivera Consulting"
-    default_payment_terms: str = "Net 30"
-    default_late_fee_percent: float = 1.5  # monthly
-```
-
-**Why it matters for the customer:** Every draft is automatically personalized — your business name in the header, your payment terms referenced, your late fee rate applied. You configure once, and every communication is branded and accurate.
-
-**Technical detail:** The context dataclass is injected at runtime via `context_schema` on `create_agent`. Every tool and middleware can access it via `runtime.context` — it's read-only and never stored in the conversation state.
-
-### 7. Web Search Integration (Tavily)
-
-```python
-@tool
-def lookup_small_claims_procedures(jurisdiction: str, runtime: ToolRuntime) -> str:
-    """Search for small claims court procedures for the given jurisdiction."""
-    client = TavilyClient()
-    results = client.search(
-        query=f"small claims court filing procedure {jurisdiction} 2024",
-        max_results=3
-    )
-    return "\n\n".join([r["content"] for r in results["results"]])
-```
-
-**Why it matters for the customer:** At Level 3, the AI researches actual court procedures for the client's specific jurisdiction. Instead of generic legal advice, you get: "In California, small claims court limit is $12,500. File at the courthouse in the county where the defendant resides..." Real, actionable information.
-
-**Technical detail:** Tavily is used instead of a generic web search because it returns clean, structured content optimized for LLM consumption. The search is gated behind Level 3 — it only runs when the dispute has genuinely reached the legal stage.
-
-### 8. MCP Server (Model Context Protocol)
-
-```python
-mcp = FastMCP("invoice_server")
-
-@mcp.tool()
-def get_invoice(invoice_id: str) -> dict:
-    """Retrieve invoice details from the database."""
-    ...
-
-@mcp.tool()
-def log_communication(invoice_id: str, comm_type: str, content: str) -> str:
-    """Log a communication sent for an invoice."""
-    ...
-```
-
-**Why it matters for the customer:** The MCP server acts as a standardized bridge to your invoice system. In production, this would connect to QuickBooks, FreshBooks, or Xero. The agent can read invoice data and log every communication automatically.
-
-**Technical detail:** Uses Anthropic's Model Context Protocol with `FastMCP` for tool definition. The server runs as a subprocess with stdio transport, making it easily swappable with any invoice management system that implements the same tool interface.
-
-### 9. Conversation Memory (`InMemorySaver`)
-
-**Why it matters for the customer:** Every conversation is preserved per client thread. You can pick up a dispute weeks later and the agent remembers everything — what was sent, what level you're at, what the client responded.
-
-**Technical detail:** This is where LangGraph contributes directly — `SqliteSaver` and `PostgresSaver` are LangGraph's checkpointing backends. Each thread has a unique ID (`invoice-{invoice_id}`), and every state mutation is persisted. The code tries `PostgresSaver` first (via `DATABASE_URL`), falling back to `SqliteSaver` locally.
-
----
-
-## Escalation Levels — Detailed Breakdown
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                                                                             │
-│   LEVEL 1: FRIENDLY                                                        │
-│   ══════════════════                                                        │
-│                                                                             │
-│   Tone:   "Hi [Client], just a gentle reminder about invoice #[ID]..."     │
-│   Tools:  check_invoice_status, draft_polite_reminder, escalate_dispute    │
-│   Badge:  🟢 Green                                                          │
-│   Goal:   Resolve with goodwill — assume oversight, not malice             │
-│                                                                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   LEVEL 2: FORMAL                                                          │
-│   ════════════════                                                          │
-│                                                                             │
-│   Tone:   "Per our agreement dated [date], payment of $[amount]            │
-│            was due [X] days ago. A late fee of $[fee] has accrued..."       │
-│   Tools:  + draft_formal_demand_letter, calculate_late_fees                │
-│   Badge:  🟡 Amber                                                          │
-│   Goal:   Create urgency — reference contract, apply financial pressure    │
-│                                                                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│   LEVEL 3: LEGAL                                                           │
-│   ═══════════════                                                           │
-│                                                                             │
-│   Tone:   "This constitutes formal notice pursuant to [statute].           │
-│            Failure to remit payment within 10 business days will            │
-│            result in filing in [jurisdiction] Small Claims Court..."        │
-│   Tools:  + draft_final_notice, lookup_small_claims, court_filing_guide    │
-│   Badge:  🔴 Red                                                            │
-│   Goal:   Final warning before court — legally sound, evidentially useful  │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## Tech Stack
-
-| Layer | Technology | Why |
-|-------|-----------|-----|
-| **LLM** | Groq (LLaMA 3.3 70B) | Free tier, fast inference, strong reasoning |
-| **Agent Framework** | LangChain (primary) | Agent runtime, middleware pipeline (`@wrap_model_call`, `@dynamic_prompt`, HITL), tool orchestration |
-| **Checkpointing / State** | LangGraph (secondary) | `SqliteSaver`/`PostgresSaver` for thread memory; `Command` type for tool state mutations |
-| **Web Search** | Tavily | Clean content optimized for LLM consumption |
-| **Backend** | FastAPI (Python) | Async, Pydantic validation, Vercel serverless compatible |
-| **Frontend** | React 19 + Vite + Tailwind v4 | Fast builds, modern CSS, type-safe |
-| **Hosting** | Vercel (free tier) | Zero-config deployment, serverless Python functions |
-| **Icons** | Lucide React | Consistent, lightweight icon set |
-
----
-
-## Project Structure
-
-```
-invoice-dispute-agent/
-├── api/
-│   └── index.py                    # FastAPI routes (Vercel serverless)
-├── src/
-│   ├── agent.py                    # Agent assembly with all middleware
-│   ├── state.py                    # InvoiceDisputeState + FreelancerContext
-│   ├── tools/
-│   │   ├── drafting.py             # draft_polite_reminder, draft_formal_demand, draft_final_notice
-│   │   ├── invoice.py              # check_invoice_status, calculate_late_fees
-│   │   ├── legal.py                # lookup_small_claims, court_filing_guide (Tavily)
-│   │   └── escalation.py           # escalate_dispute, update_invoice_details (Command pattern)
-│   ├── middleware/
-│   │   ├── dynamic_tools.py        # @wrap_model_call — level-based tool gating
-│   │   └── dynamic_prompts.py      # @dynamic_prompt — tone shifting per level
-│   └── mcp_server/
-│       └── invoice_server.py       # FastMCP mock invoice API
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx                 # React Router (Dashboard + Chat)
-│   │   ├── components/
-│   │   │   ├── Dashboard.tsx       # Stats + invoice table + create form
-│   │   │   ├── ChatPanel.tsx       # Chat + HITL + sidebar + escalation control
-│   │   │   ├── MessageBubble.tsx   # Agent/user/tool message rendering
-│   │   │   ├── DraftApproval.tsx   # HITL approve/edit/reject card
-│   │   │   ├── EscalationBadge.tsx # Color-coded level indicator
-│   │   │   ├── StatsCards.tsx      # Dashboard summary cards
-│   │   │   ├── InvoiceTable.tsx    # Clickable invoice table
-│   │   │   ├── InvoiceForm.tsx     # New invoice modal form
-│   │   │   └── Layout.tsx          # App shell with nav
-│   │   ├── hooks/
-│   │   │   ├── useChat.ts          # Chat state + API calls + HITL handling
-│   │   │   └── useInvoices.ts      # Invoice CRUD + polling
-│   │   ├── api.ts                  # Fetch wrapper
-│   │   └── types.ts                # TypeScript interfaces
-│   └── index.html
-├── main.py                         # CLI entry point (no frontend needed)
-├── requirements.txt
-├── vercel.json                     # Vercel deployment config
-└── .env.example
-```
-
----
-
-## Getting Started
+## Getting started
 
 ### Prerequisites
 
-- Python 3.11+
-- Node.js 18+
-- Free API keys:
-  - [Groq](https://console.groq.com) — LLM inference (free tier: 30 req/min)
-  - [Tavily](https://app.tavily.com) — Web search (free tier: 1000 searches/month)
+- Python 3.11+ and Node.js 18+
+- Free accounts: [Groq](https://console.groq.com), [Tavily](https://app.tavily.com), [Supabase](https://supabase.com), a Google Cloud OAuth client, and [Resend](https://resend.com) (free plan, no card)
 
-### Installation
+### Install
 
 ```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/invoice-dispute-agent.git
+git clone https://github.com/code0monkey1/invoice-dispute-agent.git
 cd invoice-dispute-agent
-
-# Set up Python virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install Python dependencies
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Install frontend dependencies
 cd frontend && npm install && cd ..
-
-# Configure environment variables
 cp .env.example .env
 ```
 
-Edit `.env` with your API keys:
+Fill in `.env`. Every variable is described in `.env.example`.
 
-```env
-GROQ_API_KEY=gsk_your_key_here
-TAVILY_API_KEY=tvly-your_key_here
-```
+### Configure the services
 
-### Run Locally
+1. **Supabase:** run `supabase/schema.sql` in the SQL editor. It's safe to re-run, and it adds `invoices.reply_token`.
+2. **Google OAuth:** on the consent screen, request `openid`, `userinfo.email`, `userinfo.profile` and `gmail.send` only. Set the redirect URI to `http://localhost:5173/auth/google/callback` (plus your production URL). Send-only access needs Google's free verification, not the paid security assessment.
+3. **Resend Inbound:**
+   - Copy your receiving address (`<id>.resend.app`) into `RESEND_INBOUND_DOMAIN`, and create an API key.
+   - Add an `email.received` webhook pointing to `https://<your-app>/api/email/inbound`, and put its signing secret in `RESEND_WEBHOOK_SECRET`.
+   - Resend can't reach `localhost`, so test replies on a deployed URL or through a tunnel.
+
+### Run locally
 
 ```bash
-# Terminal 1: Start the backend
+# Terminal 1: backend (the Vite dev server proxies /api to port 8000)
 uvicorn api.index:app --reload --port 8000
 
-# Terminal 2: Start the frontend
+# Terminal 2: frontend
 cd frontend && npm run dev
 ```
 
-Open [http://localhost:5173](http://localhost:5173) in your browser.
+Open http://localhost:5173.
 
-### CLI Mode (No Frontend)
-
-```bash
-python main.py
-```
-
-Interactive terminal mode — type messages, handle HITL with `approve`/`reject`/`edit:...` commands.
-
----
-
-## Deploy to Vercel (Free)
+### Tests
 
 ```bash
-# Install Vercel CLI
-npm i -g vercel
-
-# Deploy
-vercel --prod
+pytest                       # backend
+cd frontend && npm run test  # frontend
 ```
 
-Set environment variables in the Vercel dashboard:
-- `GROQ_API_KEY`
-- `TAVILY_API_KEY`
-
-The `vercel.json` handles everything:
-- Frontend builds from `frontend/dist`
-- API routes served by `api/index.py` as a Python serverless function
-- All other routes serve the React SPA
-
 ---
 
-## Demo Flow
+## Deploy to Vercel
 
-1. **Create Invoice** — Click "+ New Invoice", enter client details (name, email, amount, days overdue, jurisdiction)
-2. **Level 1** — The agent starts at Friendly. Ask it to "draft a reminder email"
-3. **HITL Review** — A styled approval card appears with the draft. Approve, edit, or reject
-4. **Escalate** — Click "Escalate to Level 2" in the sidebar. The badge turns amber, new tools unlock
-5. **Level 2** — Request a "formal demand letter with late fees". The AI calculates fees and drafts a firm letter
-6. **Escalate Again** — Move to Level 3. The badge turns red
-7. **Legal Research** — Ask "What are the small claims court procedures in California?" — the agent uses Tavily to research real legal procedures
-8. **Final Notice** — Request a final notice. The AI drafts a legally-structured document referencing jurisdiction-specific statutes
-
----
-
-## LangChain Concepts Demonstrated
-
-| Concept | Module | Implementation |
-|---------|--------|---------------|
-| Custom State (`AgentState` subclass) | `src/state.py` | `InvoiceDisputeState` with 8 typed fields |
-| Runtime Context (`@dataclass`) | `src/state.py` | `FreelancerContext` injected per request |
-| Tools (`@tool` + `ToolRuntime`) | `src/tools/` | 9 specialized tools across 4 modules |
-| Dynamic Tools (`@wrap_model_call`) | `src/middleware/dynamic_tools.py` | Level-based progressive tool unlocking |
-| Dynamic Prompts (`@dynamic_prompt`) | `src/middleware/dynamic_prompts.py` | Tone shifting across 4 escalation levels |
-| Human-in-the-Loop (`HumanInTheLoopMiddleware`) | `src/agent.py` | Interrupt on all 3 draft tools |
-| Command Pattern (`Command(update={...})`) | `src/tools/escalation.py` | Atomic state updates from tools |
-| Web Search (Tavily) | `src/tools/legal.py` | Small claims + court filing research |
-| MCP Server (`FastMCP`) | `src/mcp_server/` | Mock invoice API with 5 tools |
-| Memory (`InMemorySaver`) | `src/agent.py` | Thread-based conversation persistence |
-
----
-
-## Contributing
-
-Contributions are welcome! Here's how to get started:
-
-1. **Fork** the repository
-2. **Create a branch**: `git checkout -b feature/your-feature`
-3. **Make your changes** and test locally (both backend and frontend)
-4. **Commit**: `git commit -m "Add your feature"`
-5. **Push**: `git push origin feature/your-feature`
-6. **Open a Pull Request**
-
-### Areas for Contribution
-
-- **Real invoice integrations** — Connect to QuickBooks, FreshBooks, or Xero via MCP
-- **Email sending** — Integrate SendGrid/Resend to actually deliver drafted communications
-- **Persistent storage** — Replace `InMemorySaver` with PostgreSQL for production
-- **Multi-language** — Generate drafts in the client's preferred language
-- **PDF generation** — Export formal demand letters and final notices as styled PDFs
-- **Analytics** — Track recovery rates, average time to payment, escalation patterns
+`vercel.json` builds the frontend and serves every route through `api/index.py`. In the Vercel project, set the same variables as `.env`, including `GROQ_MODEL`, `RESEND_API_KEY`, `RESEND_INBOUND_DOMAIN` and `RESEND_WEBHOOK_SECRET`. Then point the Resend webhook at `https://<your-app>/api/email/inbound`.
 
 ---
 
 ## License
 
 MIT
-
----
-
-<div align="center">
-
-**Built as a portfolio project demonstrating production-grade GenAI agent development.**
-
-*Every LangChain concept — state management, middleware pipelines, tool orchestration, human oversight — working together in a system that solves a real $825B problem.*
-
-</div>

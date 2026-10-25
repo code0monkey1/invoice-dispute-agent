@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     escalation_level  INTEGER NOT NULL DEFAULT 0,
     gmail_thread_id   TEXT,
     gmail_message_ids TEXT DEFAULT '[]',
+    reply_token       TEXT UNIQUE,
     invoice_file_path TEXT,
     invoice_file_name TEXT,
     invoice_file_mime TEXT,
@@ -51,6 +52,8 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_file_name TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_file_mime TEXT;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_file_size INTEGER;
 ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'active';
+-- Reply tracking: approved emails carry Reply-To inv-<reply_token>@<inbound domain>.
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS reply_token TEXT UNIQUE;
 
 CREATE TABLE IF NOT EXISTS communication_history (
     id          BIGSERIAL PRIMARY KEY,

@@ -11,6 +11,8 @@ const DRAFT_TOOLS = ['draft_invoice_delivery_email', 'draft_polite_reminder', 'd
 const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid', 'record_partial_payment']
 const INVOICE_DELIVERY_PROMPT = 'Please draft the first invoice delivery email for this invoice. The email should tell the client the invoice is attached, reference the invoice number and amount due, and ask them to review and pay it.'
 
+const NEXT_LEVEL_NAMES: Record<number, string> = { 1: 'Friendly', 2: 'Formal', 3: 'Legal' }
+
 export default function ChatPanel() {
   const { invoiceId } = useParams<{ invoiceId: string }>()
   const [input, setInput] = useState('')
@@ -38,6 +40,7 @@ export default function ChatPanel() {
     lastEmailSent,
     error,
     sendMessage,
+    escalate,
     approve,
     reject,
     initMessages,
@@ -100,7 +103,7 @@ export default function ChatPanel() {
   }
 
   const handleEscalate = () => {
-    sendMessage('Please escalate this dispute to the next level.')
+    escalate()
   }
 
   const handleCreateDeliveryDraft = () => {
@@ -205,20 +208,22 @@ export default function ChatPanel() {
           )}
           {lastEmailSent && (
             <div className={`mx-5 my-3 animate-fade-up`}>
-              <div className={`inline-flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-sm font-semibold ${
+              <div role="status" className={`inline-flex items-start gap-2.5 px-4 py-2.5 rounded-xl text-sm font-semibold ${
                 lastEmailSent.sent
                   ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
-                  : 'bg-rose-50 text-rose-700 border border-rose-200/60'
+                  : lastEmailSent.status === 'demo'
+                    ? 'bg-white text-gray-700 border border-[#F1E4D8]'
+                    : 'bg-rose-50 text-rose-700 border border-rose-200/60'
               }`}>
                 {lastEmailSent.sent ? (
                   <>
-                    <MailCheck className="w-4 h-4" />
-                    Email sent successfully to {agentState?.client_email}
+                    <MailCheck className="w-4 h-4 mt-0.5 shrink-0" />
+                    Sent to {agentState?.client_email} from your Gmail.
                   </>
                 ) : (
                   <>
-                    <MailX className="w-4 h-4" />
-                    Email could not be sent — draft was approved but delivery failed
+                    <MailX className="w-4 h-4 mt-0.5 shrink-0" />
+                    {lastEmailSent.note || "The draft was approved, but Gmail couldn't send it."}
                   </>
                 )}
               </div>
@@ -505,7 +510,7 @@ export default function ChatPanel() {
                   </div>
                   <div className={`flex items-center gap-2.5 font-medium ${agentState.escalation_level >= 2 ? 'text-amber-600' : 'text-gray-300'}`}>
                     <span className={`w-2.5 h-2.5 rounded-full ${agentState.escalation_level >= 2 ? 'bg-gradient-to-br from-amber-400 to-orange-500 shadow-sm shadow-amber-200' : 'bg-gray-200'}`} />
-                    Level 2: Formal demands + late fees
+                    Level 2: Formal demands
                   </div>
                   <div className={`flex items-center gap-2.5 font-medium ${agentState.escalation_level >= 3 ? 'text-rose-600' : 'text-gray-300'}`}>
                     <span className={`w-2.5 h-2.5 rounded-full ${agentState.escalation_level >= 3 ? 'bg-gradient-to-br from-rose-400 to-red-500 shadow-sm shadow-rose-200' : 'bg-gray-200'}`} />
@@ -519,7 +524,7 @@ export default function ChatPanel() {
                     className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl py-2.5 transition-all shadow-md shadow-violet-200/40 font-[family-name:var(--font-heading)]"
                   >
                     <ChevronUp className="w-3.5 h-3.5" />
-                    Escalate to Level {agentState.escalation_level + 1}
+                    Escalate to {NEXT_LEVEL_NAMES[agentState.escalation_level + 1] ?? `Level ${agentState.escalation_level + 1}`}
                   </button>
                 )}
               </>

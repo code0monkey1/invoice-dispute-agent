@@ -17,7 +17,7 @@ from src.tools.drafting import (
     draft_formal_demand_letter,
     draft_final_notice,
 )
-from src.tools.invoice import check_invoice_status, calculate_late_fees
+from src.tools.invoice import check_invoice_status
 from src.tools.legal import lookup_small_claims_procedures, generate_court_filing_guide
 from src.tools.escalation import escalate_dispute, update_invoice_details
 from src.tools.payment_tools import mark_invoice_pending, mark_invoice_paid, record_partial_payment
@@ -29,7 +29,6 @@ ALL_TOOLS = [
     draft_polite_reminder,
     escalate_dispute,
     draft_formal_demand_letter,
-    calculate_late_fees,
     lookup_small_claims_procedures,
     generate_court_filing_guide,
     draft_final_notice,
@@ -38,7 +37,11 @@ ALL_TOOLS = [
     record_partial_payment,
 ]
 
-model = init_chat_model("llama-3.3-70b-versatile", model_provider="groq")
+# Groq retires models over time, so the model is configurable. The default
+# must support tool calling, which the agent depends on.
+GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+
+model = init_chat_model(GROQ_MODEL, model_provider="groq")
 
 _checkpointer_error = None
 
@@ -89,7 +92,6 @@ agent = create_agent(
                 "draft_final_notice": True,
                 "update_invoice_details": False,
                 "check_invoice_status": False,
-                "calculate_late_fees": False,
                 "escalate_dispute": False,
                 "lookup_small_claims_procedures": False,
                 "generate_court_filing_guide": False,

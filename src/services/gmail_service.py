@@ -1,5 +1,6 @@
 import os
 import base64
+import html
 import logging
 from email import encoders
 from email.mime.base import MIMEBase
@@ -16,18 +17,21 @@ logger = logging.getLogger("invoicechaser")
 
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
-SCOPES = [
+# Sign-in asks for basic profile access only, which shows no warning screen.
+# Sending needs gmail.send ("sensitive": Google verification is free). We never
+# ask to read the inbox: replies come back through Resend Inbound instead, so
+# no "restricted" scope and no paid security assessment.
+SIGN_IN_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.readonly",
-    "https://www.googleapis.com/auth/gmail.modify",
 ]
+GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+SCOPES = SIGN_IN_SCOPES + [GMAIL_SEND_SCOPE]
 
 
 class GmailService:
-    """Wrapper around Gmail API for sending and reading emails."""
+    """Wrapper around the Gmail API for sending email from the user's account."""
 
     def __init__(self, user_id: str, access_token: str, refresh_token: str | None = None):
         self.user_id = user_id
@@ -55,11 +59,22 @@ class GmailService:
         body: str,
         thread_id: str | None = None,
         attachments: list[dict] | None = None,
+        reply_to: list[str] | None = None,
     ) -> dict:
-        """Send email. Returns {id, threadId}."""
+        """Send email. Returns {id, threadId}.
+
+        The body is HTML-escaped (drafts can quote client text), and header
+        values are collapsed to one line so they can't break the message.
+
+        ``reply_to`` lets client replies reach both the freelancer and the
+        Resend Inbound tracking address.
+        """
+        html_body = html.escape(body).replace("\n", "<br>")
+        subject = " ".join((subject or "").split())
+        to = " ".join((to or "").split())
         if attachments:
             message = MIMEMultipart()
-            message.attach(MIMEText(body.replace("\n", "<br>"), "html"))
+            message.attach(MIMEText(html_body, "html"))
             for attachment in attachments:
                 mime_type = attachment.get("mime_type") or "application/octet-stream"
                 if "/" in mime_type:
@@ -76,9 +91,11 @@ class GmailService:
                 )
                 message.attach(part)
         else:
-            message = MIMEText(body.replace("\n", "<br>"), "html")
+            message = MIMEText(html_body, "html")
         message["to"] = to
         message["subject"] = subject
+        if reply_to:
+            message["Reply-To"] = ", ".join(reply_to)
         raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
         send_body = {"raw": raw}
         if thread_id:
@@ -86,84 +103,3 @@ class GmailService:
         result = self.service.users().messages().send(userId="me", body=send_body).execute()
         logger.info(f"Email sent via Gmail: id={result['id']}, threadId={result['threadId']}")
         return {"id": result["id"], "threadId": result["threadId"]}
-
-    def get_replies(self, client_email: str, thread_id: str | None = None, after_timestamp: str | None = None) -> list[dict]:
-        """Get emails from a specific sender, optionally within a thread."""
-        if thread_id:
-            thread = self.service.users().threads().get(userId="me", id=thread_id, format="full").execute()
-            messages = []
-            for msg in thread.get("messages", []):
-                headers = {h["name"].lower(): h["value"] for h in msg["payload"]["headers"]}
-                if client_email.lower() in headers.get("from", "").lower():
-                    messages.append(self._parse_message(msg))
-            return messages
-        query = f"from:{client_email}"
-        if after_timestamp:
-            query += f" after:{after_timestamp}"
-        results = self.service.users().messages().list(userId="me", q=query, maxResults=10).execute()
-        messages = []
-        for msg_ref in results.get("messages", []):
-            msg = self.service.users().messages().get(userId="me", id=msg_ref["id"], format="full").execute()
-            messages.append(self._parse_message(msg))
-        return messages
-
-    def search_emails(self, query: str, max_results: int = 10) -> list[dict]:
-        results = self.service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
-        messages = []
-        for msg_ref in results.get("messages", []):
-            msg = self.service.users().messages().get(userId="me", id=msg_ref["id"], format="full").execute()
-            messages.append(self._parse_message(msg))
-        return messages
-
-    def get_thread(self, thread_id: str) -> list[dict]:
-        thread = self.service.users().threads().get(userId="me", id=thread_id, format="full").execute()
-        return [self._parse_message(msg) for msg in thread.get("messages", [])]
-
-    def mark_as_read(self, message_id: str):
-        self.service.users().messages().modify(userId="me", id=message_id, body={"removeLabelIds": ["UNREAD"]}).execute()
-
-    def watch_inbox(self, topic_name: str) -> dict:
-        """Register for Gmail push notifications. Returns {historyId, expiration}."""
-        result = self.service.users().watch(userId="me", body={"topicName": topic_name, "labelIds": ["INBOX"]}).execute()
-        logger.info(f"Gmail watch registered: historyId={result['historyId']}, expires={result['expiration']}")
-        return result
-
-    def get_history(self, start_history_id: str) -> list[dict]:
-        """Get new messages since a history ID."""
-        try:
-            results = self.service.users().history().list(
-                userId="me", startHistoryId=start_history_id,
-                historyTypes=["messageAdded"], labelId="INBOX"
-            ).execute()
-        except Exception as e:
-            logger.error(f"Failed to get history: {e}")
-            return []
-        messages = []
-        for record in results.get("history", []):
-            for msg_added in record.get("messagesAdded", []):
-                try:
-                    msg = self.service.users().messages().get(
-                        userId="me", id=msg_added["message"]["id"], format="full"
-                    ).execute()
-                    messages.append(self._parse_message(msg))
-                except Exception as e:
-                    logger.error(f"Failed to fetch message: {e}")
-        return messages
-
-    def _parse_message(self, msg: dict) -> dict:
-        headers = {h["name"].lower(): h["value"] for h in msg["payload"]["headers"]}
-        body = ""
-        payload = msg["payload"]
-        if payload.get("body", {}).get("data"):
-            body = base64.urlsafe_b64decode(payload["body"]["data"]).decode("utf-8", errors="replace")
-        elif payload.get("parts"):
-            for part in payload["parts"]:
-                if part["mimeType"] == "text/plain" and part.get("body", {}).get("data"):
-                    body = base64.urlsafe_b64decode(part["body"]["data"]).decode("utf-8", errors="replace")
-                    break
-        return {
-            "id": msg["id"], "threadId": msg["threadId"],
-            "from": headers.get("from", ""), "to": headers.get("to", ""),
-            "subject": headers.get("subject", ""), "body": body,
-            "date": headers.get("date", ""), "labels": msg.get("labelIds", []),
-        }
