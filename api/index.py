@@ -36,6 +36,7 @@ from fastapi import Header, HTTPException
 
 from src.agent import agent
 from src.state import FreelancerContext
+from src.tools.drafting import fill_draft_from_context
 from src.db import (
     init_db, upsert_user, get_user, get_user_gmail_tokens,
     update_user_history_id, update_user_sender_profile, get_user_by_email,
@@ -405,7 +406,7 @@ def generate_draft_preview(
                     f"{context.business_name}\n"
                     f"{context.freelancer_email}"
                 )
-            return f"Subject: {subject}\n\n{body}"
+            return fill_draft_from_context(f"Subject: {subject}\n\n{body}", state, context)
         if tool_name == "draft_polite_reminder":
             return (
                 f"Subject: Friendly Reminder - Invoice #{invoice_id} Payment\n\n"
@@ -531,6 +532,22 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
         logger.exception("Failed to build invoice context for user %s", user_id)
         return ""
 
+    current = next((inv for inv in invoices if inv["id"] == current_invoice_id), None)
+    header = []
+    if current:
+        amount = float(current.get("invoice_amount", 0) or 0)
+        balance = compute_balance(amount, float(current.get("amount_paid", 0) or 0))
+        header = [
+            "Current invoice (use these exact details in any email you draft):",
+            f"  Invoice number: {parse_public_invoice_id(current['id'])}",
+            f"  Client name: {current.get('client_name') or 'unknown'}",
+            f"  Client email: {current.get('client_email') or 'unknown'}",
+            f"  Invoice total: ${amount:,.2f}; balance due: ${balance:,.2f}",
+            f"  Days overdue: {current.get('days_overdue', 0) or 0}; status: {current.get('status', 'active')}",
+            "",
+            "All invoices for this user:",
+        ]
+
     lines = []
     for invoice in invoices[:12]:
         public_id = parse_public_invoice_id(invoice["id"])
@@ -556,7 +573,7 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
         if recent_subjects:
             lines.append(f"  Recent communications: {'; '.join(recent_subjects)}")
 
-    return "\n".join(lines)
+    return "\n".join(header + lines)
 
 
 def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> FreelancerContext:
