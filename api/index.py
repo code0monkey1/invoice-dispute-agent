@@ -25,6 +25,7 @@ from datetime import datetime, timezone
 import jwt
 import json as json_lib
 import re
+from concurrent.futures import ThreadPoolExecutor
 import time
 import uuid
 from email.utils import parseaddr
@@ -38,6 +39,7 @@ from src.agent import agent
 from src.state import FreelancerContext
 from src.tools.drafting import fill_draft_from_context
 from src.db import (
+    get_communications_for,
     mark_invoice_settled,
     init_db, upsert_user, get_user, get_user_gmail_tokens,
     update_user_history_id, update_user_sender_profile, get_user_by_email,
@@ -549,8 +551,14 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
             "All invoices for this user:",
         ]
 
+    listed = invoices[:12]
+    try:
+        communications = get_communications_for([inv["id"] for inv in listed])
+    except Exception:
+        logger.exception("Failed to read communications for user %s", user_id)
+        communications = {}
     lines = []
-    for invoice in invoices[:12]:
+    for invoice in listed:
         public_id = parse_public_invoice_id(invoice["id"])
         marker = "current" if invoice["id"] == current_invoice_id else "other"
         amount = float(invoice.get("invoice_amount", 0) or 0)
@@ -561,10 +569,7 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
             f"<{invoice.get('client_email', '')}>, status {invoice.get('status', 'active')}, "
             f"balance ${balance:,.2f}, {invoice.get('days_overdue', 0) or 0} days overdue."
         )
-        try:
-            comms = get_communications(invoice["id"])
-        except Exception:
-            comms = []
+        comms = communications.get(invoice["id"], [])
         # Only our own outgoing subjects: inbound ones are written by outsiders.
         recent_subjects = [
             c.get("subject")
@@ -1382,11 +1387,17 @@ def list_invoices(
 ):
     _user, user_id = resolve_user_id(request, response, authorization)
     invoices = get_invoices_by_user(user_id)
+    # One communications read for all invoices, and the agent-state reads in
+    # parallel: doing both per invoice made the dashboard slow to load.
+    communications = get_communications_for([inv["id"] for inv in invoices])
     for inv in invoices:
-        inv["communication_history"] = get_communications(inv["id"])
+        inv["communication_history"] = communications.get(inv["id"], [])
     presented = [present_invoice(inv) for inv in invoices]
+    open_ids = [inv["id"] for inv in presented if inv.get("status") != "paid"]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        actions = dict(zip(open_ids, pool.map(pending_approval_action, open_ids)))
     for inv in presented:
-        action = None if inv.get("status") == "paid" else pending_approval_action(inv["id"])
+        action = actions.get(inv["id"])
         inv["pending_action"] = action
         inv["awaiting_approval"] = action is not None
     return presented

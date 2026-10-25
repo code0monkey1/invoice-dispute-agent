@@ -564,6 +564,26 @@ def add_communication(
     return rows[0]
 
 
+def get_communications_for(invoice_ids: list[str]) -> dict[str, list[dict]]:
+    """Return communications for many invoices in as few calls as possible.
+
+    One REST call per 50 invoices instead of one per invoice. The result maps
+    every requested id (even those with no records) to its records, oldest first.
+    """
+    grouped: dict[str, list[dict]] = {invoice_id: [] for invoice_id in invoice_ids}
+    ids = list(grouped)
+    for start in range(0, len(ids), 50):
+        chunk = ",".join(f'"{invoice_id}"' for invoice_id in ids[start:start + 50])
+        rows = _supabase_rest_request(
+            "GET",
+            "communication_history",
+            query=[("select", "*"), ("invoice_id", f"in.({chunk})"), ("order", "timestamp.asc")],
+        ) or []
+        for row in rows:
+            grouped.setdefault(row.get("invoice_id"), []).append(row)
+    return grouped
+
+
 def get_communications(invoice_id: str) -> list[dict]:
     """Return all communication records for *invoice_id*, oldest first."""
     return _supabase_rest_request(
