@@ -233,3 +233,33 @@ def test_a_read_that_timed_out_is_not_retried(monkeypatch, timeout_error):
     with patch("urllib.request.urlopen", side_effect=slow), pytest.raises(db.DatabaseUnavailable):
         real_rest_request("GET", "invoices")
     assert calls["n"] == 1
+
+
+@pytest.mark.asyncio
+async def test_email_sent_then_everything_fails_still_reports_sent(client, fake_db, fake_agent, sent):
+    """Gmail accepts the email, then both the AI step and the database fail."""
+    from src.db import DatabaseUnavailable
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)
+    fake_agent.ask_for_approval()
+    import api.index as api_index
+
+    real_get_invoice = api_index.get_invoice
+    calls = {"after_send": False}
+
+    def flaky_get_invoice(invoice_id):
+        if calls["after_send"]:
+            raise DatabaseUnavailable("down")
+        return real_get_invoice(invoice_id)
+
+    def invoke_then_db_dies(*a, **k):
+        calls["after_send"] = True
+        raise RuntimeError("AI down")
+
+    fake_agent.invoke = invoke_then_db_dies
+    with patch.object(api_index, "get_invoice", flaky_get_invoice):
+        r = await approve(client, invoice, headers)
+
+    assert len(sent) == 1
+    assert r.status_code == 200, r.text
+    assert r.json()["email_sent"] is True

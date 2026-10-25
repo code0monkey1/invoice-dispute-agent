@@ -1828,8 +1828,7 @@ def resume(
         logger.exception("Agent resume failed for invoice %s", invoice_id)
         if email_went_out:
             return with_email_status(
-                {"messages": current_messages(config), "interrupt": None,
-                 "state": invoice_state_from_db(get_invoice(invoice_id) or {})},
+                {"messages": current_messages(config), "interrupt": None, "state": current_state(invoice_id, pending_state)},
                 approved_tool_name, email_status, email_result,
                 extra_note="The assistant couldn't finish updating this chat. Refresh in a moment.",
             )
@@ -1895,6 +1894,16 @@ def record_resume_outcome(invoice_id, config, decision, approved_tool_name, appr
         response["communication_history"] = history
 
     update_invoice(invoice_id, escalation_level=response.get("escalation_level", 1))
+
+
+def current_state(invoice_id: str, fallback: dict) -> dict:
+    # Best effort: the email is already out, so a database hiccup here must not
+    # turn the response into an error.
+    try:
+        invoice = get_invoice(invoice_id)
+        return invoice_state_from_db(invoice) if invoice else extract_state(fallback)
+    except Exception:
+        return extract_state(fallback)
 
 
 def current_messages(config: dict) -> list:
