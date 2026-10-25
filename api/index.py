@@ -1789,7 +1789,12 @@ _FENCE_TAG = re.compile(r"</?\s*client_reply\s*>", re.IGNORECASE)
 
 def _unfence(text: str) -> str:
     """Strip fence tags so untrusted text can't close the <client_reply> block."""
-    return _FENCE_TAG.sub("", text or "")
+    text = text or ""
+    while True:  # nested pieces like "</client_</client_reply>reply>" rebuild a tag
+        cleaned = _FENCE_TAG.sub("", text)
+        if cleaned == text:
+            return text
+        text = cleaned
 
 
 def handle_client_reply(invoice: dict, from_addr: str, subject: str, body: str) -> None:
