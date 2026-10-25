@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import re
 import time
 from datetime import date, datetime
@@ -107,7 +108,7 @@ def _extract_docx_text(content: bytes) -> str:
 
 
 def _llm_parse(text: str) -> ParsedInvoice:
-    model = init_chat_model("llama-3.3-70b-versatile", model_provider="groq", temperature=0)
+    model = init_chat_model(os.getenv("GROQ_MODEL", "openai/gpt-oss-120b"), model_provider="groq", temperature=0)
     extractor = model.with_structured_output(ParsedInvoice)
     prompt = (
         "Extract invoice fields from the invoice text. Prefer bill-to/client details over sender details. "
@@ -152,7 +153,11 @@ def _llm_parse(text: str) -> ParsedInvoice:
 
 def _heuristic_parse(text: str) -> ParsedInvoice:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
-    email_match = re.search(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", text)
+    email_pattern = r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}"
+    # The sender's own email often sits in the header, so prefer the first
+    # email after the bill-to label before falling back to the first one.
+    bill_to = re.search(r"\b(bill to|client|customer)\b", text, re.I)
+    email_match = (bill_to and re.search(email_pattern, text[bill_to.end():])) or re.search(email_pattern, text)
     invoice_id = _first_match(text, [
         r"invoice\s*(?:#|no\.?|number|id)?\s*[:\-]?\s*([A-Z0-9][A-Z0-9._/-]{1,})",
         r"\binv[-\s#:]?([A-Z0-9._/-]{2,})",
@@ -215,7 +220,7 @@ def _extract_due_date(text: str) -> Optional[str]:
 def _extract_client_name(lines: list[str]) -> Optional[str]:
     for idx, line in enumerate(lines):
         if re.search(r"\b(bill to|client|customer)\b", line, re.I):
-            same_line = re.sub(r".*?(bill to|client|customer)\s*[:\-]?", "", line, flags=re.I).strip()
+            same_line = re.sub(r".*?(bill to|client|customer)\s*[:\-]?", "", line, count=1, flags=re.I).strip()
             if same_line and "@" not in same_line:
                 return same_line[:120]
             for candidate in lines[idx + 1:idx + 4]:

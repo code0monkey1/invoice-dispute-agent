@@ -166,19 +166,26 @@ def upsert_user(
     email: str,
     name: Optional[str],
     picture: Optional[str],
-    access_token: str,
-    refresh_token: str,
+    access_token: Optional[str],
+    refresh_token: Optional[str],
 ) -> dict:
-    """Insert or update a user record. Tokens are Fernet-encrypted before storage."""
+    """Insert or update a user record. Tokens are Fernet-encrypted before storage.
+
+    Pass ``None`` tokens for a plain sign-in: an existing Gmail connection is
+    kept rather than overwritten.
+    """
     data = {
         "id": user_id,
         "email": email,
         "name": name,
         "picture": picture,
-        "gmail_access_token": encrypt_token(access_token),
-        "gmail_refresh_token": encrypt_token(refresh_token),
-        "gmail_connected_at": _now(),
     }
+    if access_token and refresh_token:
+        data.update({
+            "gmail_access_token": encrypt_token(access_token),
+            "gmail_refresh_token": encrypt_token(refresh_token),
+            "gmail_connected_at": _now(),
+        })
     _supabase_rest_request(
         "POST",
         "users",
@@ -382,6 +389,16 @@ def get_invoice(invoice_id: str) -> Optional[dict]:
         "GET",
         "invoices",
         query=[("select", "*"), ("id", f"eq.{invoice_id}")],
+    ) or []
+    return rows[0] if rows else None
+
+
+def get_invoice_by_reply_token(reply_token: str) -> Optional[dict]:
+    """Return the invoice whose Reply-To tracking token is *reply_token*, or ``None``."""
+    rows = _supabase_rest_request(
+        "GET",
+        "invoices",
+        query=[("select", "*"), ("reply_token", f"eq.{reply_token}")],
     ) or []
     return rows[0] if rows else None
 

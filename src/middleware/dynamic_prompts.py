@@ -29,6 +29,5 @@ def escalation_prompt(request: ModelRequest) -> str:
         freelancer_name=ctx.freelancer_name,
         business_name=ctx.business_name,
         default_payment_terms=ctx.default_payment_terms,
-        default_late_fee_percent=ctx.default_late_fee_percent,
         invoice_context_summary=ctx.invoice_context_summary or "No other invoice context is available.",
     )

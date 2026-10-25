@@ -23,27 +23,3 @@ def check_invoice_status(runtime: ToolRuntime) -> str:
         f"Jurisdiction: {state['jurisdiction']}\n"
         f"Communications sent: {len(history)}"
     )
-
-
-@tool
-def calculate_late_fees(runtime: ToolRuntime) -> str:
-    """Calculate accumulated late fees based on days overdue and the freelancer's rate."""
-    state = runtime.state
-    ctx = runtime.context
-    months_overdue = max(1, state['days_overdue'] // 30)
-    monthly_rate = ctx.default_late_fee_percent / 100
-    invoice_amount = float(state.get('invoice_amount', 0) or 0)
-    amount_paid = float(state.get('amount_paid', 0) or 0)
-    balance_due = max(0, float(state.get('balance_due', invoice_amount - amount_paid) or 0))
-    late_fee = balance_due * monthly_rate * months_overdue
-    total = balance_due + late_fee
-    return (
-        f"Late fee calculation:\n"
-        f"  Original invoice amount: ${invoice_amount:.2f}\n"
-        f"  Amount paid: ${amount_paid:.2f}\n"
-        f"  Remaining balance: ${balance_due:.2f}\n"
-        f"  Rate: {ctx.default_late_fee_percent}% per month\n"
-        f"  Months overdue: {months_overdue}\n"
-        f"  Late fees: ${late_fee:.2f}\n"
-        f"  Total currently owed: ${total:.2f}"
-    )

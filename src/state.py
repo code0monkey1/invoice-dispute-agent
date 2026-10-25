@@ -30,6 +30,5 @@ class FreelancerContext:
     freelancer_email: str = "your-email@example.com"
     business_name: str = "Your Business"
     default_payment_terms: str = "Net 30"
-    default_late_fee_percent: float = 1.5  # monthly
     user_id: str = ""
     invoice_context_summary: str = ""
