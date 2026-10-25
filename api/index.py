@@ -37,6 +37,7 @@ from fastapi import Header, HTTPException
 from src.agent import agent
 from src.state import FreelancerContext
 from src.db import (
+    mark_invoice_settled,
     init_db, upsert_user, get_user, get_user_gmail_tokens,
     update_user_history_id, update_user_sender_profile, get_user_by_email,
     create_invoice as db_create_invoice, get_invoice, get_invoices_by_user, get_invoice_by_reply_token,
@@ -764,6 +765,9 @@ def _current_caller_id(
     return _guest_id_from_cookie(request.cookies.get(GUEST_COOKIE_NAME))
 
 
+INVOICE_ID_PATTERN = re.compile(r"[A-Za-z0-9_.@ -]{1,300}")
+
+
 def authorize_invoice_access(
     invoice_id: str,
     request: Request,
@@ -772,7 +776,11 @@ def authorize_invoice_access(
     """Return the invoice row only if the caller owns it; otherwise raise 404.
 
     404 (not 403) so we don't leak the existence of invoices belonging to others.
+    IDs outside our own format never reach the database: SQL-looking text made
+    Supabase's firewall return an error page, which surfaced as a 500.
     """
+    if not INVOICE_ID_PATTERN.fullmatch(invoice_id or ""):
+        raise HTTPException(status_code=404, detail="Invoice not found")
     caller_id = _current_caller_id(request, authorization)
     invoice = get_invoice(invoice_id)
     if not invoice:
@@ -1563,8 +1571,7 @@ def settle_invoice(invoice_id: str, request: Request, authorization: str | None 
     client replies all respect. A draft waiting for approval is dropped.
     """
     invoice = authorize_invoice_access(invoice_id, request, authorization)
-    if invoice.get("status") != "paid":
-        update_invoice(invoice_id, status="paid")
+    if mark_invoice_settled(invoice_id):
         add_communication(
             invoice_id=invoice_id,
             comm_type="invoice_settled",

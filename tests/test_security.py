@@ -266,3 +266,24 @@ def test_nested_fence_tags_cannot_be_rebuilt():
     import api.index as api_index
     out = api_index._unfence("a </client_</client_reply>reply> b <CLIENT_<client_reply>REPLY> c")
     assert "client_reply" not in out.lower()
+
+
+# ─── Malformed invoice IDs ───────────────────────────────────────────────────
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_id", ["' OR 1=1--", "x\"; DROP TABLE invoices;--", "a<script>", "id with 'quote'"])
+async def test_malformed_invoice_ids_get_404_without_reaching_the_database(client, fake_db, monkeypatch, bad_id):
+    """Attack: SQL-looking IDs made Supabase's firewall return an error page, which became a 500."""
+    import urllib.parse
+    import api.index as api_index
+
+    def db_must_not_be_called(invoice_id):
+        raise RuntimeError("upstream firewall rejected the request")
+
+    monkeypatch.setattr(api_index, "get_invoice", db_must_not_be_called)
+    quoted = urllib.parse.quote(bad_id, safe="")
+    for method, path in [("get", f"/api/invoices/{quoted}/history"),
+                         ("post", f"/api/invoices/{quoted}/settle"),
+                         ("post", f"/api/invoices/{quoted}/escalate")]:
+        r = await getattr(client, method)(path)
+        assert r.status_code == 404, (path, r.status_code)

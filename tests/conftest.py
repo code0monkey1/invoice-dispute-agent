@@ -62,6 +62,9 @@ class FakeDB:
             if v.startswith("eq."):
                 wanted = v[3:]
                 rows = [r for r in rows if str(r.get(k, "")) == wanted]
+            elif v.startswith("neq."):
+                unwanted = v[4:]
+                rows = [r for r in rows if str(r.get(k, "")) != unwanted]
         return rows
 
     def _users(self, method, params, payload):
