@@ -9,6 +9,7 @@ supabase/schema.sql — run that once in the Supabase SQL editor.
 import base64
 import hashlib
 import json
+import time
 import os
 import urllib.error
 import urllib.parse
@@ -25,6 +26,24 @@ from supabase import create_client, Client
 # ---------------------------------------------------------------------------
 
 _supabase_client: Optional[Client] = None
+
+
+class DatabaseUnavailable(RuntimeError):
+    """The database couldn't be reached or answered with a server error.
+
+    Raised instead of raw network errors so the API can tell the user to try
+    again, rather than failing with a bare "Internal Server Error".
+    ``retryable`` is False for timeouts: retrying a 20-second timeout would
+    push the request past the 60-second serverless limit.
+    """
+
+    def __init__(self, message: str, *, retryable: bool = True):
+        super().__init__(message)
+        self.retryable = retryable
+
+
+# Waits before retrying a read that hit a network blip.
+_READ_RETRY_DELAYS = (0.3, 1.0)
 _INVOICE_ID_SEPARATOR = "__inv__"
 _SUPABASE_TIMEOUT_SECONDS = 20
 
@@ -62,6 +81,22 @@ def _supabase_rest_url(table: str, query: Optional[Sequence[tuple[str, str]]] = 
     return url
 
 
+def _send(request: urllib.request.Request) -> str:
+    method, table = request.get_method(), urllib.parse.urlsplit(request.full_url).path.rsplit("/", 1)[-1]
+    try:
+        with urllib.request.urlopen(request, timeout=_SUPABASE_TIMEOUT_SECONDS) as response:
+            return response.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        details = exc.read().decode("utf-8", errors="replace")
+        if exc.code >= 500 or exc.code == 429:
+            raise DatabaseUnavailable(f"Supabase REST {method} {table} failed: {exc.code}") from exc
+        raise RuntimeError(f"Supabase REST {method} {table} failed: {exc.code} {details}") from exc
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
+        reason = getattr(exc, "reason", exc)
+        timed_out = isinstance(exc, TimeoutError) or isinstance(reason, TimeoutError)
+        raise DatabaseUnavailable(f"Supabase REST {method} {table} unreachable: {exc}", retryable=not timed_out) from exc
+
+
 def _supabase_rest_request(
     method: str,
     table: str,
@@ -91,12 +126,17 @@ def _supabase_rest_request(
         method=method,
     )
 
-    try:
-        with urllib.request.urlopen(request, timeout=_SUPABASE_TIMEOUT_SECONDS) as response:
-            raw = response.read().decode("utf-8")
-    except urllib.error.HTTPError as exc:
-        details = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"Supabase REST {method} {table} failed: {exc.code} {details}") from exc
+    # Reads are retried on network blips. Writes are not: one that timed out
+    # may still have landed, and repeating it could duplicate a record.
+    delays = _READ_RETRY_DELAYS if method == "GET" else ()
+    for attempt in range(len(delays) + 1):
+        try:
+            raw = _send(request)
+            break
+        except DatabaseUnavailable as exc:
+            if attempt == len(delays) or not exc.retryable:
+                raise
+            time.sleep(delays[attempt])
 
     if not raw:
         return None
