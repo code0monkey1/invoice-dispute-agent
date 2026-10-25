@@ -4,13 +4,46 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>InvoiceChaser — AI Payment Recovery</title>
+    <title>Chase Unpaid Invoices with an AI Agent | InvoiceChaser</title>
+    <meta name="description" content="Drop in an overdue invoice and an AI agent drafts friendly reminders, formal demands and final notices, sent from your Gmail only after you approve. Free." />
+    <link rel="canonical" href="https://invoice-chaser-chi.vercel.app/" />
+    <meta name="theme-color" content="#FF6B35" />
+
+    <!-- Link previews (Slack, LinkedIn, X, WhatsApp) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="InvoiceChaser" />
+    <meta property="og:url" content="https://invoice-chaser-chi.vercel.app/" />
+    <meta property="og:title" content="Stop chasing unpaid invoices. An agent does it, you approve." />
+    <meta property="og:description" content="An AI agent drafts every payment reminder for your overdue invoices and gets firmer when needed. Nothing sends from your Gmail without your approval." />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Stop chasing unpaid invoices. An agent does it, you approve." />
+    <meta name="twitter:description" content="An AI agent drafts every payment reminder for your overdue invoices. Nothing sends without your approval." />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "InvoiceChaser",
+        "applicationCategory": "BusinessApplication",
+        "operatingSystem": "Web",
+        "url": "https://invoice-chaser-chi.vercel.app/",
+        "description": "An AI agent that chases unpaid invoices for freelancers: it reads your invoice PDF, drafts payment reminders that escalate from friendly to formal to legal, and sends from your Gmail only after you approve.",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+      }
+    </script>
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Schibsted+Grotesk:wght@400;500;600;700;800&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap" rel="stylesheet">
   </head>
   <body>
     <div id="root"></div>
+    <!-- Readable content for crawlers and link scrapers that don't run JavaScript. -->
+    <noscript>
+      <h1>Stop chasing unpaid invoices. An agent does it, you approve.</h1>
+      <p>InvoiceChaser is an AI agent for freelancers and small studios. Drop in an overdue invoice PDF and the agent drafts each payment reminder and suggests when to get firmer, from friendly to formal to legal. Every email sends from your own Gmail, and only after you approve it.</p>
+      <p>Free to use. No credit card.</p>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

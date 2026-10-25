@@ -1,219 +1,1014 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import {
-  Zap, ArrowRight, Shield, Mail, Scale,
-  CheckCircle2, Clock, DollarSign, MessageSquare,
-  Sparkles, Eye, Users, TrendingUp, Lock, Play, FileText, FilePlus, XCircle
+  Zap, Check, X, Pause, Play, RotateCcw, FileText, Search, PenLine, Send,
+  Inbox, AlertTriangle, BadgeCheck, Mail, Scale, ListChecks,
+  Clock, ShieldCheck, Plus, FileUp, FileDown,
 } from 'lucide-react'
-import ProductDemoReel from './ProductDemoReel'
+import type { LucideIcon } from 'lucide-react'
 
+// Palette, matching the live site: cream ground, brand orange, gray-900 ink.
+// ground  #FFF7F0   surface #FFFFFF   ink   #111827   muted #6B7280
+// border  #F1E4D8   brand   #FF6B35   brand-tint #FFE9DF
+// paid    #1F7A55   legal   #B3261E
 
-// ─── Feature Cards ───────────────────────────────────────────────────────────
+// ─── Shared bits ─────────────────────────────────────────────────────────────
 
-const features = [
+function GoogleIcon() {
+  return (
+    <svg className="w-[18px] h-[18px]" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
+      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+    </svg>
+  )
+}
+
+interface CtaProps {
+  onGoogle: () => void
+  onGuest: () => void
+}
+
+// The demo needs no sign-up, so it leads; Google sign-in (which asks for
+// Gmail access) is the secondary action everywhere on the page.
+const demoButton =
+  'inline-flex items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-[#FF6B35] to-[#FF8F65] text-white font-semibold shadow-lg shadow-orange-300/40 hover:from-[#F2551C] hover:to-[#FF6B35]'
+const googleButton =
+  'inline-flex items-center justify-center gap-2.5 rounded-lg bg-white border border-[#F1E4D8] text-[#111827] font-semibold hover:border-[#111827]'
+
+function CtaButtons({ onGoogle, onGuest }: CtaProps) {
+  return (
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+      <button onClick={onGuest} className={`${demoButton} text-[16px] px-5 py-3.5`}>
+        <Play className="w-4 h-4" fill="currentColor" />
+        Try the demo
+      </button>
+      <button onClick={onGoogle} className={`${googleButton} text-[16px] px-5 py-3.5`}>
+        <GoogleIcon />
+        Sign in with Google
+      </button>
+    </div>
+  )
+}
+
+function StickyCta({ onGoogle, onGuest }: CtaProps) {
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    // Shown once the hero's buttons scroll away, hidden again when the closing
+    // call to action (which has the same buttons) comes into view.
+    const finalCta = document.getElementById('final-cta')
+    const onScroll = () => {
+      const finalInView = finalCta ? finalCta.getBoundingClientRect().top < window.innerHeight : false
+      setVisible(window.scrollY > 560 && !finalInView)
+    }
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+    }
+  }, [])
+
+  return (
+    <div
+      aria-hidden={!visible}
+      className={`fixed bottom-4 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-50 rounded-xl bg-white border border-[#F1E4D8] shadow-xl shadow-orange-200/40 p-2 sm:pl-5 flex items-center gap-3 sm:gap-6 transition-all duration-300 motion-reduce:transition-none ${
+        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
+      }`}
+    >
+      <p className="hidden md:block text-[15px] font-semibold whitespace-nowrap">Have an overdue invoice?</p>
+      <div className="flex flex-1 sm:flex-none gap-2">
+        <button onClick={onGuest} tabIndex={visible ? 0 : -1} className={`${demoButton} flex-1 sm:flex-none text-[15px] px-4 py-2.5`}>
+          Try the demo
+        </button>
+        <button onClick={onGoogle} tabIndex={visible ? 0 : -1} className={`${googleButton} flex-1 sm:flex-none text-[15px] px-4 py-2.5`}>
+          <GoogleIcon />
+          Sign in
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Agent run script ────────────────────────────────────────────────────────
+
+type Mood = 'happy' | 'focused' | 'distressed'
+
+const FACES: Record<Mood, string> = {
+  happy: '/presenter/woman-happy.jpg',
+  focused: '/presenter/woman-focused.jpg',
+  distressed: '/presenter/woman-distressed.jpg',
+}
+
+interface Draft {
+  subject: string
+  body: string[]
+}
+
+interface RunEvent {
+  who: 'agent' | 'you'
+  date: string
+  icon: LucideIcon
+  title: string
+  detail?: string
+  file?: string
+  fields?: [string, string][]
+  draft?: Draft
+  mood: Mood
+  thought: string
+}
+
+const FRIENDLY_DRAFT: Draft = {
+  subject: 'A reminder about invoice INV-042',
+  body: [
+    'Hi Sam,',
+    'Invoice INV-042 for $5,000 was due on 2 April. When can I expect payment?',
+    'Thanks, Lena',
+  ],
+}
+
+const FORMAL_DRAFT: Draft = {
+  subject: 'Invoice INV-042: payment overdue',
+  body: [
+    'Hello Sam,',
+    'Our 3 March contract covers this work, so the full $5,000 stands.',
+    'Please pay the balance within 7 business days.',
+  ],
+}
+
+const RUN: RunEvent[] = [
   {
-    icon: <FilePlus className="w-5 h-5" />,
-    title: 'Create polished invoices in seconds',
-    desc: 'Skip the spreadsheet. Pick from three professionally designed templates, add your Stripe or LemonSqueezy link, and download a clean PDF — ready to send. Saved invoices flow straight into the chase pipeline if the client ghosts.',
-    color: '#8b5cf6',
-    bg: 'from-violet-50 to-purple-50',
-    border: 'border-violet-200/60',
+    who: 'you', date: '16 Apr', icon: FileUp, title: 'Added the invoice PDF',
+    file: 'INV-042_ClientCo.pdf',
+    mood: 'happy', thought: 'I drop in the PDF. No retyping.',
   },
   {
-    icon: <FileText className="w-5 h-5" />,
-    title: 'Just drop the invoice PDF',
-    desc: 'Upload the original invoice — PDF or DOCX. We read it, pull out the client, amount, due date, and jurisdiction, and have you ready to go in seconds. No retyping.',
-    color: '#0ea5e9',
-    bg: 'from-sky-50 to-blue-50',
-    border: 'border-sky-200/60',
+    who: 'agent', date: '16 Apr', icon: FileText, title: 'Read the PDF',
+    fields: [
+      ['Invoice', 'INV-042'],
+      ['Client', 'Client Co.'],
+      ['Email', 'sam@clientco.com'],
+      ['Amount', '$5,000.00'],
+      ['Due', '2 April'],
+      ['Jurisdiction', 'Oregon'],
+    ],
+    mood: 'happy', thought: 'Back to client work. The agent takes it from here.',
   },
   {
-    icon: <TrendingUp className="w-5 h-5" />,
-    title: 'Knows when to push harder',
-    desc: 'Starts with a friendly nudge. If the client ghosts, it ramps to a formal demand. Still nothing? It prepares a small-claims notice — all on the right cadence, without you watching the calendar.',
-    color: '#10b981',
-    bg: 'from-emerald-50 to-green-50',
-    border: 'border-emerald-200/60',
+    who: 'agent', date: '16 Apr', icon: Search, title: 'Checked the invoice status',
+    detail: 'Unpaid. 14 days overdue.',
+    mood: 'happy', thought: 'Back to client work. The agent takes it from here.',
   },
   {
-    icon: <Eye className="w-5 h-5" />,
-    title: 'You approve every send',
-    desc: 'Every email is drafted for you, not sent on your behalf. Read it, tweak the tone, or reject it. Nothing goes out until you click approve.',
-    color: '#f59e0b',
-    bg: 'from-amber-50 to-orange-50',
-    border: 'border-amber-200/60',
+    who: 'agent', date: '16 Apr', icon: PenLine, title: 'Drafted a friendly reminder',
+    mood: 'happy', thought: 'Back to client work. The agent takes it from here.',
   },
   {
-    icon: <Mail className="w-5 h-5" />,
-    title: 'Sends from your own Gmail',
-    desc: 'Connect Gmail once. Reminders go out from your address, replies land in your inbox, and the thread stays intact — clients see a real person, not a no-reply bot.',
-    color: '#FF6B35',
-    bg: 'from-orange-50 to-amber-50',
-    border: 'border-orange-200/60',
+    who: 'you', date: '16 Apr', icon: Mail, title: 'Approve the reminder',
+    draft: FRIENDLY_DRAFT,
+    mood: 'focused', thought: 'My only job: read it, approve it.',
   },
   {
-    icon: <DollarSign className="w-5 h-5" />,
-    title: 'Late fees, calculated',
-    desc: "When it's time to add interest, the math is done for you — based on your terms, the balance, and how long it's been overdue.",
-    color: '#0d9488',
-    bg: 'from-teal-50 to-emerald-50',
-    border: 'border-teal-200/60',
+    who: 'agent', date: '16 Apr', icon: Send, title: 'Sent from your Gmail',
+    detail: 'Watching for a reply.',
+    mood: 'happy', thought: 'Back to my own work.',
   },
   {
-    icon: <Scale className="w-5 h-5" />,
-    title: 'Ready for small-claims, if you need it',
-    desc: "When a dispute really has to go legal, the agent looks up the actual filing procedure for the client's jurisdiction and gives you a step-by-step path to court.",
-    color: '#ef4444',
-    bg: 'from-rose-50 to-red-50',
-    border: 'border-rose-200/60',
+    who: 'agent', date: '18 Apr', icon: AlertTriangle, title: 'Client disputed the invoice',
+    detail: '“We don\'t approve this invoice. Please clarify the scope and terms.”',
+    mood: 'distressed', thought: "A dispute. The email I'd put off for a week.",
   },
   {
-    icon: <MessageSquare className="w-5 h-5" />,
-    title: 'Replies thread back to you',
-    desc: 'Clients reply to your Gmail like normal — those replies show up in the dashboard timeline next to the invoice so you always know where every conversation stands.',
-    color: '#8b5cf6',
-    bg: 'from-violet-50 to-purple-50',
-    border: 'border-violet-200/60',
+    who: 'agent', date: '18 Apr', icon: Inbox, title: 'Summarized the dispute',
+    detail: 'Suggested a firmer, formal reply.',
+    mood: 'distressed', thought: "A dispute. The email I'd put off for a week.",
+  },
+  {
+    who: 'you', date: '18 Apr', icon: Scale, title: 'Moved it to Formal',
+    detail: 'Escalating is always your call.',
+    mood: 'focused', thought: 'Firmer it is. My call.',
+  },
+  {
+    who: 'agent', date: '18 Apr', icon: FileText, title: 'Drafted a formal reply',
+    detail: 'Cited the agreed contract and payment terms.',
+    mood: 'focused', thought: 'Firmer it is. My call.',
+  },
+  {
+    who: 'you', date: '18 Apr', icon: Mail, title: 'Approve the formal reply',
+    draft: FORMAL_DRAFT,
+    mood: 'focused', thought: 'Firm, polite, numbers right.',
+  },
+  {
+    who: 'agent', date: '18 Apr', icon: Send, title: 'Sent from your Gmail',
+    detail: 'Watching for a reply.',
+    mood: 'focused', thought: 'Firm, polite, numbers right.',
+  },
+  {
+    who: 'agent', date: '22 Apr', icon: BadgeCheck, title: 'Client promised payment',
+    detail: '“Paying in full on Friday.” Saved on the invoice, with a suggestion to mark it pending.',
+    mood: 'happy', thought: "Getting paid, and I didn't write a single email.",
   },
 ]
 
-// ─── Stats ───────────────────────────────────────────────────────────────────
+// Derived from RUN so the copy never drifts from the demo.
+const YOUR_STEPS = RUN.filter((e) => e.who === 'you').length
 
-const stats = [
-  { value: '$825B', label: 'Lost to late payments annually' },
-  { value: '3', label: 'Escalation levels' },
-  { value: '9', label: 'AI-powered tools' },
-  { value: '100%', label: 'Human control over drafts' },
+const STEP_MS = 1500
+const CHECKPOINT_MS = 5000
+const END_HOLD_MS = 5000
+
+// ─── Agent run (the hero demo) ───────────────────────────────────────────────
+
+function DraftCard({ draft, pending, onApprove }: { draft: Draft; pending: boolean; onApprove: () => void }) {
+  return (
+    <div className="mt-3 rounded-[10px] bg-white border border-[#F1E4D8]">
+      <p className="px-4 pt-3 text-[14px] text-[#6B7280]">
+        To sam@clientco.com
+      </p>
+      <p className="px-4 pt-0.5 text-[15px] font-semibold">{draft.subject}</p>
+      <div className="lp-serif px-4 pt-2 pb-3 text-[16px] leading-[1.6] text-[#111827] space-y-1.5">
+        {draft.body.map((line) => <p key={line}>{line}</p>)}
+      </div>
+      <div className="px-4 pb-3.5 flex flex-wrap items-center gap-x-4 gap-y-2">
+        {pending ? (
+          <>
+            <button
+              onClick={onApprove}
+              className="inline-flex items-center gap-2 rounded-lg bg-[#FF6B35] text-[#111827] font-semibold text-[15px] px-4 py-2 hover:bg-[#F2551C]"
+            >
+              <Check className="w-4 h-4" strokeWidth={2.5} />
+              Approve and send
+            </button>
+            <span className="text-[14px] text-[#6B7280]">You can also edit or reject it.</span>
+          </>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 text-[14px] font-semibold text-[#1F7A55]">
+            <Check className="w-4 h-4" strokeWidth={2.5} />
+            Approved by you
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Freelancer({ mood, thought }: { mood: Mood; thought: string }) {
+  return (
+    <figure className="flex items-center gap-4">
+      <div className="relative w-[76px] h-[76px] sm:w-[88px] sm:h-[88px] shrink-0 rounded-[14px] overflow-hidden bg-[#FDEBDD]">
+        {(Object.keys(FACES) as Mood[]).map((m) => (
+          <img
+            key={m}
+            src={FACES[m]}
+            alt=""
+            width={148}
+            height={148}
+            className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-500 motion-reduce:transition-none ${m === mood ? 'opacity-100' : 'opacity-0'}`}
+          />
+        ))}
+      </div>
+      <figcaption className="min-w-0">
+        <p
+          className="relative rounded-[12px] rounded-bl-[4px] bg-[#FFF1E6] px-3.5 py-2.5 text-[16px] leading-[1.45] font-medium max-w-[34ch] before:absolute before:-left-1.5 before:bottom-2 before:w-3 before:h-3 before:rotate-45 before:bg-[#FFF1E6]"
+          aria-live="polite"
+        >
+          “{thought}”
+        </p>
+        <p className="mt-1.5 text-[14px] text-[#6B7280]">Lena, freelance illustrator</p>
+      </figcaption>
+    </figure>
+  )
+}
+
+function AgentRun() {
+  const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+  // `shown` is how many events are on screen. A draft that is the last event
+  // shown is a pending checkpoint; revealing the next event approves it.
+  const [shown, setShown] = useState(reducedMotion ? RUN.length : 1)
+  const [playing, setPlaying] = useState(!reducedMotion)
+  const logRef = useRef<HTMLOListElement>(null)
+
+  const current = RUN[shown - 1]
+  const pending = Boolean(current.draft)
+  const finished = shown === RUN.length
+
+  useEffect(() => {
+    if (!playing) return
+    const delay = finished ? END_HOLD_MS : pending ? CHECKPOINT_MS : STEP_MS
+    const timer = setTimeout(() => setShown((n) => (n >= RUN.length ? 1 : n + 1)), delay)
+    return () => clearTimeout(timer)
+  }, [shown, playing, pending, finished])
+
+  useEffect(() => {
+    const log = logRef.current
+    if (log) log.scrollTo({ top: log.scrollHeight, behavior: reducedMotion ? 'auto' : 'smooth' })
+  }, [shown, reducedMotion])
+
+  const approve = () => setShown((n) => n + 1)
+  const replay = () => {
+    setShown(1)
+    setPlaying(true)
+  }
+
+  return (
+    <div aria-labelledby="run-title" role="region">
+      <div className="rounded-[16px] bg-white border border-[#F1E4D8] shadow-xl shadow-orange-200/30">
+        <div aria-hidden="true" className="flex items-center gap-3 px-4 py-2.5 rounded-t-[16px] bg-[#FBF5EE] border-b border-[#F1E4D8]">
+          <span className="flex gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#F2A39A]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#F4C77B]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-[#9FD3AE]" />
+          </span>
+          <span className="flex-1 max-w-[300px] mx-auto rounded-md bg-white border border-[#F1E4D8] px-3 py-1 text-[13px] text-[#6B7280] text-center truncate">
+            InvoiceChaser / Invoices / INV-042
+          </span>
+          <span className="w-[42px]" />
+        </div>
+        <div className="px-5 sm:px-6 py-4 border-b border-[#F1E4D8] flex items-center justify-between gap-4">
+          <Freelancer mood={current.mood} thought={current.thought} />
+          <div className="hidden sm:block shrink-0 text-[14px] leading-[1.5] text-[#6B7280]">
+            <p className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-[#111827]" />The agent</p>
+            <p className="flex items-center gap-2 mt-1.5"><span className="w-2.5 h-2.5 rounded-[3px] bg-[#FF6B35]" />You</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col min-w-0">
+          <div className="flex items-center justify-between gap-4 px-5 sm:px-6 py-3.5 border-b border-[#F1E4D8]">
+            <h2 id="run-title" className="text-[17px] font-semibold">
+              Agent run for INV-042 <span className="font-normal text-[#6B7280]">(example)</span>
+            </h2>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setPlaying((p) => !p)}
+                aria-label={playing ? 'Pause the example' : 'Play the example'}
+                className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#FFF1E6]"
+              >
+                {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={replay}
+                aria-label="Replay the example from the start"
+                className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-[#FFF1E6]"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          <div className="px-5 sm:px-6 py-3 border-b border-[#F1E4D8]">
+            <div className="flex items-center justify-between gap-3 text-[14px]">
+              <span className="text-[#6B7280] tabular-nums" aria-live="polite">
+                Step {shown} of {RUN.length}
+              </span>
+              {pending ? (
+                <span className="rounded-full bg-[#FF6B35] text-[#111827] font-semibold px-2.5 py-0.5">Your turn</span>
+              ) : (
+                <span className="text-[#6B7280]">{current.who === 'you' ? 'You' : 'Agent working'}</span>
+              )}
+            </div>
+            <p className="sr-only">{`${YOUR_STEPS} of the ${RUN.length} steps are yours: adding the invoice, deciding to escalate, and approving each email.`}</p>
+            <ol className="mt-2 flex gap-1" aria-hidden="true">
+              {RUN.map((event, i) => {
+                const done = i < shown
+                const isYou = event.who === 'you'
+                const color = isYou
+                  ? done ? 'bg-[#FF6B35]' : 'bg-[#FFCFB8]'
+                  : done ? 'bg-[#111827]' : 'bg-[#F1E4D8]'
+                return (
+                  <li key={i} className={`h-1.5 flex-1 rounded-full transition-colors ${color} ${i === shown - 1 ? 'ring-2 ring-offset-1 ring-[#FF6B35]/40' : ''}`}>
+                  </li>
+                )
+              })}
+            </ol>
+          </div>
+
+          <ol ref={logRef} className="h-[420px] sm:h-[440px] overflow-y-auto px-5 sm:px-6 py-4 space-y-1">
+            {RUN.slice(0, shown).map((event, i) => {
+              const Icon = event.icon
+              const isYou = event.who === 'you'
+              const isPending = Boolean(event.draft) && i === shown - 1
+              return (
+                <li
+                  key={i}
+                  className={`grid grid-cols-[52px_1fr] sm:grid-cols-[64px_1fr] gap-3 rounded-[10px] py-3 animate-[runIn_.35s_ease-out] motion-reduce:animate-none ${
+                    isYou ? 'bg-[#FFE9DF] px-3 -mx-3' : ''
+                  }`}
+                >
+                  <span className="text-[14px] text-[#6B7280] tabular-nums pt-0.5">{event.date}</span>
+                  <div className="min-w-0">
+                    <p className="flex items-start gap-2.5 text-[16px] font-semibold leading-snug">
+                      <span
+                        className={`mt-0.5 w-6 h-6 shrink-0 flex items-center justify-center ${
+                          isYou ? 'rounded-[6px] bg-[#FF6B35] text-[#111827]' : 'rounded-full bg-[#111827] text-white'
+                        }`}
+                      >
+                        <Icon className="w-3.5 h-3.5" strokeWidth={2.25} />
+                      </span>
+                      <span>
+                        <span className="sr-only">{isYou ? 'You: ' : 'Agent: '}</span>
+                        {event.title}
+                      </span>
+                    </p>
+                    {event.detail && <p className="mt-1 pl-[34px] text-[15px] leading-[1.5] text-[#6B7280]">{event.detail}</p>}
+                    {event.file && (
+                      <div className="sm:pl-[34px]">
+                        <div className="mt-3 rounded-[10px] border-2 border-dashed border-[#FF6B35]/50 bg-white px-4 py-4 flex items-center gap-4">
+                          <span className="w-11 h-12 shrink-0 rounded-[6px] bg-[#FFF1E6] border border-[#F1E4D8] flex flex-col items-center justify-center">
+                            <FileText className="w-4 h-4 text-[#B3261E]" />
+                            <span className="text-[10px] font-bold text-[#B3261E] mt-0.5">PDF</span>
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[15px] font-semibold truncate">{event.file}</p>
+                            <div className="mt-2 h-1.5 rounded-full bg-[#F1E4D8] overflow-hidden">
+                              <div className="h-full rounded-full bg-[#FF6B35] animate-[lpFill_1.3s_ease-out_forwards] motion-reduce:animate-none motion-reduce:w-full" />
+                            </div>
+                            <p className="mt-1.5 text-[14px] text-[#6B7280]">48 KB, uploaded</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    {event.fields && (
+                      <dl className="mt-3 pl-[34px] grid grid-cols-2 gap-2">
+                        {event.fields.map(([label, value], f) => (
+                          <div
+                            key={label}
+                            style={{ animationDelay: `${f * 90}ms` }}
+                            className="rounded-[8px] bg-white border border-[#F1E4D8] px-3 py-2 animate-[runIn_.35s_ease-out_both] motion-reduce:animate-none"
+                          >
+                            <dt className="text-[13px] text-[#6B7280]">{label}</dt>
+                            <dd className="text-[15px] font-semibold truncate">{value}</dd>
+                          </div>
+                        ))}
+                      </dl>
+                    )}
+                    {event.draft && (
+                      <div className="sm:pl-[34px]">
+                        <DraftCard draft={event.draft} pending={isPending} onApprove={approve} />
+                      </div>
+                    )}
+                  </div>
+                </li>
+              )
+            })}
+          </ol>
+        </div>
+      </div>
+      <p className="mt-3 text-[14px] text-[#6B7280]">
+        {pending ? 'Your turn. Approve, or it continues in a few seconds.' : `You do ${YOUR_STEPS} of the ${RUN.length} steps. Nothing here is actually sent.`}
+      </p>
+    </div>
+  )
+}
+
+// ─── Who does what ───────────────────────────────────────────────────────────
+
+const AGENT_JOBS: [LucideIcon, string][] = [
+  [FileText, 'Reads your PDF or DOCX invoice'],
+  [Clock, 'Works out how overdue it is'],
+  [PenLine, 'Drafts each follow-up in the right tone'],
+  [Inbox, 'Reads replies and flags disputes'],
+  [FileDown, 'Creates invoice PDFs from three templates'],
+  [Scale, 'Suggests when to get firmer'],
+  [ListChecks, "Finds small-claims rules for your client's location"],
+  [Send, 'Sends from your Gmail, not a no-reply bot'],
 ]
 
-const heroOutcomes = [
-  'Drafts ready in under 60 seconds',
-  '3-step escalation path',
-  'Human approval before every send',
-]
+function WhoDoesWhat() {
+  return (
+    <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pt-20 sm:pt-28 pb-20 sm:pb-28">
+      <h2 className="text-[34px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em] max-w-[16ch]">
+        The agent does the chasing. You keep the final say.
+      </h2>
+      <div className="mt-10 grid lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
+        <div className="rounded-[16px] bg-white border border-[#F1E4D8] p-6 sm:p-8">
+          <h3 className="text-[20px] font-semibold flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#111827]" />
+            The agent
+          </h3>
+          <ul className="mt-5 grid sm:grid-cols-2 gap-x-8 gap-y-4 text-[16px] leading-[1.4]">
+            {AGENT_JOBS.map(([Icon, text]) => (
+              <li key={text} className="flex items-center gap-3">
+                <span className="w-9 h-9 shrink-0 rounded-[10px] bg-[#111827] text-white flex items-center justify-center">
+                  <Icon className="w-[18px] h-[18px]" />
+                </span>
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="rounded-[16px] bg-[#FF6B35] text-[#111827] p-6 sm:p-8">
+          <h3 className="text-[20px] font-semibold flex items-center gap-2.5">
+            <span className="w-2.5 h-2.5 rounded-[3px] bg-[#111827]" />
+            You
+          </h3>
+          <p className="mt-5 text-[28px] sm:text-[32px] font-bold leading-[1.15] tracking-[-0.01em]">
+            Add the invoice. Approve each email.
+          </p>
+          <p className="mt-3 text-[16px] leading-[1.5]">
+            Edit or reject any draft. Nothing sends without your click.
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
 
-const trustSignals = [
-  { label: 'Google Gmail API', detail: 'sends from your inbox' },
-  { label: 'OpenAI', detail: 'drafting and research' },
-  { label: 'Supabase', detail: 'secure invoice records' },
-  { label: 'Vercel', detail: 'fast product experience' },
-]
+// ─── Invoice generator ───────────────────────────────────────────────────────
 
-const chaseScenarios = [
+const TEMPLATE_NAMES = ['Modern', 'Classic', 'Minimal']
+
+function InvoiceGenerator({ onTry }: { onTry: () => void }) {
+  return (
+    <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28">
+      <div className="grid lg:grid-cols-[1fr_1fr] gap-8 lg:gap-16 items-center">
+        <div>
+          <h2 className="text-[30px] sm:text-[38px] font-bold leading-[1.1] tracking-[-0.02em] max-w-[16ch]">
+            No invoice PDF yet? Make one here.
+          </h2>
+          <p className="mt-4 text-[17px] leading-[1.6] text-[#6B7280] max-w-[48ch]">
+            Pick a template, add line items and a Stripe, Lemon Squeezy or PayPal link. The PDF goes straight to the agent.
+          </p>
+          <button onClick={onTry} className="mt-6 text-[16px] font-semibold underline underline-offset-4 decoration-[#111827]/30 hover:decoration-[#111827]">
+            Try the invoice generator in the demo
+          </button>
+        </div>
+
+        <div aria-hidden="true" className="rounded-[16px] bg-white border border-[#F1E4D8] shadow-xl shadow-orange-200/30 p-4 sm:p-5">
+          <div className="grid grid-cols-3 gap-2 text-[14px] font-semibold">
+            {TEMPLATE_NAMES.map((name, i) => (
+              <span
+                key={name}
+                className={`rounded-lg border px-3 py-2 text-center ${i === 0 ? 'border-[#FF6B35] bg-white' : 'border-[#F1E4D8] text-[#6B7280]'}`}
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+          <div className="mt-4 rounded-[10px] bg-[#FFFAF5] border border-[#F1E4D8] p-5 text-[14px]">
+            <div className="flex justify-between gap-4">
+              <div>
+                <p className="text-[18px] font-bold">Invoice INV-043</p>
+                <p className="text-[#6B7280] mt-0.5">Lena Park Illustration</p>
+              </div>
+              <div className="text-right text-[#6B7280]">
+                <p>Due 30 May</p>
+                <p>Bill to Studio North</p>
+              </div>
+            </div>
+            <div className="mt-4 border-t border-[#F1E4D8] divide-y divide-[#F1E4D8]">
+              <p className="flex justify-between py-2"><span>Brand illustrations (6)</span><span className="tabular-nums">$1,800.00</span></p>
+              <p className="flex justify-between py-2"><span>Revisions</span><span className="tabular-nums">$600.00</span></p>
+              <p className="flex justify-between py-2 font-bold"><span>Total</span><span className="tabular-nums">$2,400.00</span></p>
+            </div>
+            <p className="mt-3 text-[#6B7280]">Pay online: <span className="text-[#111827] underline underline-offset-2">buy.stripe.com/…</span></p>
+          </div>
+          <p className="mt-4 flex items-center gap-2 text-[15px] font-semibold text-[#1F7A55]">
+            <FileDown className="w-4 h-4" />
+            Downloaded. INV-043 is now with the agent.
+          </p>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── Situations (interactive) ───────────────────────────────────────────────
+
+// The day ranges are guidance for the user, not thresholds in the agent:
+// escalating is always the user's call.
+const SITUATIONS = [
   {
-    label: 'Just overdue',
-    headline: 'Keep the relationship warm',
-    pain: 'You need to follow up without sounding annoyed.',
-    outcome: 'InvoiceChaser drafts a friendly reminder and keeps the thread human.',
-    proof: 'Best for invoices 7-30 days late',
+    label: 'Just overdue', pain: 'You want to stay friendly.',
+    level: 1, name: 'Friendly', icon: Mail, solid: 'bg-[#1F7A55]', tint: 'bg-[#E7F4EC]', edge: 'border-l-[#1F7A55]',
+    when: 'Usually right for invoices 7–30 days late.',
+    email: { subject: 'A quick reminder: invoice INV-042', body: ['Hi Sam,', 'Just checking in on invoice INV-042 for $5,000, due 2 April. When can I expect payment?', 'Thanks, Lena'] },
+    does: [[Mail, 'Polite reminders'], [Search, 'Invoice status checks']],
   },
   {
-    label: 'Being ignored',
-    headline: 'Make the payment feel urgent',
-    pain: 'You have already followed up and the client has gone quiet.',
-    outcome: 'The next draft gets firmer, cites the invoice terms, and asks for a clear payment date.',
-    proof: 'Best for invoices 30-60 days late',
+    label: 'Being ignored', pain: 'You followed up. Silence.',
+    level: 2, name: 'Formal', icon: FileText, solid: 'bg-[#A35E00]', tint: 'bg-[#FDF1DE]', edge: 'border-l-[#A35E00]',
+    when: '30–60 days late, or when the client disputes it.',
+    email: { subject: 'Invoice INV-042: payment overdue', body: ['Hello Sam,', 'Invoice INV-042 for $5,000 is now 45 days overdue, past our agreed terms.', 'Please pay the balance by 30 May.'] },
+    does: [[FileText, 'A formal demand letter'], [Search, 'Invoice status checks']],
   },
   {
-    label: 'Last chance',
-    headline: 'Prepare the serious next step',
-    pain: 'The client keeps delaying and you need leverage without losing control.',
-    outcome: 'InvoiceChaser calculates late fees and prepares the small-claims path for review.',
-    proof: 'Best for invoices 60+ days late',
+    label: 'Last chance', pain: 'Formal letters were ignored.',
+    level: 3, name: 'Legal', icon: Scale, solid: 'bg-[#B3261E]', tint: 'bg-[#FBE8E6]', edge: 'border-l-[#B3261E]',
+    when: '60+ days late, after formal letters are ignored.',
+    email: { subject: 'Final notice: invoice INV-042', body: ['Sam,', "This is formal notice. If payment of $5,000 isn't received within 10 days, I'll file a small-claims case."] },
+    does: [[Mail, 'A final notice'], [Scale, "Small-claims rules for the client's location"], [ListChecks, 'A court filing guide']],
   },
+] as const
+
+function SituationSelector() {
+  const [active, setActive] = useState(1)
+  const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
+  const s = SITUATIONS[active]
+
+  const select = (i: number) => {
+    const next = (i + SITUATIONS.length) % SITUATIONS.length
+    setActive(next)
+    tabRefs.current[next]?.focus()
+  }
+
+  return (
+    <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28">
+      <div className="max-w-[640px]">
+        <h2 className="text-[34px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em]">
+          Different late invoices need different pressure
+        </h2>
+        <p className="mt-4 text-[18px] leading-[1.6] text-[#6B7280]">
+          Pick a situation to see the email the agent drafts. You choose the level, and approve every email.
+        </p>
+      </div>
+
+      <div className="mt-10 grid md:grid-cols-[280px_1fr] gap-4 items-start">
+        <div role="tablist" aria-label="Situations" aria-orientation="vertical" className="grid gap-2">
+          {SITUATIONS.map((item, i) => {
+            const selected = i === active
+            return (
+              <button
+                key={item.label}
+                ref={(el) => { tabRefs.current[i] = el }}
+                role="tab"
+                id={`situation-tab-${i}`}
+                aria-selected={selected}
+                aria-controls="situation-panel"
+                tabIndex={selected ? 0 : -1}
+                onClick={() => setActive(i)}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); select(i + 1) }
+                  if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); select(i - 1) }
+                }}
+                className={`text-left rounded-[12px] border border-l-4 px-4 py-3.5 transition-colors ${
+                  selected ? `bg-white border-[#F1E4D8] ${item.edge} shadow-md shadow-orange-200/30` : 'bg-transparent border-transparent hover:bg-white/60'
+                }`}
+              >
+                <span className="flex items-center gap-2 text-[17px] font-semibold">
+                  <span className={`w-2.5 h-2.5 rounded-full ${item.solid}`} />
+                  {item.label}
+                </span>
+                <span className="mt-0.5 block text-[15px] text-[#6B7280]">{item.pain}</span>
+              </button>
+            )
+          })}
+        </div>
+
+        <div
+          role="tabpanel"
+          id="situation-panel"
+          aria-labelledby={`situation-tab-${active}`}
+          key={active}
+          className="rounded-[16px] bg-white border border-[#F1E4D8] p-5 sm:p-7 animate-[runIn_.3s_ease-out] motion-reduce:animate-none"
+        >
+          <div className={`rounded-[10px] ${s.tint} px-4 py-3 flex flex-wrap items-center gap-x-3 gap-y-1`}>
+            <span className={`w-8 h-8 rounded-[8px] ${s.solid} text-white flex items-center justify-center`}>
+              <s.icon className="w-4 h-4" />
+            </span>
+            <span className="text-[18px] font-semibold">Level {s.level}: {s.name}</span>
+            <span className="text-[15px] text-[#374151]">{s.when}</span>
+          </div>
+
+          <div className="mt-5 grid lg:grid-cols-[1.4fr_1fr] gap-6">
+            <div className="rounded-[10px] border border-[#F1E4D8] bg-[#FFFAF5]">
+              <p className="px-4 pt-3 text-[14px] text-[#6B7280]">To sam@clientco.com</p>
+              <p className="px-4 pt-0.5 text-[15px] font-semibold">{s.email.subject}</p>
+              <div className="lp-serif px-4 pt-2 pb-4 text-[16px] leading-[1.6] space-y-1.5">
+                {s.email.body.map((line) => <p key={line}>{line}</p>)}
+              </div>
+            </div>
+            <div>
+              <h3 className="text-[16px] font-semibold">What the agent does</h3>
+              <ul className="mt-3 space-y-2.5 text-[16px]">
+                {s.does.map(([Icon, text]) => (
+                  <li key={text} className="flex items-center gap-2.5">
+                    <span className="w-8 h-8 shrink-0 rounded-[8px] bg-[#111827] text-white flex items-center justify-center">
+                      <Icon className="w-4 h-4" />
+                    </span>
+                    {text}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-5 flex items-center gap-2 text-[15px] font-semibold">
+                <ShieldCheck className="w-4 h-4 text-[#1F7A55]" />
+                You approve before it sends
+              </p>
+              {s.level === 3 && (
+                <p className="mt-2 text-[14px] text-[#6B7280]">Court guidance is information, not a filing or a guarantee of payment.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── With and without ────────────────────────────────────────────────────────
+
+const COMPARISON: [string, string, string][] = [
+  ['Writing the email', 'Start from a blank page, every time', 'A draft from your invoice, in the right tone'],
+  ['Getting firmer', 'Decide alone how blunt to be', 'The agent suggests the level. You decide.'],
+  ['Client replies', 'Search your inbox, update a spreadsheet', 'Saved on the invoice'],
+  ['Small claims', 'Research the rules yourself', "Rules for your client's location, plus a filing guide"],
 ]
 
-// ─── How It Works Steps ──────────────────────────────────────────────────────
+function WithWithout() {
+  return (
+    <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28">
+      <h2 className="text-[34px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em] max-w-[18ch]">
+        Chasing an invoice, with and without InvoiceChaser
+      </h2>
+      <div className="mt-10 rounded-[16px] bg-white border border-[#F1E4D8] overflow-hidden">
+        <table className="w-full text-left text-[16px]">
+          <thead>
+            <tr className="border-b border-[#F1E4D8] text-[15px]">
+              <th scope="col" className="px-5 py-3.5 font-medium text-[#6B7280] hidden md:table-cell w-[22%]">Task</th>
+              <th scope="col" className="px-5 py-3.5 font-medium text-[#6B7280]">On your own</th>
+              <th scope="col" className="px-5 py-3.5 font-semibold bg-[#111827] text-white">With InvoiceChaser</th>
+            </tr>
+          </thead>
+          <tbody>
+            {COMPARISON.map(([task, without, withIt]) => (
+              <tr key={task} className="border-b last:border-b-0 border-[#F6EDE3] align-top">
+                <th scope="row" className="px-5 py-4 font-semibold hidden md:table-cell">{task}</th>
+                <td className="px-5 py-4 text-[#6B7280]">
+                  <span className="md:hidden block text-[14px] font-semibold text-[#111827] mb-0.5">{task}</span>
+                  <span className="flex gap-2"><X className="w-4 h-4 mt-1 shrink-0 text-[#B3261E]" />{without}</span>
+                </td>
+                <td className="px-5 py-4 bg-[#FFFAF5]">
+                  <span className="md:hidden block text-[14px] mb-0.5">&nbsp;</span>
+                  <span className="flex gap-2 font-medium"><Check className="w-4 h-4 mt-1 shrink-0 text-[#1F7A55]" strokeWidth={2.5} />{withIt}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )
+}
 
-const steps = [
-  { step: '01', title: 'Drop the invoice PDF', desc: 'Upload the original invoice (PDF or DOCX). InvoiceChaser reads it and pre-fills the client, amount, due date, and jurisdiction — no retyping.' },
-  { step: '02', title: 'AI drafts the email', desc: "The agent writes a reminder tuned to how overdue the invoice is and to your client's tone. No blank-page anxiety." },
-  { step: '03', title: 'You approve in one click', desc: 'Read the draft, edit anything you want, or reject it. Nothing leaves your Gmail until you say so.' },
-  { step: '04', title: 'It escalates if needed', desc: 'No response after a few rounds? The agent gets firmer, calculates late fees, and prepares a small-claims notice when the time is right.' },
+// ─── How it works (dark band) ────────────────────────────────────────────────
+
+const BAND_STEPS = [
+  { you: true, title: 'You add the invoice', text: 'Drop in the PDF, or create one here.' },
+  { you: false, title: 'The agent chases', text: 'Reminders, replies and escalation advice.' },
+  { you: true, title: 'You approve each email', text: 'Nothing sends from your Gmail without your click.' },
 ]
+
+function HowItWorksBand() {
+  return (
+    <section aria-labelledby="how-title" className="bg-[#111827] text-white">
+      <div className="max-w-[1180px] mx-auto px-4 sm:px-8 py-12 sm:py-14">
+        <h2 id="how-title" className="sr-only">How it works</h2>
+        <ol className="grid md:grid-cols-3 gap-8 md:gap-10">
+          {BAND_STEPS.map((step, i) => (
+            <li key={step.title} className="flex gap-4">
+              <span
+                className={`w-10 h-10 shrink-0 rounded-[10px] flex items-center justify-center text-[17px] font-bold ${
+                  step.you ? 'bg-[#FF6B35] text-[#111827]' : 'bg-white text-[#111827]'
+                }`}
+              >
+                {i + 1}
+              </span>
+              <div>
+                <h3 className="text-[20px] font-semibold">{step.title}</h3>
+                <p className="mt-1 text-[16px] leading-[1.5] text-[#D1D5DB]">{step.text}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+  )
+}
 
 // ─── Testimonials ────────────────────────────────────────────────────────────
-// Portrait images are AI-styled stock headshots hosted on Unsplash's free CDN —
-// stable URLs, no API key, no attribution required for editorial/product use.
+// Quotes from InvoiceChaser customers, carried over from the original landing
+// page. The portraits are Unsplash stock headshots, not the customers.
 
-const testimonials = [
+interface Testimonial {
+  name: string
+  role: string
+  location: string
+  quote: string
+  photo: string
+}
+
+const FEATURED_TESTIMONIAL: Testimonial = {
+  name: 'Daniel Okafor',
+  role: 'Co-founder, two-person studio',
+  location: 'London, UK',
+  quote: 'A client owed us £8,400 for 90 days. InvoiceChaser drafted a formal demand. They paid two days after the demand went out.',
+  photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=facearea&facepad=2&q=80&auto=format',
+}
+
+const TESTIMONIALS: Testimonial[] = [
   {
     name: 'Maya Chen',
     role: 'Brand designer, freelance',
     location: 'Portland, OR',
-    quote: 'I used to dread the "second reminder" email — staring at a draft for an hour and still sending something awkward. Now I just upload the PDF, the agent writes it, I tweak a word or two, hit approve. Three of my late clients paid within a week.',
+    quote: 'Now the agent writes [the reminder], I tweak a word or two, and hit approve. Three of my late clients paid within a week.',
     photo: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&h=200&fit=facearea&facepad=2&q=80&auto=format',
-  },
-  {
-    name: 'Daniel Okafor',
-    role: 'Co-founder, two-person studio',
-    location: 'London, UK',
-    quote: 'A client owed us £8,400 for 90 days. Their accounts team kept saying "next week". InvoiceChaser drafted a formal demand with the late-fee math already done, then prepared the small-claims notice. We never had to file — they paid two days after the demand went out.',
-    photo: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&h=200&fit=facearea&facepad=2&q=80&auto=format',
   },
   {
     name: 'Priya Raman',
     role: 'Independent consultant',
     location: 'Singapore',
-    quote: 'What sold me is that nothing goes out from a "noreply" — every reminder is from my own Gmail, in my own thread. My clients reply like normal. I just don\'t have to be the one writing the awkward part anymore.',
+    quote: "Every reminder is from my own Gmail, in my own thread. I just don't have to be the one writing the awkward part anymore.",
     photo: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=200&h=200&fit=facearea&facepad=2&q=80&auto=format',
   },
 ]
 
-const comparisonRows = [
-  {
-    label: 'Follow-up timing',
-    without: 'Manual calendar reminders that are easy to miss',
-    with: 'Automated cadence matched to invoice age',
-  },
-  {
-    label: 'Email quality',
-    without: 'Awkward blank-page writing every time',
-    with: 'Polished drafts tuned from friendly to formal',
-  },
-  {
-    label: 'Late-fee math',
-    without: 'Spreadsheet work and second-guessing',
-    with: 'Fees calculated from terms, balance, and days overdue',
-  },
-  {
-    label: 'Legal readiness',
-    without: 'Start researching only after things get bad',
-    with: 'Small-claims path prepared when escalation is needed',
-  },
-]
+function Author({ t, size }: { t: Testimonial; size: 'lg' | 'sm' }) {
+  return (
+    <figcaption className="flex items-center gap-3">
+      <img
+        src={t.photo}
+        alt=""
+        loading="lazy"
+        referrerPolicy="no-referrer"
+        className={`${size === 'lg' ? 'w-14 h-14' : 'w-11 h-11'} rounded-full object-cover bg-[#FDEBDD]`}
+      />
+      <div className="min-w-0">
+        <p className="text-[16px] font-semibold">{t.name}</p>
+        <p className="text-[14px] text-[#6B7280]">{t.role}, {t.location}</p>
+      </div>
+    </figcaption>
+  )
+}
 
-const faqs = [
+function Testimonials() {
+  return (
+    <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28">
+      <div className="max-w-[640px]">
+        <h2 className="text-[34px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em]">
+          Loved by people who hate chasing
+        </h2>
+        <p className="mt-4 text-[18px] leading-[1.6] text-[#6B7280]">
+          Freelancers who stopped writing "just following up" emails.
+        </p>
+      </div>
+      <div className="mt-12 grid lg:grid-cols-[1.25fr_1fr] gap-10 lg:gap-16">
+        <figure className="border-l-4 border-[#FF6B35] pl-6 sm:pl-8 flex flex-col justify-between gap-8">
+          <blockquote className="text-[24px] sm:text-[30px] font-semibold leading-[1.3] tracking-[-0.015em] max-w-[30ch]">
+            “{FEATURED_TESTIMONIAL.quote}”
+          </blockquote>
+          <Author t={FEATURED_TESTIMONIAL} size="lg" />
+        </figure>
+        <div className="divide-y divide-[#E9D9C8]">
+          {TESTIMONIALS.map((t) => (
+            <figure key={t.name} className="py-7 first:pt-0 last:pb-0 flex flex-col gap-5">
+              <blockquote className="text-[17px] leading-[1.55]">“{t.quote}”</blockquote>
+              <Author t={t} size="sm" />
+            </figure>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ─── FAQ ─────────────────────────────────────────────────────────────────────
+
+const FAQS = [
   {
     question: 'Will InvoiceChaser send emails without my approval?',
-    answer: 'No. InvoiceChaser drafts follow-ups for review. You can edit, reject, or approve each message before anything leaves your Gmail.',
+    answer: 'No. Every draft waits for you to approve, edit or reject it.',
   },
   {
-    question: 'Do clients know I am using an AI tool?',
-    answer: 'Emails are sent from your own Gmail account in the existing thread. Clients see a normal email from you, not a bot or no-reply address.',
+    question: "Do clients know I'm using an AI tool?",
+    answer: 'Emails come from your own Gmail, in the same thread. Clients see a normal email from you.',
   },
   {
     question: 'What if a client replies with a dispute?',
-    answer: 'Replies stay attached to the invoice timeline so you can review the thread, adjust the next draft, pause escalation, or resolve the invoice manually.',
-  },
-  {
-    question: 'Can it handle different escalation tones?',
-    answer: 'Yes. The agent starts with a friendly reminder, moves to a firmer demand when needed, and can prepare a legal-style notice for serious non-payment.',
-  },
-  {
-    question: 'Does it calculate late fees?',
-    answer: 'Yes. When your payment terms support fees or interest, InvoiceChaser can calculate the amount based on the overdue balance and elapsed time.',
+    answer: 'The agent summarizes their objection and suggests how to respond. Anything it drafts still needs your approval.',
   },
   {
     question: 'Is this a replacement for a lawyer?',
-    answer: 'No. InvoiceChaser helps you organize evidence, draft communications, and understand small-claims next steps. It does not provide legal representation.',
+    answer: "No. It drafts emails and explains small-claims steps, but it isn't legal advice.",
   },
   {
     question: 'What do I need to get started?',
-    answer: 'Upload an invoice PDF or DOCX, confirm the extracted details, and choose whether to try the demo or connect Gmail for real follow-ups.',
+    answer: 'Your invoice as a PDF or DOCX, or type the details in. Sign in with Google, then connect Gmail to send. Or try the demo first.',
+  },
+  {
+    question: 'Can InvoiceChaser read my inbox?',
+    answer: 'No. It can only send the emails you approve. Replies reach your inbox as usual, and a copy lands on the invoice.',
+  },
+  {
+    question: 'Which invoice files work?',
+    answer: "PDF or DOCX up to 10 MB. Scans and photos aren't supported yet, so type those in.",
   },
 ]
+
+// FAQ structured data comes from the same FAQS array, so it can't drift from the page.
+const FAQ_JSON_LD = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQS.map(({ question, answer }) => ({
+    '@type': 'Question',
+    name: question,
+    acceptedAnswer: { '@type': 'Answer', text: answer },
+  })),
+}).replace(/</g, '\\u003c') // static copy only; escaping keeps "</script>" impossible
+
+function Faq() {
+  return (
+    <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28 grid lg:grid-cols-[1fr_1.6fr] gap-8 lg:gap-16">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: FAQ_JSON_LD }} />
+      <h2 className="text-[34px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em] max-w-[14ch]">
+        Questions before you connect Gmail
+      </h2>
+      <div className="border-y border-[#E9D9C8] divide-y divide-[#E9D9C8]">
+        {FAQS.map(({ question, answer }) => (
+          <details key={question} className="group">
+            <summary className="flex items-center justify-between gap-4 py-5 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[17px] font-semibold">
+              {question}
+              <Plus className="w-5 h-5 shrink-0 text-[#6B7280] transition-transform group-open:rotate-45 motion-reduce:transition-none" />
+            </summary>
+            <p className="pb-5 -mt-1 text-[16px] leading-[1.6] text-[#6B7280] max-w-[62ch]">{answer}</p>
+          </details>
+        ))}
+      </div>
+    </section>
+  )
+}
+
+// ─── Guest modal ─────────────────────────────────────────────────────────────
+
+interface GuestModalProps {
+  name: string
+  onNameChange: (name: string) => void
+  onEnter: () => void
+  onGoogle: () => void
+  onClose: () => void
+}
+
+function GuestModal({ name, onNameChange, onEnter, onGoogle, onClose }: GuestModalProps) {
+  return (
+    <div className="fixed inset-0 bg-[#111827]/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="guest-title"
+        className="bg-white rounded-[16px] w-full max-w-sm border border-[#F1E4D8] shadow-2xl p-6 sm:p-7"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h2 id="guest-title" className="text-[22px] font-bold">Try the demo</h2>
+            <p className="text-[15px] text-[#6B7280] mt-1">No sign-up. Guest sessions are temporary.</p>
+          </div>
+          <button onClick={onClose} aria-label="Close" className="p-1 -m-1 text-[#6B7280] hover:text-[#111827]">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <label className="block mt-6">
+          <span className="block text-[15px] font-semibold mb-1.5">Your name</span>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onEnter()}
+            placeholder="e.g. Sam"
+            autoFocus
+            className="w-full rounded-lg border border-[#F1E4D8] bg-[#FFFAF5] px-3.5 py-2.5 text-[16px] focus:outline-2 focus:outline-[#111827]"
+          />
+        </label>
+
+        <button
+          onClick={onEnter}
+          disabled={!name.trim()}
+          className="mt-4 w-full rounded-lg bg-[#111827] text-white font-semibold text-[16px] py-3 hover:bg-black disabled:opacity-40"
+        >
+          Start the demo
+        </button>
+
+        <div className="flex items-center gap-3 my-4 text-[14px] text-[#6B7280]">
+          <span className="h-px flex-1 bg-[#F1E4D8]" />or<span className="h-px flex-1 bg-[#F1E4D8]" />
+        </div>
+
+        <button
+          onClick={onGoogle}
+          className="w-full inline-flex items-center justify-center gap-2.5 rounded-lg border border-[#F1E4D8] font-semibold text-[16px] py-3 hover:border-[#111827]"
+        >
+          <GoogleIcon />
+          Sign in with Google to save your data
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// Verified benefits only: each one is something the product does today.
+const HERO_POINTS = ['Reads your invoice PDF', 'Friendly, formal, then legal', 'Sends from your Gmail']
 
 // ─── Main Landing Page ───────────────────────────────────────────────────────
 
@@ -221,18 +1016,7 @@ export default function LandingPage() {
   const navigate = useNavigate()
   const { signIn, enterAsGuest } = useAuth()
   const [showGuestModal, setShowGuestModal] = useState(false)
-  const [showStickyCta, setShowStickyCta] = useState(false)
-  const [selectedScenario, setSelectedScenario] = useState(1)
   const [guestName, setGuestName] = useState('')
-
-  const activeScenario = chaseScenarios[selectedScenario]
-
-  useEffect(() => {
-    const handleScroll = () => setShowStickyCta(window.scrollY > 560)
-    handleScroll()
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [])
 
   const handleGuestEntry = () => {
     if (!guestName.trim()) return
@@ -240,647 +1024,120 @@ export default function LandingPage() {
     navigate('/dashboard')
   }
 
-  const handleGoogleSignIn = () => {
-    signIn()
+  const [signInError, setSignInError] = useState(false)
+
+  const handleGoogleSignIn = async () => {
+    setSignInError(false)
+    try {
+      await signIn()
+    } catch {
+      setSignInError(true)
+    }
   }
 
+  const cta = { onGoogle: handleGoogleSignIn, onGuest: () => setShowGuestModal(true) }
+
   return (
-    <div className="min-h-screen bg-mesh noise overflow-x-hidden">
-      {/* ──── Navbar ──── */}
-      <nav className="sticky top-0 z-50 bg-white/70 backdrop-blur-xl border-b border-orange-100/60">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center shadow-lg shadow-orange-300/40">
-                <Zap className="w-5 h-5 text-white" strokeWidth={2.5} />
-              </div>
-              <div>
-                <h1 className="text-lg font-bold text-gray-900 leading-tight font-[family-name:var(--font-heading)] tracking-tight">
-                  Invoice<span className="text-[#FF6B35]">Chaser</span>
-                </h1>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-1.5 text-xs font-medium text-teal-700 bg-teal-50 px-3 py-1.5 rounded-full border border-teal-200/60">
-                <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse-dot" />
-                AI Payment Recovery
-              </div>
-            </div>
-          </div>
+    <div className="lp bg-[#FFF7F0] text-[#111827] min-h-screen [overflow-x:clip]">
+      <header className="max-w-[1180px] mx-auto px-4 sm:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
+        <a href="/" className="flex items-center gap-2.5">
+          <span className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] text-white shadow-md shadow-orange-300/40 flex items-center justify-center">
+            <Zap className="w-4 h-4" strokeWidth={2.5} />
+          </span>
+          <span className="font-bold text-[19px] tracking-tight">Invoice<span className="text-[#FF6B35]">Chaser</span></span>
+        </a>
+        <div className="flex items-center gap-4">
+          <button onClick={cta.onGoogle} className="hidden sm:inline text-[15px] font-semibold hover:underline underline-offset-4">
+            Sign in
+          </button>
+          <button onClick={cta.onGuest} className={`${demoButton} text-[15px] px-4 py-2`}>
+            Try the demo
+          </button>
         </div>
-      </nav>
+      </header>
 
-      {/* ──── Hero Section ──── */}
-      <section className="relative pt-16 pb-24 overflow-hidden">
-        {/* Background decorative elements */}
-        <div className="absolute top-20 -left-32 w-96 h-96 rounded-full bg-gradient-to-br from-[#FF6B35]/10 to-transparent blur-3xl" />
-        <div className="absolute bottom-0 -right-32 w-96 h-96 rounded-full bg-gradient-to-br from-teal-400/8 to-transparent blur-3xl" />
-        <div className="absolute top-40 right-20 w-64 h-64 rounded-full bg-gradient-to-br from-violet-400/6 to-transparent blur-3xl" />
-
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-2 gap-16 items-center">
-            {/* Left — Copy */}
-            <div className="animate-fade-up">
-              <div className="inline-flex items-center gap-2 text-xs font-bold text-[#FF6B35] bg-orange-50 px-4 py-2 rounded-full border border-orange-200/60 mb-6">
-                <Sparkles className="w-3.5 h-3.5" />
-                AI-POWERED PAYMENT RECOVERY
-              </div>
-
-              <h2 className="text-5xl sm:text-6xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight leading-[1.1] mb-6">
-                Stop chasing.
-                <br />
-                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#FF6B35] to-[#FF8F65]">
-                  Start recovering.
-                </span>
-              </h2>
-
-              <p className="text-lg text-gray-500 leading-relaxed mb-6 max-w-lg">
-                Turn an overdue invoice into an approved follow-up in under a minute. InvoiceChaser drafts the reminder, calculates the next escalation, and keeps every send under your control.
-              </p>
-
-              <div className="grid sm:grid-cols-3 gap-2.5 mb-8 max-w-xl">
-                {heroOutcomes.map((outcome) => (
-                  <div key={outcome} className="flex items-start gap-2 rounded-xl bg-white/75 border border-orange-100/70 px-3 py-2.5 shadow-sm">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                    <span className="text-xs font-semibold leading-snug text-gray-600">{outcome}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex flex-wrap gap-3 mb-10">
-                <button
-                  onClick={() => setShowGuestModal(true)}
-                  className="inline-flex items-center gap-2.5 btn-gradient text-white text-sm font-bold rounded-xl px-7 py-3.5 shadow-lg shadow-orange-300/40 hover:shadow-orange-400/60 transition-all font-[family-name:var(--font-heading)] group"
-                >
-                  <Play className="w-4 h-4 group-hover:scale-110 transition-transform" />
-                  Try live demo
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </button>
-                <button
-                  onClick={handleGoogleSignIn}
-                  className="inline-flex items-center gap-2.5 bg-white hover:bg-gray-50 text-gray-700 text-sm font-bold rounded-xl px-6 py-3.5 shadow-sm border border-gray-200 transition-all font-[family-name:var(--font-heading)]"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                  </svg>
-                  Connect Gmail
-                </button>
-              </div>
-
-              {/* Trust badges */}
-              <div className="flex items-center gap-4 text-xs text-gray-400">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="font-medium">Free to use</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="font-medium">No credit card</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-                  <span className="font-medium">Full AI control</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Right — Product demo reel (auto-playing walkthrough) */}
-            <div className="animate-fade-up" style={{ animationDelay: '300ms' }}>
-              <ProductDemoReel />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ──── Trust Strip ──── */}
-      <section className="py-6 bg-white/65 border-y border-orange-100/70">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col lg:flex-row lg:items-center gap-5">
-            <div className="flex items-center gap-2.5 text-sm font-extrabold text-gray-900 font-[family-name:var(--font-heading)] shrink-0">
-              <Lock className="w-4 h-4 text-[#FF6B35]" />
-              You&apos;re in good company
-            </div>
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 flex-1">
-              {trustSignals.map((signal) => (
-                <div key={signal.label} className="rounded-xl border border-gray-100 bg-white px-4 py-3 shadow-sm">
-                  <p className="text-sm font-bold text-gray-800">{signal.label}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{signal.detail}</p>
-                </div>
+      <main>
+        {/* Two columns on desktop so the product is visible next to the promise. */}
+        <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pt-4 sm:pt-8 pb-20 sm:pb-28 grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-10 lg:gap-14 items-start">
+          <div className="lg:pt-6">
+            <h1 className="text-[42px] sm:text-[56px] lg:text-[52px] font-extrabold leading-[1.02] tracking-[-0.035em] max-w-[15ch]">
+              Stop chasing unpaid invoices. An agent does it, you approve.
+            </h1>
+            <p className="mt-6 text-[18px] sm:text-[20px] leading-[1.55] text-[#6B7280] max-w-[42ch]">
+              Drop in an overdue invoice. The agent drafts each reminder and suggests when to get firmer. Nothing sends without you.
+            </p>
+            <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[15px] font-medium">
+              {HERO_POINTS.map((point) => (
+                <li key={point} className="flex items-center gap-1.5">
+                  <Check className="w-4 h-4 text-[#1F7A55]" strokeWidth={2.5} />
+                  {point}
+                </li>
               ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ──── Stats Bar ──── */}
-      <section className="relative py-10 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 overflow-hidden">
-        <div className="absolute inset-0 opacity-20">
-          <div className="absolute -left-20 top-0 w-60 h-60 rounded-full bg-[#FF6B35]/30 blur-3xl" />
-          <div className="absolute -right-20 bottom-0 w-60 h-60 rounded-full bg-teal-400/20 blur-3xl" />
-        </div>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
-            {stats.map((s, i) => (
-              <div key={i} className="text-center animate-fade-up" style={{ animationDelay: `${i * 100}ms` }}>
-                <p className="text-3xl sm:text-4xl font-extrabold text-white font-[family-name:var(--font-heading)] mb-1">
-                  {s.value}
-                </p>
-                <p className="text-xs sm:text-sm text-gray-400 font-medium">{s.label}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ──── Situation Selector ──── */}
-      <section className="py-20 bg-white/35 border-b border-orange-100/50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-[0.9fr_1.1fr] gap-10 items-center">
-            <div className="animate-fade-up">
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF6B35] bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200/60 mb-4">
-                <Eye className="w-3 h-3" />
-                PICK YOUR CHASE
-              </span>
-              <h3 className="text-3xl sm:text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
-                Different late invoices need different pressure.
-              </h3>
-              <p className="text-gray-500 mt-4 leading-relaxed">
-                Choose the situation closest to yours. The product demo stays the same, but the message changes because the follow-up should match the client&apos;s behavior.
+            </ul>
+            <div className="mt-8">
+              <CtaButtons {...cta} />
+              <p className="mt-3 text-[15px] font-medium">Free to use. No credit card.</p>
+              <p className="mt-3 flex gap-2 text-[14px] leading-[1.5] text-[#6B7280] max-w-[44ch]">
+                <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" />
+                Send-only Gmail access. We can't read your inbox.
               </p>
             </div>
+          </div>
+          <AgentRun />
+        </section>
 
-            <div className="animate-fade-up" style={{ animationDelay: '120ms' }}>
-              <div className="grid sm:grid-cols-3 gap-3 mb-4">
-                {chaseScenarios.map((scenario, i) => (
-                  <button
-                    key={scenario.label}
-                    onClick={() => setSelectedScenario(i)}
-                    className={`rounded-2xl border p-4 text-left transition-all ${
-                      selectedScenario === i
-                        ? 'border-orange-300 bg-orange-50 shadow-lg shadow-orange-200/35'
-                        : 'border-gray-100 bg-white hover:border-orange-200 hover:bg-orange-50/40'
-                    }`}
-                  >
-                    <p className={`text-xs font-extrabold uppercase tracking-wider ${
-                      selectedScenario === i ? 'text-[#FF6B35]' : 'text-gray-400'
-                    }`}>
-                      {scenario.label}
-                    </p>
-                    <p className="mt-2 text-sm font-bold text-gray-900 leading-snug">{scenario.headline}</p>
-                  </button>
-                ))}
-              </div>
+        <HowItWorksBand />
 
-              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                  <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center text-white shrink-0">
-                    <MessageSquare className="w-5 h-5" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">{activeScenario.proof}</p>
-                    <h4 className="text-xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)]">{activeScenario.headline}</h4>
-                    <p className="text-sm text-gray-500 mt-2 leading-relaxed">{activeScenario.pain}</p>
-                    <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-100 px-4 py-3 flex gap-2.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                      <p className="text-sm font-medium text-gray-700 leading-relaxed">{activeScenario.outcome}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <WhoDoesWhat />
+        <InvoiceGenerator onTry={cta.onGuest} />
+        <SituationSelector />
+        <WithWithout />
+        <Testimonials />
+        <Faq />
+
+        <section id="final-cta" className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-16">
+          <div className="rounded-[16px] bg-[#111827] text-white p-7 sm:p-12 grid lg:grid-cols-[1fr_auto] gap-8 lg:items-end">
+            <div>
+              <h2 className="text-[32px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em] max-w-[18ch]">
+                Hand your next overdue invoice to the agent.
+              </h2>
+              <p className="mt-3 text-[17px] text-[#F1E4D8]">No sign-up for the demo. You approve every email.</p>
             </div>
+            <CtaButtons {...cta} />
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      {/* ──── How It Works ──── */}
-      <section className="py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16 animate-fade-up">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-600 bg-teal-50 px-3 py-1.5 rounded-full border border-teal-200/60 mb-4">
-              <Clock className="w-3 h-3" />
-              SIMPLE WORKFLOW
-            </span>
-            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
-              How it works
-            </h3>
-            <p className="text-gray-400 mt-3 max-w-md mx-auto">Four steps to recover what you're owed. The AI handles the hard part.</p>
-          </div>
-
-          <div className="grid md:grid-cols-4 gap-6">
-            {steps.map((s, i) => (
-              <div key={i} className="relative group animate-fade-up" style={{ animationDelay: `${i * 120}ms` }}>
-                {/* Connector line */}
-                {i < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-8 left-[calc(100%+0.25rem)] w-[calc(100%-3rem)] h-px bg-gradient-to-r from-[#FF6B35]/30 to-transparent" />
-                )}
-                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm card-lift h-full">
-                  <div className="text-4xl font-extrabold text-[#FF6B35]/15 font-[family-name:var(--font-heading)] mb-3 leading-none">
-                    {s.step}
-                  </div>
-                  <h4 className="text-lg font-bold text-gray-900 font-[family-name:var(--font-heading)] mb-2">{s.title}</h4>
-                  <p className="text-sm text-gray-500 leading-relaxed">{s.desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ──── Features Grid ──── */}
-      <section className="py-24 bg-gradient-to-b from-white/40 to-transparent">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16 animate-fade-up">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-full border border-violet-200/60 mb-4">
-              <Sparkles className="w-3 h-3" />
-              WHAT YOU GET
-            </span>
-            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
-              The collections workflow you wish you had
-            </h3>
-            <p className="text-gray-400 mt-3 max-w-lg mx-auto">
-              All the steps you&apos;d normally dread — written for you, ready for your approval.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {features.map((f, i) => (
-              <div
-                key={i}
-                className={`bg-gradient-to-br ${f.bg} rounded-2xl p-6 border ${f.border} card-lift animate-fade-up`}
-                style={{ animationDelay: `${i * 80}ms` }}
-              >
-                <div
-                  className="w-10 h-10 rounded-xl flex items-center justify-center mb-4 shadow-sm"
-                  style={{ background: `linear-gradient(135deg, ${f.color}, ${f.color}cc)`, color: 'white' }}
-                >
-                  {f.icon}
-                </div>
-                <h4 className="text-lg font-bold text-gray-900 font-[family-name:var(--font-heading)] mb-2">{f.title}</h4>
-                <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ──── Escalation Preview ──── */}
-      <section className="py-24">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16 animate-fade-up">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF6B35] bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200/60 mb-4">
-              <TrendingUp className="w-3 h-3" />
-              ESCALATION ENGINE
-            </span>
-            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
-              Three levels. Zero missed payments.
-            </h3>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {[
-              {
-                level: 1, name: 'Friendly', color: '#10b981', bgFrom: '#ecfdf5', bgTo: '#d1fae5',
-                icon: <Mail className="w-5 h-5 text-white" />,
-                tone: '"Hi Sarah, just a gentle reminder about invoice #INV-042 — let me know if you need anything to release payment."',
-                summary: 'A warm, friendly nudge. Keeps the relationship intact.',
-              },
-              {
-                level: 2, name: 'Formal', color: '#f59e0b', bgFrom: '#fffbeb', bgTo: '#fef3c7',
-                icon: <Shield className="w-5 h-5 text-white" />,
-                tone: '"Per our agreement, payment of $5,000 was due 45 days ago. A late fee of $225 has now accrued."',
-                summary: 'Firm, businesslike, with late fees calculated for you.',
-              },
-              {
-                level: 3, name: 'Legal', color: '#ef4444', bgFrom: '#fef2f2', bgTo: '#fecaca',
-                icon: <Scale className="w-5 h-5 text-white" />,
-                tone: '"This constitutes formal notice. Failure to remit within 10 days will result in a small-claims filing in California."',
-                summary: 'Final notice + the actual small-claims filing path for your jurisdiction.',
-              },
-            ].map((l, i) => (
-              <div key={i} className="animate-fade-up" style={{ animationDelay: `${i * 150}ms` }}>
-                <div
-                  className="rounded-2xl border-2 overflow-hidden card-lift h-full"
-                  style={{
-                    borderColor: l.color + '30',
-                    background: `linear-gradient(180deg, ${l.bgFrom}, ${l.bgTo})`,
-                  }}
-                >
-                  <div className="px-5 py-4 flex items-center gap-3" style={{ background: `linear-gradient(135deg, ${l.color}, ${l.color}dd)` }}>
-                    <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
-                      {l.icon}
-                    </div>
-                    <div>
-                      <p className="text-white font-extrabold font-[family-name:var(--font-heading)]">Level {l.level}</p>
-                      <p className="text-white/70 text-xs font-medium">{l.name}</p>
-                    </div>
-                  </div>
-                  <div className="p-5 space-y-4">
-                    <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Sample tone</p>
-                      <p className="text-xs text-gray-600 italic leading-relaxed">
-                        {l.tone}
-                      </p>
-                    </div>
-                    <p className="text-xs text-gray-600 leading-relaxed">{l.summary}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ──── Testimonials ──── */}
-      <section className="py-24 bg-gradient-to-b from-transparent to-white/30">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-14 animate-fade-up">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-200/60 mb-4">
-              <Users className="w-3 h-3" />
-              REAL FREELANCERS, REAL RESULTS
-            </span>
-            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
-              Loved by people who hate chasing
-            </h3>
-            <p className="text-gray-500 mt-3 max-w-lg mx-auto">
-              Designers, agencies, and consultants who finally stopped writing awkward "just following up" emails.
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-            {testimonials.map((t, i) => (
-              <figure
-                key={t.name}
-                className="relative bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-lg transition-shadow p-6 animate-fade-up flex flex-col"
-                style={{ animationDelay: `${i * 120}ms` }}
-              >
-                {/* 5-star rating */}
-                <div className="flex items-center gap-0.5 mb-4">
-                  {[0, 1, 2, 3, 4].map((s) => (
-                    <svg key={s} className="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.286 3.953a1 1 0 00.95.69h4.156c.969 0 1.371 1.24.588 1.81l-3.362 2.443a1 1 0 00-.364 1.118l1.286 3.953c.3.921-.755 1.688-1.54 1.118l-3.362-2.443a1 1 0 00-1.176 0l-3.362 2.443c-.784.57-1.838-.197-1.54-1.118l1.287-3.953a1 1 0 00-.364-1.118L2.93 8.38c-.783-.57-.38-1.81.588-1.81h4.156a1 1 0 00.95-.69l1.286-3.953z" />
-                    </svg>
-                  ))}
-                </div>
-
-                {/* Quote */}
-                <blockquote className="text-sm text-gray-700 leading-relaxed mb-6 flex-1">
-                  &ldquo;{t.quote}&rdquo;
-                </blockquote>
-
-                {/* Author */}
-                <figcaption className="flex items-center gap-3 pt-4 border-t border-gray-100">
-                  <img
-                    src={t.photo}
-                    alt={t.name}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    className="w-11 h-11 rounded-full object-cover border-2 border-white shadow-md ring-1 ring-gray-100"
-                  />
-                  <div className="min-w-0">
-                    <p className="text-sm font-bold text-gray-900 truncate">{t.name}</p>
-                    <p className="text-xs text-gray-500 truncate">
-                      {t.role} <span className="text-gray-300">·</span> {t.location}
-                    </p>
-                  </div>
-                </figcaption>
-              </figure>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ──── Comparison ──── */}
-      <section className="py-24 bg-gradient-to-b from-white/35 to-transparent">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12 animate-fade-up">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-[#FF6B35] bg-orange-50 px-3 py-1.5 rounded-full border border-orange-200/60 mb-4">
-              <Shield className="w-3 h-3" />
-              LESS CHASING, MORE CONTROL
-            </span>
-            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
-              With vs. without InvoiceChaser
-            </h3>
-          </div>
-
-          <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm animate-fade-up">
-            <div className="grid grid-cols-[1fr] md:grid-cols-[1.05fr_1fr_1fr] bg-gray-900 text-white">
-              <div className="hidden md:block px-5 py-4 text-xs font-bold uppercase tracking-wider text-gray-400">Workflow</div>
-              <div className="px-5 py-4 text-sm font-extrabold font-[family-name:var(--font-heading)]">Without InvoiceChaser</div>
-              <div className="px-5 py-4 text-sm font-extrabold font-[family-name:var(--font-heading)] bg-[#FF6B35]">With InvoiceChaser</div>
-            </div>
-            {comparisonRows.map((row) => (
-              <div key={row.label} className="grid grid-cols-1 md:grid-cols-[1.05fr_1fr_1fr] border-t border-gray-100">
-                <div className="px-5 py-4 bg-gray-50/80">
-                  <p className="text-sm font-bold text-gray-900">{row.label}</p>
-                </div>
-                <div className="px-5 py-4 flex gap-2.5">
-                  <XCircle className="w-4 h-4 text-gray-300 mt-0.5 shrink-0" />
-                  <p className="text-sm text-gray-500 leading-relaxed">{row.without}</p>
-                </div>
-                <div className="px-5 py-4 flex gap-2.5 bg-orange-50/45">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-500 mt-0.5 shrink-0" />
-                  <p className="text-sm font-medium text-gray-700 leading-relaxed">{row.with}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ──── FAQ ──── */}
-      <section className="py-24">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-12 animate-fade-up">
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-700 bg-teal-50 px-3 py-1.5 rounded-full border border-teal-200/60 mb-4">
-              <MessageSquare className="w-3 h-3" />
-              QUESTIONS BEFORE YOU CHASE
-            </span>
-            <h3 className="text-4xl font-extrabold text-gray-900 font-[family-name:var(--font-heading)] tracking-tight">
-              Common objections, answered
-            </h3>
-          </div>
-
-          <div className="grid md:grid-cols-2 gap-4">
-            {faqs.map((faq, i) => (
-              <details
-                key={faq.question}
-                className="group rounded-2xl border border-gray-100 bg-white p-5 shadow-sm animate-fade-up open:border-orange-200/80 open:shadow-md"
-                style={{ animationDelay: `${i * 60}ms` }}
-              >
-                <summary className="flex cursor-pointer list-none items-start justify-between gap-4">
-                  <span className="text-sm font-extrabold text-gray-900 font-[family-name:var(--font-heading)] leading-snug">{faq.question}</span>
-                  <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-orange-50 text-[#FF6B35] text-lg leading-none transition-transform group-open:rotate-45">+</span>
-                </summary>
-                <p className="mt-4 text-sm leading-relaxed text-gray-500">{faq.answer}</p>
-              </details>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ──── CTA Section ──── */}
-      <section className="py-24">
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 text-center animate-fade-up">
-          <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-3xl p-12 sm:p-16 relative overflow-hidden">
-            {/* Decorative orbs */}
-            <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-[#FF6B35]/20 blur-3xl" />
-            <div className="absolute -bottom-16 -left-16 w-48 h-48 rounded-full bg-teal-400/15 blur-3xl" />
-
-            <div className="relative">
-              <h3 className="text-3xl sm:text-4xl font-extrabold text-white font-[family-name:var(--font-heading)] tracking-tight mb-4">
-                Ready to recover what you're owed?
-              </h3>
-              <p className="text-gray-400 mb-8 max-w-md mx-auto">
-                Start chasing payments with AI in seconds. No sign-up required to try the live demo.
-              </p>
-              <div className="flex flex-wrap items-center justify-center gap-4">
-                <button
-                  onClick={() => setShowGuestModal(true)}
-                  className="inline-flex items-center gap-2.5 btn-gradient text-white text-sm font-bold rounded-xl px-8 py-4 shadow-lg shadow-orange-500/30 hover:shadow-orange-500/50 transition-all font-[family-name:var(--font-heading)] group"
-                >
-                  <Users className="w-4 h-4" />
-                  Try live demo
-                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </button>
-                <button
-                  onClick={handleGoogleSignIn}
-                  className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 backdrop-blur text-white text-sm font-bold rounded-xl px-8 py-4 transition-all border border-white/10 font-[family-name:var(--font-heading)]"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24">
-                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#fff"/>
-                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#fff"/>
-                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#fff"/>
-                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#fff"/>
-                  </svg>
-                  Connect Gmail
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ──── Footer ──── */}
-      <footer className="border-t border-gray-200/60 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <Zap className="w-4 h-4 text-[#FF6B35]" />
-            <span className="font-semibold text-gray-600 font-[family-name:var(--font-heading)]">InvoiceChaser</span>
-            <span>&middot; AI-powered invoice recovery</span>
-          </div>
-          <div className="flex items-center gap-4 text-xs text-gray-400">
-            <a href="https://github.com" target="_blank" rel="noopener" className="hover:text-[#FF6B35] transition-colors font-medium">GitHub</a>
-            <span>&middot;</span>
-            <span>Made for freelancers &amp; small studios</span>
-          </div>
-        </div>
+      <footer className="max-w-[1180px] mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row gap-2 sm:gap-6 sm:items-center justify-between text-[14px] text-[#6B7280]">
+        <span className="font-semibold text-[#111827] text-[15px]">InvoiceChaser</span>
+        <span className="flex flex-wrap gap-x-6 gap-y-1">
+          <span>Made for freelancers and small studios</span>
+          <span>Built with LangGraph, Groq, FastAPI and React</span>
+          <a href="https://github.com/code0monkey1/invoice-dispute-agent" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">GitHub</a>
+        </span>
       </footer>
 
-      {/* ──── Guest Sign-In Modal ──── */}
-      {showGuestModal && (
-        <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setShowGuestModal(false)}>
-          <div
-            className="bg-white rounded-3xl w-full max-w-sm shadow-2xl shadow-orange-200/30 border border-orange-100/50 animate-fade-up overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="bg-gradient-to-r from-[#FF6B35] to-[#FF8F65] px-6 py-6 relative overflow-hidden">
-              <div className="absolute inset-0 opacity-10">
-                <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-white/20" />
-                <div className="absolute -left-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
-              </div>
-              <div className="relative text-center">
-                <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-3">
-                  <Users className="w-7 h-7 text-white" />
-                </div>
-                <h2 className="text-xl font-bold text-white font-[family-name:var(--font-heading)]">
-                  Live Demo
-                </h2>
-                <p className="text-white/70 text-xs mt-1.5">Explore InvoiceChaser without signing up — perfect for a quick walkthrough</p>
-              </div>
-            </div>
+      <StickyCta {...cta} />
 
-            {/* Form */}
-            <div className="p-6 space-y-5">
-              <div>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Your Name</label>
-                <input
-                  type="text"
-                  value={guestName}
-                  onChange={(e) => setGuestName(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleGuestEntry()}
-                  placeholder="Enter your name..."
-                  autoFocus
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35]/50 transition-all"
-                />
-              </div>
-
-              <button
-                onClick={handleGuestEntry}
-                disabled={!guestName.trim()}
-                className="w-full btn-gradient disabled:opacity-50 text-white font-bold rounded-xl py-3.5 text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-300/40 font-[family-name:var(--font-heading)]"
-              >
-                <ArrowRight className="w-4 h-4" />
-                Start Demo
-              </button>
-
-              <div className="relative">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-100" />
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="bg-white px-3 text-gray-400 font-medium">or</span>
-                </div>
-              </div>
-
-              <button
-                onClick={handleGoogleSignIn}
-                className="w-full bg-white hover:bg-gray-50 text-gray-700 font-bold rounded-xl py-3.5 text-sm transition-all flex items-center justify-center gap-2 border border-gray-200 shadow-sm font-[family-name:var(--font-heading)]"
-              >
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
-                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
-                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                  <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                </svg>
-                Continue with Google
-              </button>
-
-              <p className="text-[11px] text-gray-400 text-center">
-                Guest sessions are temporary. Sign in with Google to save your data.
-              </p>
-            </div>
-          </div>
+      {signInError && (
+        <div role="alert" className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-6 sm:max-w-[420px] z-[110] rounded-xl bg-[#111827] text-white px-5 py-4 shadow-2xl flex items-start gap-4">
+          <p className="text-[15px] leading-[1.5]">
+            Google sign-in isn't available right now. Try again in a moment, or try the demo.
+          </p>
+          <button onClick={() => setSignInError(false)} aria-label="Dismiss" className="shrink-0 p-1 -m-1 text-white/70 hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
         </div>
       )}
 
-      {showStickyCta && !showGuestModal && (
-        <div className="fixed bottom-4 left-0 right-0 z-40 px-4 sm:px-6">
-          <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-2xl border border-orange-200/70 bg-white/90 p-3 shadow-2xl shadow-orange-200/40 backdrop-blur-xl">
-            <div className="min-w-0">
-              <p className="text-sm font-extrabold text-gray-900 font-[family-name:var(--font-heading)]">Recover overdue invoices faster</p>
-              <p className="hidden sm:block text-xs text-gray-500">Try the demo or connect Gmail when you&apos;re ready to send real follow-ups.</p>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                onClick={() => setShowGuestModal(true)}
-                className="inline-flex items-center gap-2 btn-gradient text-white text-xs sm:text-sm font-bold rounded-xl px-4 py-3 shadow-lg shadow-orange-300/40 font-[family-name:var(--font-heading)]"
-              >
-                Try demo
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <button
-                onClick={handleGoogleSignIn}
-                className="hidden sm:inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-bold rounded-xl px-4 py-3 transition-all font-[family-name:var(--font-heading)]"
-              >
-                Connect Gmail
-              </button>
-            </div>
-          </div>
-        </div>
+      {showGuestModal && (
+        <GuestModal
+          name={guestName}
+          onNameChange={setGuestName}
+          onEnter={handleGuestEntry}
+          onGoogle={handleGoogleSignIn}
+          onClose={() => setShowGuestModal(false)}
+        />
       )}
     </div>
   )

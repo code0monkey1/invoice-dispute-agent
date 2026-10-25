@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /invoice/
+Disallow: /generate-invoice
+Disallow: /auth/
+Disallow: /api/
+
+Sitemap: https://invoice-chaser-chi.vercel.app/sitemap.xml

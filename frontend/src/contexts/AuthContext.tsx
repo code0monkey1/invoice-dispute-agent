@@ -8,6 +8,7 @@ interface AuthContextType {
   isGuest: boolean
   loading: boolean
   signIn: () => Promise<void>
+  connectGmail: () => Promise<void>
   signOut: () => void
   enterAsGuest: (name: string) => void
 }
@@ -24,10 +25,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(JSON.parse(savedUser))
     }
     setLoading(false)
+    // Refresh the signed-in user so flags like gmail_connected stay current.
+    if (localStorage.getItem('invoicechaser_token')) {
+      api.getMe()
+        .then(({ user: fresh }) => {
+          localStorage.setItem('invoicechaser_user', JSON.stringify(fresh))
+          setUser(fresh)
+        })
+        .catch(() => { /* request() already handles an expired session */ })
+    }
   }, [])
 
   const signIn = async () => {
     const { url } = await api.getGoogleAuthUrl()
+    window.location.href = url
+  }
+
+  // Asks Google for send-only Gmail access, separately from sign-in.
+  const connectGmail = async () => {
+    const { url } = await api.getGmailConnectUrl()
     window.location.href = url
   }
 
@@ -55,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isGuest = !!user && (user.id === 'guest' || !user.email)
 
   return (
-    <AuthContext.Provider value={{ user, isGuest, loading, signIn, signOut, enterAsGuest }}>
+    <AuthContext.Provider value={{ user, isGuest, loading, signIn, connectGmail, signOut, enterAsGuest }}>
       {children}
     </AuthContext.Provider>
   )

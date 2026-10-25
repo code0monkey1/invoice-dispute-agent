@@ -77,6 +77,9 @@ export const api = {
   getMe: () =>
     request<{ user: import('./types').User }>('/api/auth/me'),
 
+  getGmailConnectUrl: () =>
+    request<{ url: string }>('/api/auth/gmail/connect-url'),
+
   // Invoices
   getInvoices: () => request<import('./types').Invoice[]>('/api/invoices'),
 
@@ -139,6 +142,11 @@ export const api = {
     request<import('./types').ChatResponse>('/api/chat', {
       method: 'POST',
       body: JSON.stringify({ thread_id, message }),
+    }),
+
+  escalate: (invoice_id: string) =>
+    request<import('./types').ChatResponse>(`/api/invoices/${invoice_id}/escalate`, {
+      method: 'POST',
     }),
 
   resume: (

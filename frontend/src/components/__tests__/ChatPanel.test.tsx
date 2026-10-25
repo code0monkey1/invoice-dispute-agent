@@ -7,6 +7,7 @@ import type { AgentState, Message, SupabaseCommEntry } from '../../types';
 
 const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
+  escalate: vi.fn(),
   approve: vi.fn(),
   reject: vi.fn(),
   edit: vi.fn(),
@@ -22,7 +23,7 @@ const mocks = vi.hoisted(() => ({
     agentState: AgentState;
     communications: SupabaseCommEntry[];
     loading: boolean;
-    lastEmailSent: null;
+    lastEmailSent: null | { sent: boolean; id?: string; status?: string; note?: string };
     error: null;
   },
 }));
@@ -45,6 +46,7 @@ vi.mock('../../hooks/useChat', () => ({
   useChat: () => ({
     ...mocks.hookState,
     sendMessage: mocks.sendMessage,
+    escalate: mocks.escalate,
     approve: mocks.approve,
     reject: mocks.reject,
     edit: mocks.edit,
@@ -159,5 +161,45 @@ describe('ChatPanel first-open invoice actions', () => {
 
     expect(screen.queryByRole('button', { name: /create invoice email draft/i })).not.toBeInTheDocument();
     expect(screen.getByText(/this invoice is for design work/i)).toBeInTheDocument();
+  });
+});
+
+
+describe('ChatPanel escalation', () => {
+  it('escalates directly instead of asking the agent in chat', async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    await user.click(await screen.findByRole('button', { name: /escalate to formal/i }));
+
+    expect(mocks.escalate).toHaveBeenCalledTimes(1);
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('offers no escalation once the invoice is at Legal', async () => {
+    mocks.hookState.agentState = { ...baseState, escalation_level: 3 };
+    renderChat();
+
+    await screen.findByRole('button', { name: /chat about this invoice/i });
+    expect(screen.queryByRole('button', { name: /escalate to/i })).not.toBeInTheDocument();
+  });
+});
+
+
+describe('ChatPanel email send result', () => {
+  it('explains why nothing was sent in demo mode', async () => {
+    mocks.hookState.lastEmailSent = {
+      sent: false,
+      status: 'demo',
+      note: "You're in the demo, so nothing was sent. Connect Gmail to send emails for real.",
+    };
+    renderChat();
+    expect(await screen.findByText(/you're in the demo, so nothing was sent/i)).toBeInTheDocument();
+  });
+
+  it('confirms a sent email with the recipient', async () => {
+    mocks.hookState.lastEmailSent = { sent: true, id: 'msg-1', status: 'sent', note: 'Sent from your Gmail.' };
+    renderChat();
+    expect(await screen.findByText(/sent to ap@acme.example/i)).toBeInTheDocument();
   });
 });

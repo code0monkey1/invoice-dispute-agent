@@ -1,86 +1,127 @@
-import { useNavigate } from 'react-router-dom'
-import { MessageSquare, ArrowRight } from 'lucide-react'
+import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ChevronRight } from 'lucide-react'
 import EscalationBadge from './EscalationBadge'
+import { invoiceStatus } from './invoiceStatus'
+import type { InvoiceStatusKind } from './invoiceStatus'
+import { formatMoney, formatOverdue } from './format'
 import type { Invoice } from '../types'
+
+type Filter = 'all' | 'you' | 'active' | 'paid'
+
+const FILTERS: { id: Filter; label: string; match: (kind: InvoiceStatusKind) => boolean }[] = [
+  { id: 'all', label: 'All', match: () => true },
+  { id: 'you', label: 'Waiting for you', match: (k) => k === 'you' },
+  { id: 'active', label: 'Being chased', match: (k) => k === 'agent' || k === 'client' },
+  { id: 'paid', label: 'Paid', match: (k) => k === 'paid' },
+]
+
+const STATUS_STYLE: Record<InvoiceStatusKind, { dot: string; text: string }> = {
+  you: { dot: 'bg-[#FF6B35]', text: 'text-[#B4410E] font-semibold' },
+  client: { dot: 'bg-[#111827]', text: 'text-[#111827] font-semibold' },
+  agent: { dot: 'bg-[#C9B8A6]', text: 'text-[#6B7280]' },
+  paid: { dot: 'bg-[#1F7A55]', text: 'text-[#1F7A55] font-semibold' },
+}
 
 export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
   const navigate = useNavigate()
+  const [filter, setFilter] = useState<Filter>('all')
 
-  if (invoices.length === 0) {
-    return (
-      <div className="bg-white border border-orange-100 rounded-2xl p-16 text-center animate-fade-up">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-50 flex items-center justify-center">
-          <MessageSquare className="w-7 h-7 text-orange-300" />
-        </div>
-        <p className="text-gray-400 text-lg font-medium font-[family-name:var(--font-heading)]">
-          No invoices yet
-        </p>
-        <p className="text-gray-400/70 text-sm mt-1">
-          Click "New Invoice" to start chasing a payment
-        </p>
-      </div>
-    )
-  }
+  const rows = invoices.map((inv) => ({ inv, status: invoiceStatus(inv) }))
+  const active = FILTERS.find((f) => f.id === filter) ?? FILTERS[0]
+  const visible = rows.filter((r) => active.match(r.status.kind))
 
   return (
-    <div className="bg-white border border-gray-200/80 rounded-2xl overflow-hidden shadow-sm animate-fade-up">
-      <table className="w-full">
-        <thead>
-          <tr className="bg-gradient-to-r from-gray-50/80 to-orange-50/30 border-b border-gray-100">
-            <th className="text-left px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Invoice</th>
-            <th className="text-left px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Client</th>
-            <th className="text-right px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Balance</th>
-            <th className="text-right px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Overdue</th>
-            <th className="text-left px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest">Level</th>
-            <th className="text-center px-6 py-3.5 text-[11px] font-bold text-gray-400 uppercase tracking-widest"></th>
-          </tr>
-        </thead>
-        <tbody>
-          {invoices.map((inv, i) => (
-            <tr
-              key={inv.id}
-              className="border-b border-gray-50 hover:bg-orange-50/40 transition-colors cursor-pointer group"
-              onClick={() => navigate(`/invoice/${inv.id}`)}
-              style={{ animationDelay: `${i * 60}ms` }}
-            >
-              <td className="px-6 py-4">
-                <span className="font-mono text-sm font-semibold text-gray-800 bg-gray-100 px-2 py-0.5 rounded-md">
-                  {inv.invoice_id || inv.id}
-                </span>
-              </td>
-              <td className="px-6 py-4">
-                <div>
-                  <p className="text-sm font-semibold text-gray-800">{inv.client_name}</p>
-                  <p className="text-xs text-gray-400">{inv.client_email}</p>
-                </div>
-              </td>
-              <td className="px-6 py-4 text-right">
-                <span className="text-sm font-bold text-gray-900 font-[family-name:var(--font-heading)]">
-                  ${(inv.balance_due ?? inv.invoice_amount).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                </span>
-                {inv.amount_paid > 0 && (
-                  <p className="text-[11px] text-gray-400 mt-0.5">
-                    ${inv.amount_paid.toLocaleString('en-US', { minimumFractionDigits: 2 })} paid
-                  </p>
-                )}
-              </td>
-              <td className="px-6 py-4 text-right">
-                <span className="text-sm font-bold text-rose-500 bg-rose-50 px-2 py-0.5 rounded-md">
-                  {inv.days_overdue}d
-                </span>
-              </td>
-              <td className="px-6 py-4">
-                <EscalationBadge level={inv.escalation_level} />
-              </td>
-              <td className="px-6 py-4 text-center">
-                <span className="inline-flex items-center gap-1 text-xs font-semibold text-[#FF6B35] opacity-0 group-hover:opacity-100 transition-opacity">
-                  Open <ArrowRight className="w-3 h-3" />
-                </span>
-              </td>
+    <section aria-labelledby="invoices-title">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h2 id="invoices-title" className="text-[20px] font-semibold">Invoices</h2>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter invoices">
+          {FILTERS.map((f) => {
+            const count = rows.filter((r) => f.match(r.status.kind)).length
+            const selected = f.id === filter
+            return (
+              <button
+                key={f.id}
+                onClick={() => setFilter(f.id)}
+                aria-pressed={selected}
+                className={`rounded-full px-3.5 py-1.5 text-[14px] font-semibold border transition-colors ${
+                  selected ? 'bg-[#111827] text-white border-[#111827]' : 'bg-white border-[#F1E4D8] text-[#374151] hover:border-[#111827]'
+                }`}
+              >
+                {f.label} <span className={`tabular-nums ${selected ? 'text-white/70' : 'text-[#6B7280]'}`}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-[16px] bg-white border border-[#F1E4D8] overflow-hidden">
+        <table className="w-full text-left">
+          <thead>
+            <tr className="border-b border-[#F1E4D8] text-[14px] text-[#6B7280]">
+              <th className="font-medium px-5 py-3">Client</th>
+              <th className="font-medium px-5 py-3 hidden md:table-cell">Invoice</th>
+              <th className="font-medium px-5 py-3 text-right">Balance</th>
+              <th className="font-medium px-5 py-3 text-right hidden md:table-cell">Overdue</th>
+              <th className="font-medium px-5 py-3 hidden lg:table-cell">Tone</th>
+              <th className="font-medium px-5 py-3 hidden sm:table-cell">Status</th>
+              <th className="px-3 py-3 w-8"><span className="sr-only">Open</span></th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {visible.map(({ inv, status }) => {
+              const style = STATUS_STYLE[status.kind]
+              return (
+                <tr
+                  key={inv.id}
+                  onClick={() => navigate(`/invoice/${inv.id}`)}
+                  className="border-b last:border-b-0 border-[#F6EDE3] hover:bg-[#FFFAF5] cursor-pointer group"
+                >
+                  <td className="px-5 py-4">
+                    <Link
+                      to={`/invoice/${inv.id}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-[16px] font-semibold hover:underline underline-offset-4"
+                    >
+                      {inv.client_name}
+                    </Link>
+                    <p className="text-[14px] text-[#6B7280] truncate max-w-[26ch]">{inv.client_email}</p>
+                    <p className={`sm:hidden mt-1 text-[14px] flex items-center gap-1.5 ${style.text}`}>
+                      <span className={`w-2 h-2 rounded-full ${style.dot}`} />
+                      {status.label}
+                    </p>
+                  </td>
+                  <td className="px-5 py-4 hidden md:table-cell text-[15px] text-[#374151] tabular-nums">{inv.invoice_id || inv.id}</td>
+                  <td className="px-5 py-4 text-right">
+                    <span className="text-[16px] font-semibold tabular-nums">{formatMoney(inv.balance_due ?? inv.invoice_amount)}</span>
+                    {inv.amount_paid > 0 && (
+                      <p className="text-[13px] text-[#6B7280] tabular-nums">{formatMoney(inv.amount_paid)} paid</p>
+                    )}
+                  </td>
+                  <td className="px-5 py-4 text-right hidden md:table-cell text-[15px] text-[#374151] tabular-nums">
+                    {formatOverdue(inv.days_overdue)}
+                  </td>
+                  <td className="px-5 py-4 hidden lg:table-cell">
+                    <EscalationBadge level={inv.escalation_level} />
+                  </td>
+                  <td className="px-5 py-4 hidden sm:table-cell">
+                    <span className={`inline-flex items-center gap-2 text-[15px] ${style.text}`}>
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
+                      {status.label}
+                    </span>
+                  </td>
+                  <td className="px-3 py-4 text-[#C9B8A6] group-hover:text-[#111827]">
+                    <ChevronRight className="w-5 h-5" />
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        {visible.length === 0 && (
+          <p className="px-5 py-8 text-center text-[15px] text-[#6B7280]">No invoices here.</p>
+        )}
+      </div>
+    </section>
   )
 }

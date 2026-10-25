@@ -145,3 +145,25 @@ body {
 .level-card {
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
+
+/* ─── Landing page (scoped so the app screens keep their own type) ─── */
+.lp,
+.lp * {
+  font-family: "Schibsted Grotesk", system-ui, sans-serif;
+}
+.lp .lp-serif,
+.lp .lp-serif * {
+  font-family: "Source Serif 4", Georgia, serif;
+}
+.lp :focus-visible {
+  outline: 2px solid #111827;
+  outline-offset: 3px;
+}
+@keyframes runIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes lpFill {
+  from { width: 0; }
+  to { width: 100%; }
+}

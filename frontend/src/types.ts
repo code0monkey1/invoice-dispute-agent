@@ -15,12 +15,16 @@ export interface Invoice {
   invoice_file_name?: string | null;
   invoice_file_mime?: string | null;
   invoice_file_size?: number | null;
+  /** Set by GET /api/invoices: a draft or action is waiting for the user's approval. */
+  awaiting_approval?: boolean;
+  pending_action?: string | null;
 }
 
 export interface CommunicationEntry {
   type: string;
   content: string;
   timestamp: string;
+  direction?: 'inbound' | 'outbound' | string;
 }
 
 export interface SupabaseCommEntry {
@@ -66,6 +70,9 @@ export interface ChatResponse {
   state: AgentState;
   email_sent?: boolean;
   email_id?: string;
+  /** Why an approved email was or wasn't sent: sent, demo, gmail_not_connected or failed. */
+  email_status?: 'sent' | 'demo' | 'gmail_not_connected' | 'failed';
+  email_note?: string;
   communications?: SupabaseCommEntry[];
 }
 
@@ -104,6 +111,8 @@ export interface User {
   email: string;
   name: string;
   picture: string;
+  /** True once the user has granted send-only Gmail access. */
+  gmail_connected?: boolean;
 }
 
 // ─── Invoice Generator ───────────────────────────────────────────
