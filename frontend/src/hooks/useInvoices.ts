@@ -37,5 +37,11 @@ export function useInvoices() {
     return res
   }, [])
 
-  return { invoices, loading, createInvoice, refetch: fetchInvoices }
+  // Settling stops the agent; the server returns the updated invoice.
+  const settleInvoice = useCallback(async (id: string) => {
+    const res = await api.settle(id)
+    setInvoices(prev => prev.map(inv => (inv.id === id ? { ...inv, ...res.invoice, awaiting_approval: false, pending_action: null } : inv)))
+  }, [])
+
+  return { invoices, loading, createInvoice, settleInvoice, refetch: fetchInvoices }
 }

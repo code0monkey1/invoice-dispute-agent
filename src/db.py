@@ -440,6 +440,22 @@ def update_invoice(invoice_id: str, **kwargs) -> Optional[dict]:
     return get_invoice(invoice_id)
 
 
+def mark_invoice_settled(invoice_id: str) -> bool:
+    """Set an invoice to paid unless it already is. Returns True only for the call that changed it.
+
+    The status condition is part of the update itself, so two requests at once
+    can't both report the change.
+    """
+    rows = _supabase_rest_request(
+        "PATCH",
+        "invoices",
+        query=[("id", f"eq.{invoice_id}"), ("status", "neq.paid")],
+        payload={"status": "paid", "updated_at": _now()},
+        prefer="return=representation",
+    )
+    return bool(rows)
+
+
 def get_invoices_by_client_email(client_email: str) -> list[dict]:
     """
     Return all active (non-resolved, non-cancelled) invoices for a given
@@ -521,7 +537,7 @@ def add_communication(
     Append a communication record and return it as a ``dict``.
 
     *comm_type* is a free-form string (e.g. ``"email"``, ``"client_reply"``).
-    *direction* is ``"outbound"`` or ``"inbound"``.
+    *direction* is ``"outbound"``, ``"inbound"`` or ``"internal"`` (an event like settling).
 
     *user_id* is the owner of the invoice. If omitted, it's derived from the
     invoice row — required for per-user scoping and future RLS.

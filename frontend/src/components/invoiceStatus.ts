@@ -20,7 +20,7 @@ const DRAFT_LABELS: Record<string, string> = {
 }
 
 export function invoiceStatus(invoice: Invoice): InvoiceStatus {
-  if (invoice.status === 'paid') return { kind: 'paid', label: 'Paid' }
+  if (invoice.status === 'paid') return { kind: 'paid', label: 'Settled' }
 
   if (invoice.awaiting_approval) {
     const label = (invoice.pending_action && DRAFT_LABELS[invoice.pending_action]) || 'Draft ready for you'

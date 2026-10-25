@@ -8,6 +8,7 @@ import type { AgentState, Message, SupabaseCommEntry } from '../../types';
 const mocks = vi.hoisted(() => ({
   sendMessage: vi.fn(),
   escalate: vi.fn(),
+  settle: vi.fn(),
   approve: vi.fn(),
   reject: vi.fn(),
   edit: vi.fn(),
@@ -47,6 +48,7 @@ vi.mock('../../hooks/useChat', () => ({
     ...mocks.hookState,
     sendMessage: mocks.sendMessage,
     escalate: mocks.escalate,
+    settle: mocks.settle,
     approve: mocks.approve,
     reject: mocks.reject,
     edit: mocks.edit,
@@ -182,6 +184,28 @@ describe('ChatPanel escalation', () => {
 
     await screen.findByRole('button', { name: /chat about this invoice/i });
     expect(screen.queryByRole('button', { name: /escalate to/i })).not.toBeInTheDocument();
+  });
+});
+
+
+describe('ChatPanel settling', () => {
+  it('marks the invoice as settled after confirming', async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    await user.click(await screen.findByRole('button', { name: /mark as settled/i }));
+    expect(mocks.settle).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /yes, settled/i }));
+    expect(mocks.settle).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a settled invoice as finished, with nothing left to escalate or settle', async () => {
+    mocks.hookState.agentState = { ...baseState, status: 'paid' };
+    renderChat();
+
+    expect(await screen.findByText(/settled\. the agent has stopped/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /escalate to/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /mark as settled/i })).not.toBeInTheDocument();
   });
 });
 
