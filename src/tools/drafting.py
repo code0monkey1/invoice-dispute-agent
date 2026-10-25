@@ -1,10 +1,64 @@
+import re
+
 from langchain.tools import tool, ToolRuntime
+
+_PLACEHOLDER = re.compile(r"\[([^\[\]\n]{1,40})\]")
+_PLACEHOLDER_WORDS = re.compile(
+    r"\b(your|client|recipient|name|company|business|phone|number|website|address|"
+    r"title|position|contact|email|signature)\b", re.IGNORECASE)
+
+
+def fill_placeholders(text: str, *, client_name: str, freelancer_name: str,
+                      business_name: str, freelancer_email: str) -> str:
+    """Replace template placeholders like [Client Name] in an LLM-written email.
+
+    Known ones get the stored value; any other placeholder is removed so it is
+    never sent to a client. Lines left empty by a removal are dropped.
+    """
+    business = "" if business_name.strip().lower() == freelancer_name.strip().lower() else business_name
+    known = {
+        "client": client_name, "client name": client_name, "recipient name": client_name,
+        "name": freelancer_name, "your name": freelancer_name, "sender name": freelancer_name,
+        "your full name": freelancer_name,
+        "company name": business, "your company name": business, "your company": business,
+        "business name": business, "your business name": business, "your business": business,
+        "your email": freelancer_email, "your email address": freelancer_email,
+        "email": freelancer_email, "contact information": freelancer_email,
+        "your contact information": freelancer_email, "your contact info": freelancer_email,
+    }
+
+    def replace(match: re.Match) -> str:
+        key = " ".join(match.group(1).lower().split())
+        if key in known:
+            return known[key]
+        return "" if _PLACEHOLDER_WORDS.search(key) else match.group(0)
+
+    lines = []
+    for line in text.split("\n"):
+        filled = _PLACEHOLDER.sub(replace, line)
+        if filled.strip() or not _PLACEHOLDER.search(line):
+            lines.append(filled.rstrip() if filled != line else line)
+    return "\n".join(lines).strip()
+
+
+def fill_draft_from_context(text: str, state: dict, ctx) -> str:
+    return fill_placeholders(
+        text,
+        client_name=state.get("client_name") or "there",
+        freelancer_name=ctx.freelancer_name,
+        business_name=ctx.business_name,
+        freelancer_email=ctx.freelancer_email,
+    )
 
 
 @tool
 def draft_invoice_delivery_email(subject: str, body: str, runtime: ToolRuntime) -> str:
-    """Draft the first email that sends an invoice to the client. Include a concise subject and body."""
-    return f"Subject: {subject.strip()}\n\n{body.strip()}"
+    """Draft the first email that sends an invoice to the client. Include a concise subject and body.
+
+    Write the real client name, invoice details and your signature from the system prompt;
+    never leave placeholders like [Client Name]."""
+    draft = f"Subject: {subject.strip()}\n\n{body.strip()}"
+    return fill_draft_from_context(draft, runtime.state, runtime.context)
 
 
 @tool

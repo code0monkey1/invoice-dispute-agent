@@ -15,19 +15,20 @@ def _load_escalation_prompt(level: int) -> str:
     return load_prompt(prompt_name)
 
 
-@dynamic_prompt
-def escalation_prompt(request: ModelRequest) -> str:
-    """Generate system prompt based on escalation level."""
-    level = request.state.get("escalation_level", 0)
-    ctx = request.runtime.context
-
-    if level <= 0 and request.state.get("invoice_id"):
-        level = 1
-
-    prompt_template = _load_escalation_prompt(level)
-    return prompt_template.format(
+def render_escalation_prompt(level: int, ctx) -> str:
+    return _load_escalation_prompt(level).format(
         freelancer_name=ctx.freelancer_name,
+        freelancer_email=ctx.freelancer_email,
         business_name=ctx.business_name,
         default_payment_terms=ctx.default_payment_terms,
         invoice_context_summary=ctx.invoice_context_summary or "No other invoice context is available.",
     )
+
+
+@dynamic_prompt
+def escalation_prompt(request: ModelRequest) -> str:
+    """Generate system prompt based on escalation level."""
+    level = request.state.get("escalation_level", 0)
+    if level <= 0 and request.state.get("invoice_id"):
+        level = 1
+    return render_escalation_prompt(level, request.runtime.context)
