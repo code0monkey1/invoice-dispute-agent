@@ -209,3 +209,15 @@ async def test_parse_endpoint_rejects_unsupported_files_with_400(client):
     )
     assert r.status_code == 400
     assert "Unsupported invoice file" in r.json()["detail"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name,content,mime", [
+    ("fake.pdf", b"not a pdf at all", "application/pdf"),
+    ("fake.docx", b"not a zip either", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+])
+async def test_parse_endpoint_rejects_corrupt_files_with_400(client, name, content, mime):
+    """A renamed or corrupt file is a user error (400 with a clear message), not a server error."""
+    r = await client.post("/api/invoices/parse", files={"file": (name, content, mime)})
+    assert r.status_code == 400, r.text
+    assert "readable" in r.json()["detail"].lower()

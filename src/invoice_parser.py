@@ -79,12 +79,16 @@ def parsed_invoice_payload(parsed: ParsedInvoice, raw_text: str) -> dict:
 def _extract_pdf_text(content: bytes) -> str:
     from pypdf import PdfReader
 
-    reader = PdfReader(io.BytesIO(content))
-    parts = []
-    for page in reader.pages:
-        page_text = page.extract_text() or ""
-        if page_text:
-            parts.append(page_text)
+    # A renamed or corrupt file is the user's error, not a server error.
+    try:
+        reader = PdfReader(io.BytesIO(content))
+        parts = []
+        for page in reader.pages:
+            page_text = page.extract_text() or ""
+            if page_text:
+                parts.append(page_text)
+    except Exception as exc:
+        raise ValueError("This file isn't a readable PDF. Export the invoice as a PDF and try again.") from exc
     text = "\n".join(parts).strip()
     if not text:
         raise ValueError("No readable text was found in this PDF. Scanned/image-only PDFs are not supported yet.")
@@ -94,7 +98,10 @@ def _extract_pdf_text(content: bytes) -> str:
 def _extract_docx_text(content: bytes) -> str:
     from docx import Document
 
-    document = Document(io.BytesIO(content))
+    try:
+        document = Document(io.BytesIO(content))
+    except Exception as exc:
+        raise ValueError("This file isn't a readable DOCX. Save the invoice as a .docx or PDF and try again.") from exc
     parts = [paragraph.text for paragraph in document.paragraphs if paragraph.text.strip()]
     for table in document.tables:
         for row in table.rows:

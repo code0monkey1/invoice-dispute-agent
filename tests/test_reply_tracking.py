@@ -104,7 +104,7 @@ def received_event(to):
         "type": "email.received",
         "data": {
             "email_id": "em_1",
-            "from": "Sam <sam@acme.example>",
+            "from": "Sam <ap@acme.example>",
             "to": to,
             "cc": [],
             "subject": "Re: A reminder about invoice INV-1",

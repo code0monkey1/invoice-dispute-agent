@@ -80,8 +80,13 @@ def verify_webhook(body: bytes, headers, secret: str, now: float | None = None) 
     raise ValueError("webhook signature mismatch")
 
 
+RECEIVED_EMAIL_ID = re.compile(r"[A-Za-z0-9-]{8,64}")
+
+
 def fetch_received_email(email_id: str) -> dict:
     """Fetch a received email's content (text, html, headers) from Resend."""
+    if not RECEIVED_EMAIL_ID.fullmatch(email_id or ""):
+        raise ValueError("invalid received email id")
     req = urllib.request.Request(
         f"{RESEND_API}/emails/receiving/{email_id}",
         headers={

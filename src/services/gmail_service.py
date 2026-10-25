@@ -1,5 +1,6 @@
 import os
 import base64
+import html
 import logging
 from email import encoders
 from email.mime.base import MIMEBase
@@ -62,12 +63,18 @@ class GmailService:
     ) -> dict:
         """Send email. Returns {id, threadId}.
 
+        The body is HTML-escaped (drafts can quote client text), and header
+        values are collapsed to one line so they can't break the message.
+
         ``reply_to`` lets client replies reach both the freelancer and the
         Resend Inbound tracking address.
         """
+        html_body = html.escape(body).replace("\n", "<br>")
+        subject = " ".join((subject or "").split())
+        to = " ".join((to or "").split())
         if attachments:
             message = MIMEMultipart()
-            message.attach(MIMEText(body.replace("\n", "<br>"), "html"))
+            message.attach(MIMEText(html_body, "html"))
             for attachment in attachments:
                 mime_type = attachment.get("mime_type") or "application/octet-stream"
                 if "/" in mime_type:
@@ -84,7 +91,7 @@ class GmailService:
                 )
                 message.attach(part)
         else:
-            message = MIMEText(body.replace("\n", "<br>"), "html")
+            message = MIMEText(html_body, "html")
         message["to"] = to
         message["subject"] = subject
         if reply_to:

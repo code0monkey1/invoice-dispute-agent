@@ -18,7 +18,8 @@ async def _get_user_id(client) -> str:
     await client.get("/api/users/me/sender-profile")
     cookie = next((c for c in client.cookies.jar if c.name == "ic_guest_session"), None)
     assert cookie is not None
-    return cookie.value
+    # The cookie is "<guest_id>.<signature>"; the guest ID is the part before the dot.
+    return cookie.value.rpartition(".")[0]
 
 
 @pytest.mark.asyncio

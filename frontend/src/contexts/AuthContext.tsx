@@ -15,6 +15,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null)
 
+// Login CSRF protection: each Google redirect carries a random state that
+// this browser remembers, and the callback rejects any other state.
+export const OAUTH_STATE_KEY = 'invoicechaser_oauth_state'
+
+function withOAuthState(url: string): string {
+  const state = crypto.randomUUID()
+  sessionStorage.setItem(OAUTH_STATE_KEY, state)
+  const u = new URL(url)
+  u.searchParams.set('state', state)
+  return u.toString()
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -38,13 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async () => {
     const { url } = await api.getGoogleAuthUrl()
-    window.location.href = url
+    window.location.href = withOAuthState(url)
   }
 
   // Asks Google for send-only Gmail access, separately from sign-in.
   const connectGmail = async () => {
     const { url } = await api.getGmailConnectUrl()
-    window.location.href = url
+    window.location.href = withOAuthState(url)
   }
 
   const signOut = () => {
