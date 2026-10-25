@@ -1,3 +1,5 @@
+import { clearCache } from './queryClient';
+
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 function getAuthHeader(): Record<string, string> {
@@ -24,6 +26,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     if (res.status === 401 && localStorage.getItem('invoicechaser_token')) {
       localStorage.removeItem('invoicechaser_token');
       localStorage.removeItem('invoicechaser_user');
+      await clearCache();
       window.location.href = '/';
     }
     const text = await res.text();
@@ -50,6 +53,7 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
     if (res.status === 401 && localStorage.getItem('invoicechaser_token')) {
       localStorage.removeItem('invoicechaser_token');
       localStorage.removeItem('invoicechaser_user');
+      await clearCache();
       window.location.href = '/';
     }
     const text = await res.text();

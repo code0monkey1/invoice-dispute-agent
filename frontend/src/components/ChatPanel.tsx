@@ -6,6 +6,8 @@ import DraftApproval from './DraftApproval'
 import EscalationBadge from './EscalationBadge'
 import { useChat } from '../hooks/useChat'
 import { api } from '../api'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { qk, senderQuery } from '../hooks/queries'
 
 const DRAFT_TOOLS = ['draft_invoice_delivery_email', 'draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
 const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid', 'record_partial_payment']
@@ -29,7 +31,6 @@ export default function ChatPanel() {
   const [senderEmail, setSenderEmail] = useState('')
   const [senderBusiness, setSenderBusiness] = useState('')
   const [savingSender, setSavingSender] = useState(false)
-  const [senderLoaded, setSenderLoaded] = useState(false)
 
   const {
     messages,
@@ -38,6 +39,7 @@ export default function ChatPanel() {
     communications,
     loading,
     lastEmailSent,
+    historyLoaded,
     error,
     sendMessage,
     escalate,
@@ -45,19 +47,18 @@ export default function ChatPanel() {
     approve,
     reject,
     initMessages,
-    refreshHistory,
   } = useChat(invoiceId || '')
 
-  // Load sender details once
-  useEffect(() => {
-    if (!invoiceId || senderLoaded || !agentState?.invoice_id) return
-    api.getSender(invoiceId).then((res) => {
-      setSenderName(res.freelancer_name)
-      setSenderEmail(res.freelancer_email)
-      setSenderBusiness(res.business_name)
-      setSenderLoaded(true)
-    }).catch(() => setSenderLoaded(true))
-  }, [invoiceId, senderLoaded, agentState?.invoice_id])
+  const queryClient = useQueryClient()
+  const sender = useQuery({ ...senderQuery(invoiceId || ''), enabled: Boolean(invoiceId && agentState?.invoice_id) })
+  const senderLoaded = sender.isSuccess || sender.isError
+
+  const startEditingSender = () => {
+    setSenderName(sender.data?.freelancer_name ?? '')
+    setSenderEmail(sender.data?.freelancer_email ?? '')
+    setSenderBusiness(sender.data?.business_name ?? '')
+    setEditingSender(true)
+  }
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -68,6 +69,7 @@ export default function ChatPanel() {
   const hasOutboundCommunication = communications.some(entry => entry.direction === 'outbound')
   const showFirstOpenActions = Boolean(
     agentState?.invoice_id &&
+    historyLoaded &&
     agentState.status !== 'paid' &&
     !interrupt &&
     messages.length === 0 &&
@@ -80,15 +82,6 @@ export default function ChatPanel() {
       approve()
     }
   }, [approve, interrupt, loading])
-
-  // Periodic refresh to pick up webhook-injected messages (e.g. inbound client emails)
-  useEffect(() => {
-    if (!invoiceId) return
-    const interval = setInterval(() => {
-      if (!loading) refreshHistory()
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [invoiceId, loading, refreshHistory])
 
   const handleSend = () => {
     if (!input.trim() || loading) return
@@ -389,7 +382,7 @@ export default function ChatPanel() {
               </div>
               {!editingSender && (
                 <button
-                  onClick={() => setEditingSender(true)}
+                  onClick={startEditingSender}
                   className="text-gray-400 hover:text-blue-500 transition-colors p-1 rounded-lg hover:bg-blue-50"
                   title="Edit sender details"
                 >
@@ -436,9 +429,7 @@ export default function ChatPanel() {
                             freelancer_email: senderEmail.trim(),
                             business_name: senderBusiness.trim(),
                           })
-                          setSenderName(res.freelancer_name)
-                          setSenderEmail(res.freelancer_email)
-                          setSenderBusiness(res.business_name)
+                          queryClient.setQueryData(qk.sender(invoiceId), res)
                           setEditingSender(false)
                           // If there's a pending draft, regenerate it with updated sender
                           if (interrupt) {
@@ -457,17 +448,7 @@ export default function ChatPanel() {
                       {savingSender ? 'Saving...' : 'Save'}
                     </button>
                     <button
-                      onClick={() => {
-                        // Reset to saved values
-                        if (invoiceId) {
-                          api.getSender(invoiceId).then((res) => {
-                            setSenderName(res.freelancer_name)
-                            setSenderEmail(res.freelancer_email)
-                            setSenderBusiness(res.business_name)
-                          })
-                        }
-                        setEditingSender(false)
-                      }}
+                      onClick={() => setEditingSender(false)}
                       className="inline-flex items-center justify-center gap-1 text-gray-400 hover:text-gray-600 text-xs font-medium px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
                     >
                       <X className="w-3 h-3" />
@@ -478,9 +459,9 @@ export default function ChatPanel() {
               ) : (
                 <dl className="space-y-3 text-sm">
                   {[
-                    ['Name', senderName],
-                    ['Business', senderBusiness],
-                    ['Email', senderEmail],
+                    ['Name', sender.data?.freelancer_name ?? ''],
+                    ['Business', sender.data?.business_name ?? ''],
+                    ['Email', sender.data?.freelancer_email ?? ''],
                   ].map(([label, value]) => (
                     <div key={label} className="flex justify-between items-baseline">
                       <dt className="text-gray-400 text-xs font-semibold uppercase tracking-wider">{label}</dt>

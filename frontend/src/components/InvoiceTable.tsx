@@ -6,6 +6,7 @@ import { invoiceStatus } from './invoiceStatus'
 import type { InvoiceStatusKind } from './invoiceStatus'
 import { formatMoney, formatOverdue } from './format'
 import type { Invoice } from '../types'
+import { usePrefetchHistory } from '../hooks/usePrefetchHistory'
 
 type Filter = 'all' | 'you' | 'active' | 'paid'
 
@@ -30,6 +31,7 @@ interface InvoiceTableProps {
 
 export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) {
   const navigate = useNavigate()
+  const prefetch = usePrefetchHistory()
   const [filter, setFilter] = useState<Filter>('all')
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [settlingId, setSettlingId] = useState<string | null>(null)
@@ -98,6 +100,8 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                 <tr
                   key={inv.id}
                   onClick={() => navigate(`/invoice/${inv.id}`)}
+                  onMouseEnter={() => prefetch(inv.id)}
+                  onFocus={() => prefetch(inv.id)}
                   className="border-b last:border-b-0 border-[#F6EDE3] hover:bg-[#FFFAF5] cursor-pointer group"
                 >
                   <td className="px-5 py-4">

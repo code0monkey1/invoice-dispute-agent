@@ -42,11 +42,13 @@ class FakeDB:
         self.invoices: dict = {}
         self.communications: list[dict] = []
         self.storage: dict = {}  # path -> bytes
+        self.requests: list[tuple] = []  # (method, table, params), to count round trips
 
     def handle(self, method, path_segments, query=None, payload=None, prefer=None):
         query = query or []
         params = dict(query)
         table = path_segments[0] if path_segments else ""
+        self.requests.append((method, table, params))
         if table == "users":
             return self._users(method, params, payload)
         if table == "invoices":
@@ -62,6 +64,9 @@ class FakeDB:
             if v.startswith("eq."):
                 wanted = v[3:]
                 rows = [r for r in rows if str(r.get(k, "")) == wanted]
+            elif v.startswith("in.(") and v.endswith(")"):
+                wanted = {x.strip().strip('"') for x in v[4:-1].split(",")}
+                rows = [r for r in rows if str(r.get(k, "")) in wanted]
             elif v.startswith("neq."):
                 unwanted = v[4:]
                 rows = [r for r in rows if str(r.get(k, "")) != unwanted]

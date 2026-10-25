@@ -1,26 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api';
 import type { SenderProfile } from '../types';
+import { qk, senderProfileQuery } from './queries';
+
+// Stable while loading, so forms seeded from the profile don't reset each render.
+const EMPTY: SenderProfile = {};
 
 export function useSenderProfile() {
-  const [profile, setProfile] = useState<SenderProfile>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const query = useQuery(senderProfileQuery());
 
-  useEffect(() => {
-    let cancelled = false;
-    api.getSenderProfile()
-      .then(p => { if (!cancelled) setProfile(p ?? {}); })
-      .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
+  const setProfile = useCallback((next: SenderProfile) => {
+    qc.setQueryData(qk.senderProfile, next);
+  }, [qc]);
 
   const save = useCallback(async (next: SenderProfile) => {
     const saved = await api.updateSenderProfile(next);
-    setProfile(saved);
+    qc.setQueryData(qk.senderProfile, saved);
     return saved;
-  }, []);
+  }, [qc]);
 
-  return { profile, loading, error, setProfile, save };
+  const error = query.error ? (query.error instanceof Error ? query.error.message : String(query.error)) : null;
+  return { profile: query.data ?? EMPTY, loading: query.isPending, error, setProfile, save };
 }

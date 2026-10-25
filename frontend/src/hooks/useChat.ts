@@ -1,173 +1,169 @@
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
-import type { Message, Interrupt, AgentState, SupabaseCommEntry } from '../types'
+import type { Message, Interrupt, AgentState, ChatResponse, Invoice } from '../types'
+import { historyPlaceholder, historyQuery, HISTORY_POLL_MS, qk } from './queries'
+import { useSettleInvoice } from './useSettleInvoice'
 
 function mergeMessages(current: Message[], incoming?: Message[]) {
   if (!incoming) return current
   return incoming.length >= current.length ? incoming : current
 }
 
-function mergeHistoryMessages(current: Message[], incoming?: Message[]) {
-  if (!incoming) return current
-  if (current.length === 0 || incoming.length > current.length) return incoming
-  return current
+interface ChatAction {
+  call: () => Promise<ChatResponse>
+  // Shown in the thread while the request runs.
+  optimistic?: Message
 }
 
 export function useChat(invoiceId: string) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [interrupt, setInterrupt] = useState<Interrupt | null>(null)
-  const [agentState, setAgentState] = useState<AgentState | null>(null)
-  const [communications, setCommunications] = useState<SupabaseCommEntry[]>([])
-  const [loading, setLoading] = useState(false)
-  const [historyLoaded, setHistoryLoaded] = useState(false)
+  const qc = useQueryClient()
+  const [pending, setPending] = useState<Message | null>(null)
   const [lastEmailSent, setLastEmailSent] = useState<{ sent: boolean; id?: string; status?: string; note?: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const threadId = `invoice-${invoiceId}`
 
-  // Load existing conversation history when the component mounts
-  useEffect(() => {
-    if (!invoiceId || historyLoaded) return
-    let cancelled = false
+  // Write an agent response into the cached history, so a revisit or a reload
+  // shows it without asking the server again.
+  const writeResponse = useCallback((res: ChatResponse) => {
+    const rest: ChatResponse = { messages: res.messages, interrupt: res.interrupt, state: res.state }
+    if (res.communications) rest.communications = res.communications
+    qc.setQueryData<ChatResponse>(qk.history(invoiceId), (prev) => ({
+      ...prev,
+      ...rest,
+      messages: mergeMessages(prev?.messages ?? [], rest.messages),
+      communications: rest.communications ?? prev?.communications ?? [],
+    }))
+  }, [qc, invoiceId])
 
-    async function loadHistory() {
-      try {
-        const res = await api.getHistory(invoiceId)
-        if (cancelled) return
-        if (res.messages) setMessages(res.messages)
-        setInterrupt(res.interrupt)
-        if (res.state) setAgentState(res.state)
-        if (res.communications) setCommunications(res.communications)
-      } catch (err) {
-        console.error('Failed to load history:', err)
-      } finally {
-        if (!cancelled) setHistoryLoaded(true)
-      }
-    }
+  const action = useMutation({
+    mutationKey: qk.invoice(invoiceId),
+    mutationFn: ({ call }: ChatAction) => call(),
+    onMutate: async ({ optimistic }: ChatAction) => {
+      // A poll landing mid-request must not overwrite the reply.
+      await qc.cancelQueries({ queryKey: qk.history(invoiceId) })
+      if (optimistic) setPending(optimistic)
+    },
+    onSuccess: writeResponse,
+    onSettled: () => {
+      setPending(null)
+      void qc.invalidateQueries({ queryKey: qk.invoices })
+    },
+  })
+  const settleMutation = useSettleInvoice()
+  const busy = action.isPending || settleMutation.isPending
 
-    loadHistory()
-    return () => { cancelled = true }
-  }, [invoiceId, historyLoaded])
+  const history = useQuery({
+    ...historyQuery(invoiceId),
+    enabled: Boolean(invoiceId),
+    // Until history arrives, show what the dashboard already knows.
+    placeholderData: () => {
+      const row = qc.getQueryData<Invoice[]>(qk.invoices)?.find((inv) => inv.id === invoiceId)
+      return row ? historyPlaceholder(row) : undefined
+    },
+    // Picks up client replies that arrive by webhook; pauses in hidden tabs.
+    refetchInterval: busy ? false : HISTORY_POLL_MS,
+    refetchIntervalInBackground: false,
+  })
+
+  const data = history.data
+  const serverMessages = data?.messages ?? []
+  const messages = pending ? [...serverMessages, pending] : serverMessages
+  const historyLoaded = !history.isPlaceholderData && (data !== undefined || history.isError)
+
+  const showError = useCallback((err: unknown, fallback: string) => {
+    setError(err instanceof Error ? err.message : fallback)
+    setTimeout(() => setError(null), 10000)
+  }, [])
+
+  const { mutateAsync: run } = action
+  const { mutateAsync: settleAsync } = settleMutation
+  const { refetch } = history
 
   const sendMessage = useCallback(async (text: string) => {
-    setLoading(true)
     try {
-      // Add user message optimistically
-      const userMsg: Message = { type: 'HumanMessage', content: text }
-      setMessages(prev => [...prev, userMsg])
-
-      const res = await api.chat(threadId, text)
-      setMessages(prev => mergeMessages(prev, res.messages))
-      setInterrupt(res.interrupt)
-      setAgentState(res.state)
+      await run({ call: () => api.chat(threadId, text), optimistic: { type: 'HumanMessage', content: text } })
     } catch (err) {
       console.error('Chat error:', err)
-    } finally {
-      setLoading(false)
+      showError(err, 'Your message could not be sent.')
     }
-  }, [threadId])
+  }, [run, threadId, showError])
 
   // Escalation changes the level on the server directly, then the agent
   // drafts the next email, which comes back as a normal approval.
   const escalate = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
-      const res = await api.escalate(invoiceId)
-      setMessages(prev => mergeMessages(prev, res.messages))
-      setInterrupt(res.interrupt)
-      setAgentState(res.state)
+      await run({ call: () => api.escalate(invoiceId) })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not escalate this invoice.'
-      setError(msg)
-      setTimeout(() => setError(null), 10000)
       console.error('Escalate error:', err)
-    } finally {
-      setLoading(false)
+      showError(err, 'Could not escalate this invoice.')
     }
-  }, [invoiceId])
+  }, [run, invoiceId, showError])
 
-  // Settling stops the agent; reload so the draft and status reflect it.
   const settle = useCallback(async () => {
-    setLoading(true)
     setError(null)
     try {
-      await api.settle(invoiceId)
-      setInterrupt(null)
-      setAgentState(prev => (prev ? { ...prev, status: 'paid' } : prev))
-      const res = await api.getHistory(invoiceId)
-      if (res.state) setAgentState(res.state)
-      if (res.communications) setCommunications(res.communications)
+      await settleAsync(invoiceId)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Could not mark this invoice as settled.'
-      setError(msg)
-      setTimeout(() => setError(null), 10000)
       console.error('Settle error:', err)
-    } finally {
-      setLoading(false)
+      showError(err, 'Could not mark this invoice as settled.')
     }
-  }, [invoiceId])
+  }, [settleAsync, invoiceId, showError])
 
   const approve = useCallback(async (approvedDraft?: string) => {
-    setLoading(true)
     setLastEmailSent(null)
     setError(null)
     try {
-      const res = await api.resume(invoiceId, 'approve', approvedDraft)
-      setMessages(prev => mergeMessages(prev, res.messages))
-      setInterrupt(res.interrupt)
-      setAgentState(res.state)
+      const res = await run({ call: () => api.resume(invoiceId, 'approve', approvedDraft) })
       if (res.email_sent !== undefined) {
         setLastEmailSent({ sent: res.email_sent, id: res.email_id, status: res.email_status, note: res.email_note })
         // A confirmation can go quickly; an explanation of why nothing was sent stays longer.
         setTimeout(() => setLastEmailSent(null), res.email_sent ? 8000 : 20000)
       }
+      // Sending adds to the communication log.
+      void qc.invalidateQueries({ queryKey: qk.history(invoiceId) })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong'
-      setError(msg)
-      setTimeout(() => setError(null), 10000)
       console.error('Approve error:', err)
-    } finally {
-      setLoading(false)
+      showError(err, 'Something went wrong')
     }
-  }, [invoiceId])
+  }, [run, invoiceId, qc, showError])
 
   const reject = useCallback(async (message: string) => {
-    setLoading(true)
     setError(null)
     try {
-      const res = await api.resume(invoiceId, 'reject', message || 'Please revise.')
-      setMessages(prev => mergeMessages(prev, res.messages))
-      setInterrupt(res.interrupt)
-      setAgentState(res.state)
+      await run({ call: () => api.resume(invoiceId, 'reject', message || 'Please revise.') })
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong'
-      setError(msg)
-      setTimeout(() => setError(null), 10000)
       console.error('Reject error:', err)
-    } finally {
-      setLoading(false)
+      showError(err, 'Something went wrong')
     }
-  }, [invoiceId])
+  }, [run, invoiceId, showError])
 
   const initMessages = useCallback((msgs: Message[], inter: Interrupt | null, state: AgentState) => {
-    setMessages(msgs)
-    setInterrupt(inter)
-    setAgentState(state)
-  }, [])
+    qc.setQueryData<ChatResponse>(qk.history(invoiceId), (prev) => ({ ...prev, messages: msgs, interrupt: inter, state }))
+    void qc.invalidateQueries({ queryKey: qk.invoices })
+  }, [qc, invoiceId])
 
   const refreshHistory = useCallback(async () => {
-    if (!invoiceId) return
-    try {
-      const res = await api.getHistory(invoiceId)
-      if (res.messages) setMessages(prev => mergeHistoryMessages(prev, res.messages))
-      setInterrupt(res.interrupt)
-      if (res.state) setAgentState(res.state)
-      if (res.communications) setCommunications(res.communications)
-    } catch (err) {
-      console.error('Failed to refresh history:', err)
-    }
-  }, [invoiceId])
+    await refetch()
+  }, [refetch])
 
-  return { messages, interrupt, agentState, communications, loading, lastEmailSent, error, sendMessage, escalate, settle, approve, reject, initMessages, refreshHistory }
+  return {
+    messages,
+    interrupt: data?.interrupt ?? null,
+    agentState: data?.state ?? null,
+    communications: data?.communications ?? [],
+    loading: busy,
+    historyLoaded,
+    lastEmailSent,
+    error,
+    sendMessage,
+    escalate,
+    settle,
+    approve,
+    reject,
+    initMessages,
+    refreshHistory,
+  }
 }

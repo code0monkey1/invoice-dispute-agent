@@ -9,6 +9,7 @@ import { invoiceStatus } from './invoiceStatus'
 import { formatMoney } from './format'
 import { useInvoices } from '../hooks/useInvoices'
 import { useAuth } from '../contexts/AuthContext'
+import { usePrefetchHistory } from '../hooks/usePrefetchHistory'
 import type { Invoice } from '../types'
 
 const primaryButton =
@@ -20,6 +21,7 @@ const secondaryButton =
 
 function ApprovalQueue({ invoices }: { invoices: Invoice[] }) {
   const waiting = invoices.filter((inv) => invoiceStatus(inv).kind === 'you')
+  const prefetch = usePrefetchHistory()
 
   return (
     <section aria-labelledby="queue-title">
@@ -54,7 +56,12 @@ function ApprovalQueue({ invoices }: { invoices: Invoice[] }) {
                 </div>
                 <div className="flex items-center gap-4">
                   <EscalationBadge level={inv.escalation_level} />
-                  <Link to={`/invoice/${inv.id}`} className={primaryButton}>
+                  <Link
+                    to={`/invoice/${inv.id}`}
+                    onMouseEnter={() => prefetch(inv.id)}
+                    onFocus={() => prefetch(inv.id)}
+                    className={primaryButton}
+                  >
                     {isDraft ? 'Review draft' : 'Review'}
                   </Link>
                 </div>

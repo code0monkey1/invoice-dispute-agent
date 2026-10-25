@@ -1,7 +1,10 @@
-import { createContext, useContext, useState, useEffect } from 'react'
+import { createContext, useContext, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { api } from '../api'
 import type { User } from '../types'
+import { qk } from '../hooks/queries'
+import { clearCache } from '../queryClient'
 
 interface AuthContextType {
   user: User | null
@@ -9,7 +12,7 @@ interface AuthContextType {
   loading: boolean
   signIn: () => Promise<void>
   connectGmail: () => Promise<void>
-  signOut: () => void
+  signOut: () => Promise<void>
   enterAsGuest: (name: string) => void
 }
 
@@ -28,25 +31,28 @@ function withOAuthState(url: string): string {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    const savedUser = localStorage.getItem('invoicechaser_user')
-    if (savedUser) {
-      setUser(JSON.parse(savedUser))
+  // The saved user renders immediately; the cached /me check below keeps
+  // flags like gmail_connected current without blocking the first paint.
+  const [savedUser, setUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem('invoicechaser_user')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
     }
-    setLoading(false)
-    // Refresh the signed-in user so flags like gmail_connected stay current.
-    if (localStorage.getItem('invoicechaser_token')) {
-      api.getMe()
-        .then(({ user: fresh }) => {
-          localStorage.setItem('invoicechaser_user', JSON.stringify(fresh))
-          setUser(fresh)
-        })
-        .catch(() => { /* request() already handles an expired session */ })
-    }
-  }, [])
+  })
+  const loading = false
+  const me = useQuery({
+    queryKey: qk.me,
+    queryFn: async () => {
+      const { user: fresh } = await api.getMe()
+      localStorage.setItem('invoicechaser_user', JSON.stringify(fresh))
+      return fresh
+    },
+    enabled: Boolean(localStorage.getItem('invoicechaser_token')),
+    staleTime: 5 * 60_000,
+  })
+  const user = me.data ?? savedUser
 
   const signIn = async () => {
     const { url } = await api.getGoogleAuthUrl()
@@ -59,10 +65,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.href = withOAuthState(url)
   }
 
-  const signOut = () => {
+  const signOut = async () => {
     localStorage.removeItem('invoicechaser_token')
     localStorage.removeItem('invoicechaser_user')
     setUser(null)
+    // Invoice data must not stay in this browser after signing out.
+    await clearCache()
     window.location.href = '/'
   }
 
@@ -74,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       picture: '',
     }
     localStorage.setItem('invoicechaser_user', JSON.stringify(guestUser))
+    void clearCache()
     setUser(guestUser)
   }
 
