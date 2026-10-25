@@ -215,7 +215,8 @@ async def test_spa_file_server_cannot_read_files_outside_dist(client, path):
     """Attack: URL-encoded ../ to read source code or .env through the SPA catch-all."""
     r = await client.get(path)
     assert "def " not in r.text and "GROQ_API_KEY" not in r.text and "fastapi" not in r.text.lower()[:2000]
-    assert r.text.lstrip().lower().startswith("<!doctype html")  # falls back to the app shell
+    # Falls back to the app shell, or a 404 for paths under /assets/.
+    assert r.status_code == 404 or r.text.lstrip().lower().startswith("<!doctype html")
 
 
 @pytest.mark.skipif(not _os.path.isdir(_DIST), reason="frontend/dist not built")
@@ -287,3 +288,34 @@ async def test_malformed_invoice_ids_get_404_without_reaching_the_database(clien
                          ("post", f"/api/invoices/{quoted}/escalate")]:
         r = await getattr(client, method)(path)
         assert r.status_code == 404, (path, r.status_code)
+
+
+# ─── Caching (blank page after a deploy) ─────────────────────────────────────
+
+@pytest.mark.skipif(not _os.path.isdir(_DIST), reason="frontend/dist not built")
+@pytest.mark.asyncio
+async def test_app_shell_is_never_served_from_a_stale_cache(client):
+    """Every deploy's index.html had the same ETag, so browsers kept the old one,
+    which pointed at JS bundles that no longer exist: a blank page."""
+    for path in ["/", "/dashboard", "/invoice/abc"]:
+        r = await client.get(path)
+        assert r.status_code == 200
+        assert "no-cache" in r.headers.get("cache-control", "") or "no-store" in r.headers.get("cache-control", "")
+        assert "etag" not in r.headers and "last-modified" not in r.headers
+
+
+@pytest.mark.skipif(not _os.path.isdir(_DIST), reason="frontend/dist not built")
+@pytest.mark.asyncio
+async def test_missing_bundle_is_a_404_not_the_html_shell(client):
+    r = await client.get("/assets/index-OLDDEPLOY.js")
+    assert r.status_code == 404
+    assert "<!doctype html" not in r.text.lower()
+
+
+@pytest.mark.skipif(not _os.path.isdir(_DIST), reason="frontend/dist not built")
+@pytest.mark.asyncio
+async def test_hashed_bundles_are_cached_forever(client):
+    asset = next(n for n in _os.listdir(_os.path.join(_DIST, "assets")) if n.endswith(".js"))
+    r = await client.get(f"/assets/{asset}")
+    assert r.status_code == 200
+    assert "immutable" in r.headers.get("cache-control", "")
