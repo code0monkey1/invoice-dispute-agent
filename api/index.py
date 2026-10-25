@@ -14,14 +14,14 @@ import hmac
 from fastapi import FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.types import Command
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import jwt
 import json as json_lib
 import re
@@ -38,6 +38,7 @@ from src.agent import agent
 from src.state import FreelancerContext
 from src.tools.drafting import fill_draft_from_context
 from src.db import (
+    DatabaseUnavailable,
     mark_invoice_settled,
     init_db, upsert_user, get_user, get_user_gmail_tokens,
     update_user_history_id, update_user_sender_profile, get_user_by_email,
@@ -93,6 +94,24 @@ GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 init_db()
 
 app = FastAPI(title="Invoice Dispute Agent API")
+
+DATABASE_UNAVAILABLE_DETAIL = "We couldn't reach the database just now, so this didn't finish. Please try again in a moment."
+UNEXPECTED_ERROR_DETAIL = "Something went wrong on our side. Please try again in a moment."
+AI_UNAVAILABLE_DETAIL = "The AI assistant isn't responding right now. Please try again in a moment."
+
+
+@app.exception_handler(DatabaseUnavailable)
+async def database_unavailable(request: Request, exc: DatabaseUnavailable):
+    # A network blip or a database outage: say so plainly instead of a bare 500.
+    logger.warning("Database unavailable on %s %s: %s", request.method, request.url.path, exc)
+    return JSONResponse(status_code=503, content={"detail": DATABASE_UNAVAILABLE_DETAIL}, headers={"Retry-After": "5"})
+
+
+@app.exception_handler(Exception)
+async def unexpected_error(request: Request, exc: Exception):
+    # Log the details; never send stack traces or internal messages to the browser.
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
+    return JSONResponse(status_code=500, content={"detail": UNEXPECTED_ERROR_DETAIL})
 
 
 @app.get("/api/health")
@@ -1506,7 +1525,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
         if "rate_limit" in error_msg.lower() or "429" in error_msg:
             raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
         logger.exception("Agent invocation failed")
-        raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
+        raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
 
     # Persist escalation level changes from the agent response.
     new_level = response.get("escalation_level", 0)
@@ -1615,7 +1634,41 @@ EMAIL_STATUS_NOTES = {
     "demo": "You're in the demo, so nothing was sent. Connect Gmail to send emails for real.",
     "gmail_not_connected": "Gmail isn't connected, so nothing was sent. Connect Gmail from your dashboard to send from your own address.",
     "failed": "Gmail couldn't send this email, so nothing was sent. Try approving it again in a moment.",
+    "already_sent": "This email was already sent, so it wasn't sent again.",
 }
+EMAIL_SENT_STATUSES = {"sent", "already_sent"}
+EMAIL_LOG_LABELS = {
+    "draft_invoice_delivery_email": "Invoice Delivery",
+    "draft_polite_reminder": "Polite Reminder",
+    "draft_formal_demand_letter": "Formal Demand",
+    "draft_final_notice": "Final Notice",
+    "record_partial_payment": "Partial Payment",
+    "mark_invoice_pending": "Payment Pending",
+    "mark_invoice_paid": "Invoice Paid",
+}
+# An identical email logged this recently is treated as already sent.
+DUPLICATE_SEND_WINDOW = timedelta(minutes=30)
+
+
+def already_sent_recently(invoice_id: str, subject: str, body: str) -> bool:
+    """True if this exact email went out moments ago.
+
+    Approving again after a failure (a network drop, the AI step erroring)
+    leaves the draft waiting, and must not email the client a second time.
+    """
+    cutoff = datetime.now(timezone.utc) - DUPLICATE_SEND_WINDOW
+    for entry in get_communications(invoice_id):
+        if entry.get("direction") != "outbound" or entry.get("subject") != subject or entry.get("content") != body:
+            continue
+        try:
+            sent_at = datetime.fromisoformat(str(entry.get("timestamp", "")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if sent_at.tzinfo is None:
+            sent_at = sent_at.replace(tzinfo=timezone.utc)
+        if sent_at >= cutoff:
+            return True
+    return False
 
 
 def ensure_reply_token(invoice_id: str) -> str | None:
@@ -1665,6 +1718,8 @@ def send_approved_draft(
         return "demo", None, subject, draft
     if not get_user_gmail_tokens(user["id"]):
         return "gmail_not_connected", None, subject, draft
+    if already_sent_recently(invoice_id, subject, body):
+        return "already_sent", None, subject, draft
 
     gmail_thread_id = invoice_data.get("gmail_thread_id")
     attachments = []
@@ -1682,8 +1737,21 @@ def send_approved_draft(
     logger.info(f"[RESUME] email_result={result}")
     if not result:
         return "failed", None, subject, draft
-    if not gmail_thread_id and isinstance(result, dict) and result.get("threadId"):
-        update_invoice(invoice_id, gmail_thread_id=result["threadId"])
+    # Record the send right away: if anything after this fails, a retry must
+    # see that the email already went out.
+    try:
+        add_communication(
+            invoice_id=invoice_id,
+            comm_type=EMAIL_LOG_LABELS.get(tool_name, tool_name),
+            subject=subject,
+            content=body,
+            direction="outbound",
+            user_id=invoice_data.get("user_id"),
+        )
+        if not gmail_thread_id and isinstance(result, dict) and result.get("threadId"):
+            update_invoice(invoice_id, gmail_thread_id=result["threadId"])
+    except Exception:
+        logger.exception("Email sent for invoice %s, but recording it failed", invoice_id)
     return "sent", result, subject, draft
 
 
@@ -1746,6 +1814,10 @@ def resume(
     else:
         decisions = [{"type": "reject", "message": req.message or "Please revise."}]
 
+    # Once the email is out, a later failure must not look like "nothing
+    # happened": the user would approve again (a duplicate is blocked by
+    # already_sent_recently, but they still deserve the truth).
+    email_went_out = email_status in EMAIL_SENT_STATUSES
     try:
         response = agent.invoke(
             Command(resume={"decisions": decisions}),
@@ -1753,16 +1825,40 @@ def resume(
             config=config,
         )
     except Exception as e:
+        logger.exception("Agent resume failed for invoice %s", invoice_id)
+        if email_went_out:
+            return with_email_status(
+                {"messages": current_messages(config), "interrupt": None, "state": current_state(invoice_id, pending_state)},
+                approved_tool_name, email_status, email_result,
+                extra_note="The assistant couldn't finish updating this chat. Refresh in a moment.",
+            )
         error_msg = str(e)
         if "rate_limit" in error_msg.lower() or "429" in error_msg:
             raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
-        raise HTTPException(status_code=500, detail=f"AI service error: {error_msg[:200]}")
+        raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
 
+    try:
+        record_resume_outcome(invoice_id, config, req.decision, approved_tool_name, approved_subject, response)
+    except Exception:
+        if not email_went_out:
+            raise
+        logger.exception("Email sent for invoice %s, but updating its state failed", invoice_id)
+
+    result = {
+        "messages": serialize_messages(response["messages"]),
+        "interrupt": extract_interrupt(response, context),
+        "state": extract_state(response),
+    }
+    return with_email_status(result, approved_tool_name, email_status, email_result)
+
+
+def record_resume_outcome(invoice_id, config, decision, approved_tool_name, approved_subject, response) -> None:
+    """Persist what the agent did after an approval to the database and agent state."""
     # Persist any payment/status changes the agent applied (record_partial_payment,
     # mark_invoice_paid, mark_invoice_pending) back to the DB. Reads from the
     # post-invoke response state rather than the pre-invoke interrupt task, because
-    # sync_agent_state_from_invoice above clears pending tasks before we can inspect them.
-    if req.decision == "approve":
+    # sync_agent_state_from_invoice clears pending tasks before we can inspect them.
+    if decision == "approve":
         invoice_data = get_invoice(invoice_id)
         if invoice_data:
             invoice_amount = float(invoice_data.get("invoice_amount", 0) or 0)
@@ -1784,19 +1880,11 @@ def resume(
                     agent.update_state(config, persisted_state)
                     response.update(persisted_state)
 
-    # Log the approved communication into agent state
-    if req.decision == "approve" and approved_tool_name:
-        tool_labels = {
-            "draft_invoice_delivery_email": "Invoice Delivery",
-            "draft_polite_reminder": "Polite Reminder",
-            "draft_formal_demand_letter": "Formal Demand",
-            "draft_final_notice": "Final Notice",
-            "record_partial_payment": "Partial Payment",
-            "mark_invoice_pending": "Payment Pending",
-            "mark_invoice_paid": "Invoice Paid",
-        }
+    # Log the approved action into agent state. The outbound email itself was
+    # recorded in the database by send_approved_draft as soon as it was sent.
+    if decision == "approve" and approved_tool_name:
         entry = {
-            "type": tool_labels.get(approved_tool_name, approved_tool_name),
+            "type": EMAIL_LOG_LABELS.get(approved_tool_name, approved_tool_name),
             "content": approved_subject or "Email approved",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -1804,34 +1892,37 @@ def resume(
         history.append(entry)
         agent.update_state(config, {"communication_history": history})
         response["communication_history"] = history
-        if approved_tool_name in EMAIL_DRAFT_TOOLS and email_result is not None:
-            add_communication(
-                invoice_id=invoice_id,
-                comm_type=tool_labels.get(approved_tool_name, approved_tool_name),
-                subject=approved_subject or "Email approved",
-                content=parse_draft_subject_and_body(approved_draft_text or "")[1],
-                direction="outbound",
-                user_id=(get_invoice(invoice_id) or {}).get("user_id"),
-            )
 
-    # Persist latest escalation level to SQLite
     update_invoice(invoice_id, escalation_level=response.get("escalation_level", 1))
 
-    result = {
-        "messages": serialize_messages(response["messages"]),
-        "interrupt": extract_interrupt(response, context),
-        "state": extract_state(response),
-    }
 
-    # Only report email send status for email draft approvals
-    if approved_tool_name in EMAIL_DRAFT_TOOLS:
-        status = email_status or "failed"
-        result["email_sent"] = status == "sent"
+def current_state(invoice_id: str, fallback: dict) -> dict:
+    # Best effort: the email is already out, so a database hiccup here must not
+    # turn the response into an error.
+    try:
+        invoice = get_invoice(invoice_id)
+        return invoice_state_from_db(invoice) if invoice else extract_state(fallback)
+    except Exception:
+        return extract_state(fallback)
+
+
+def current_messages(config: dict) -> list:
+    try:
+        snapshot = agent.get_state(config)
+        return serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
+    except Exception:
+        return []
+
+
+def with_email_status(result: dict, tool_name: str | None, status: str | None, email_result, extra_note: str = "") -> dict:
+    """Add the send outcome to a resume response (email draft approvals only)."""
+    if tool_name in EMAIL_DRAFT_TOOLS:
+        status = status or "failed"
+        result["email_sent"] = status in EMAIL_SENT_STATUSES
         result["email_status"] = status
-        result["email_note"] = EMAIL_STATUS_NOTES[status]
+        result["email_note"] = f"{EMAIL_STATUS_NOTES[status]} {extra_note}".strip()
         if email_result:
             result["email_id"] = email_result.get("id") if isinstance(email_result, dict) else str(email_result)
-
     return result
 
 
