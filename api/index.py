@@ -1075,7 +1075,8 @@ def get_invoice_history(
     # Check for pending interrupt
     interrupt_data = None
     user = get_current_user(authorization)
-    if snapshot.tasks:
+    settled = (persisted_state or {}).get("status") == "paid"
+    if snapshot.tasks and not settled:
         for task in snapshot.tasks:
             if hasattr(task, "interrupts") and task.interrupts:
                 intr = task.interrupts[0]
@@ -1360,7 +1361,7 @@ def list_invoices(
         inv["communication_history"] = get_communications(inv["id"])
     presented = [present_invoice(inv) for inv in invoices]
     for inv in presented:
-        action = pending_approval_action(inv["id"])
+        action = None if inv.get("status") == "paid" else pending_approval_action(inv["id"])
         inv["pending_action"] = action
         inv["awaiting_approval"] = action is not None
     return presented
@@ -1554,6 +1555,30 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     }
 
 
+@app.post("/api/invoices/{invoice_id}/settle")
+def settle_invoice(invoice_id: str, request: Request, authorization: str | None = Header(None)):
+    """Mark an invoice as settled: the agent stops all work on it.
+
+    Settled uses the "paid" status, which chat, escalation, approvals and
+    client replies all respect. A draft waiting for approval is dropped.
+    """
+    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    if invoice.get("status") != "paid":
+        update_invoice(invoice_id, status="paid")
+        add_communication(
+            invoice_id=invoice_id,
+            comm_type="invoice_settled",
+            subject="Marked as settled",
+            content="Marked as settled. The agent will take no further action on this invoice.",
+            direction="internal",
+            user_id=invoice.get("user_id"),
+        )
+        sync_agent_state_from_invoice(invoice_id, {"configurable": {"thread_id": f"invoice-{invoice_id}"}})
+    updated = get_invoice(invoice_id)
+    updated["communication_history"] = get_communications(invoice_id)
+    return {"invoice": present_invoice(updated)}
+
+
 EMAIL_DRAFT_TOOLS = {
     "draft_invoice_delivery_email",
     "draft_polite_reminder",
@@ -1645,7 +1670,9 @@ def resume(
     request: Request,
     authorization: str | None = Header(None),
 ):
-    authorize_invoice_access(invoice_id, request, authorization)
+    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    if invoice.get("status") == "paid":
+        raise HTTPException(status_code=400, detail="This invoice is settled, so nothing will be sent.")
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
     user = get_current_user(authorization)
     context = get_context_for_invoice(invoice_id, user)
@@ -1811,6 +1838,8 @@ def handle_client_reply(invoice: dict, from_addr: str, subject: str, body: str) 
         direction="inbound",
         user_id=invoice.get("user_id"),
     )
+    if invoice.get("status") == "paid":
+        return  # settled: keep the reply on record, take no action
     try:
         config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
         invoice_owner = get_user(invoice["user_id"]) if invoice.get("user_id") else None

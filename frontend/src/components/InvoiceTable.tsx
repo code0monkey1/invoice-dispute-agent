@@ -13,7 +13,7 @@ const FILTERS: { id: Filter; label: string; match: (kind: InvoiceStatusKind) => 
   { id: 'all', label: 'All', match: () => true },
   { id: 'you', label: 'Waiting for you', match: (k) => k === 'you' },
   { id: 'active', label: 'Being chased', match: (k) => k === 'agent' || k === 'client' },
-  { id: 'paid', label: 'Paid', match: (k) => k === 'paid' },
+  { id: 'paid', label: 'Settled', match: (k) => k === 'paid' },
 ]
 
 const STATUS_STYLE: Record<InvoiceStatusKind, { dot: string; text: string }> = {
@@ -23,9 +23,31 @@ const STATUS_STYLE: Record<InvoiceStatusKind, { dot: string; text: string }> = {
   paid: { dot: 'bg-[#1F7A55]', text: 'text-[#1F7A55] font-semibold' },
 }
 
-export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
+interface InvoiceTableProps {
+  invoices: Invoice[]
+  onSettle?: (id: string) => Promise<void>
+}
+
+export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) {
   const navigate = useNavigate()
   const [filter, setFilter] = useState<Filter>('all')
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const [settlingId, setSettlingId] = useState<string | null>(null)
+  const [settleError, setSettleError] = useState<string | null>(null)
+
+  const settle = async (id: string) => {
+    if (!onSettle) return
+    setSettlingId(id)
+    setSettleError(null)
+    try {
+      await onSettle(id)
+      setConfirmingId(null)
+    } catch (err) {
+      setSettleError(err instanceof Error ? err.message : 'Could not mark this invoice as settled.')
+    } finally {
+      setSettlingId(null)
+    }
+  }
 
   const rows = invoices.map((inv) => ({ inv, status: invoiceStatus(inv) }))
   const active = FILTERS.find((f) => f.id === filter) ?? FILTERS[0]
@@ -65,6 +87,7 @@ export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
               <th className="font-medium px-5 py-3 text-right hidden md:table-cell">Overdue</th>
               <th className="font-medium px-5 py-3 hidden lg:table-cell">Tone</th>
               <th className="font-medium px-5 py-3 hidden sm:table-cell">Status</th>
+              {onSettle && <th className="px-3 py-3"><span className="sr-only">Settle</span></th>}
               <th className="px-3 py-3 w-8"><span className="sr-only">Open</span></th>
             </tr>
           </thead>
@@ -110,6 +133,35 @@ export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
                       {status.label}
                     </span>
                   </td>
+                  {onSettle && (
+                    <td className="px-3 py-4 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      {status.kind === 'paid' ? null : confirmingId === inv.id ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <button
+                            onClick={() => settle(inv.id)}
+                            disabled={settlingId === inv.id}
+                            className="rounded-full px-3 py-1.5 text-[13px] font-semibold bg-[#1F7A55] text-white hover:bg-[#17603F] disabled:opacity-60"
+                          >
+                            {settlingId === inv.id ? 'Settling…' : 'Yes, settled'}
+                          </button>
+                          <button
+                            onClick={() => setConfirmingId(null)}
+                            className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-[#374151] hover:bg-[#F6EDE3]"
+                          >
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => { setSettleError(null); setConfirmingId(inv.id) }}
+                          title="The agent stops all work on this invoice"
+                          className="rounded-full px-3 py-1.5 text-[13px] font-semibold border border-[#F1E4D8] text-[#374151] hover:border-[#1F7A55] hover:text-[#1F7A55]"
+                        >
+                          Mark settled
+                        </button>
+                      )}
+                    </td>
+                  )}
                   <td className="px-3 py-4 text-[#C9B8A6] group-hover:text-[#111827]">
                     <ChevronRight className="w-5 h-5" />
                   </td>
@@ -118,6 +170,9 @@ export default function InvoiceTable({ invoices }: { invoices: Invoice[] }) {
             })}
           </tbody>
         </table>
+        {settleError && (
+          <p role="alert" className="px-5 py-3 text-[14px] text-[#B42318] border-t border-[#F1E4D8]">{settleError}</p>
+        )}
         {visible.length === 0 && (
           <p className="px-5 py-8 text-center text-[15px] text-[#6B7280]">No invoices here.</p>
         )}

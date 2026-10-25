@@ -107,7 +107,7 @@ function EmptyState({ onChase, onCreate }: { onChase: () => void; onCreate: () =
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { invoices, loading: fetchLoading, createInvoice } = useInvoices()
+  const { invoices, loading: fetchLoading, createInvoice, settleInvoice } = useInvoices()
   const { user, isGuest, signIn, connectGmail } = useAuth()
   const [formOpen, setFormOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -201,7 +201,7 @@ export default function Dashboard() {
         <>
           <ApprovalQueue invoices={invoices} />
           <StatsCards invoices={invoices} />
-          <InvoiceTable invoices={invoices} />
+          <InvoiceTable invoices={invoices} onSettle={settleInvoice} />
         </>
       )}
 

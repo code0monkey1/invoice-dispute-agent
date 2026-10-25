@@ -87,6 +87,27 @@ export function useChat(invoiceId: string) {
     }
   }, [invoiceId])
 
+  // Settling stops the agent; reload so the draft and status reflect it.
+  const settle = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      await api.settle(invoiceId)
+      setInterrupt(null)
+      setAgentState(prev => (prev ? { ...prev, status: 'paid' } : prev))
+      const res = await api.getHistory(invoiceId)
+      if (res.state) setAgentState(res.state)
+      if (res.communications) setCommunications(res.communications)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Could not mark this invoice as settled.'
+      setError(msg)
+      setTimeout(() => setError(null), 10000)
+      console.error('Settle error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [invoiceId])
+
   const approve = useCallback(async (approvedDraft?: string) => {
     setLoading(true)
     setLastEmailSent(null)
@@ -148,5 +169,5 @@ export function useChat(invoiceId: string) {
     }
   }, [invoiceId])
 
-  return { messages, interrupt, agentState, communications, loading, lastEmailSent, error, sendMessage, escalate, approve, reject, initMessages, refreshHistory }
+  return { messages, interrupt, agentState, communications, loading, lastEmailSent, error, sendMessage, escalate, settle, approve, reject, initMessages, refreshHistory }
 }

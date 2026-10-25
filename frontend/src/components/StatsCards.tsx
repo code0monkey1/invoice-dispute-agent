@@ -10,7 +10,7 @@ export default function StatsCards({ invoices }: { invoices: Invoice[] }) {
   const figures = [
     { label: 'Outstanding', value: formatMoney(outstanding) },
     { label: 'Being chased', value: String(open.length) },
-    { label: 'Collected', value: `${paidCount} of ${invoices.length}` },
+    { label: 'Settled', value: `${paidCount} of ${invoices.length}` },
   ]
 
   return (

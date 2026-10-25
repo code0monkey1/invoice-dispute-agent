@@ -6,9 +6,10 @@ import Dashboard from '../Dashboard';
 import type { Invoice } from '../../types';
 
 const state: { invoices: Invoice[]; loading: boolean } = { invoices: [], loading: false };
+const settleInvoice = vi.hoisted(() => vi.fn());
 
 vi.mock('../../hooks/useInvoices', () => ({
-  useInvoices: () => ({ invoices: state.invoices, loading: state.loading, createInvoice: vi.fn(), refetch: vi.fn() }),
+  useInvoices: () => ({ invoices: state.invoices, loading: state.loading, createInvoice: vi.fn(), settleInvoice, refetch: vi.fn() }),
 }));
 
 const auth = vi.hoisted(() => ({
@@ -57,6 +58,8 @@ describe('Dashboard', () => {
     state.loading = false;
     auth.gmailConnected = true;
     auth.connectGmail.mockClear();
+    settleInvoice.mockReset();
+    settleInvoice.mockResolvedValue(undefined);
   });
 
   it('greets the user by first name', () => {
@@ -100,7 +103,7 @@ describe('Dashboard', () => {
     const list = screen.getByRole('table');
     expect(within(list).getAllByRole('row')).toHaveLength(4); // header + 3
 
-    await userEvent.click(screen.getByRole('button', { name: /^paid/i }));
+    await userEvent.click(screen.getByRole('button', { name: /^settled/i }));
     expect(within(screen.getByRole('table')).getAllByRole('row')).toHaveLength(2);
     expect(within(screen.getByRole('table')).getByText('INV-3 Client')).toBeInTheDocument();
   });
@@ -124,5 +127,30 @@ describe('Dashboard', () => {
     state.invoices = [inv('INV-1')];
     renderDashboard();
     expect(screen.queryByRole('button', { name: /connect gmail/i })).not.toBeInTheDocument();
+  });
+
+  it('marks an invoice as settled after the user confirms', async () => {
+    state.invoices = [inv('INV-1'), inv('INV-2', { status: 'paid', balance_due: 0 })];
+    renderDashboard();
+    const row = screen.getByText('INV-1 Client').closest('tr')!;
+
+    await userEvent.click(within(row).getByRole('button', { name: /mark settled/i }));
+    expect(settleInvoice).not.toHaveBeenCalled(); // asks first
+    await userEvent.click(within(row).getByRole('button', { name: /yes, settled/i }));
+    expect(settleInvoice).toHaveBeenCalledWith('u1__inv__INV-1');
+  });
+
+  it('can cancel settling, and settled invoices have no settle button', async () => {
+    state.invoices = [inv('INV-1'), inv('INV-2', { status: 'paid', balance_due: 0 })];
+    renderDashboard();
+    const row = screen.getByText('INV-1 Client').closest('tr')!;
+    await userEvent.click(within(row).getByRole('button', { name: /mark settled/i }));
+    await userEvent.click(within(row).getByRole('button', { name: /cancel/i }));
+    expect(settleInvoice).not.toHaveBeenCalled();
+    expect(within(row).getByRole('button', { name: /mark settled/i })).toBeInTheDocument();
+
+    const settledRow = screen.getByText('INV-2 Client').closest('tr')!;
+    expect(within(settledRow).queryByRole('button', { name: /mark settled/i })).not.toBeInTheDocument();
+    expect(within(settledRow).getAllByText('Settled').length).toBeGreaterThan(0);
   });
 });

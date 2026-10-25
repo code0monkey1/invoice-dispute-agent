@@ -144,6 +144,11 @@ export const api = {
       body: JSON.stringify({ thread_id, message }),
     }),
 
+  settle: (invoice_id: string) =>
+    request<{ invoice: import('./types').Invoice }>(`/api/invoices/${invoice_id}/settle`, {
+      method: 'POST',
+    }),
+
   escalate: (invoice_id: string) =>
     request<import('./types').ChatResponse>(`/api/invoices/${invoice_id}/escalate`, {
       method: 'POST',
