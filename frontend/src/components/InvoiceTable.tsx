@@ -13,7 +13,8 @@ type Filter = 'all' | 'you' | 'active' | 'promised' | 'paid'
 const FILTERS: { id: Filter; label: string; match: (kind: InvoiceStatusKind) => boolean }[] = [
   { id: 'all', label: 'All', match: () => true },
   { id: 'you', label: 'Waiting for you', match: (k) => k === 'you' },
-  { id: 'active', label: 'Being chased', match: (k) => k === 'agent' || k === 'client' },
+  // A promised invoice is still being chased (there's a follow-up date); Promised narrows to just those.
+  { id: 'active', label: 'Being chased', match: (k) => k === 'agent' || k === 'client' || k === 'promised' },
   { id: 'promised', label: 'Promised', match: (k) => k === 'promised' },
   { id: 'paid', label: 'Settled', match: (k) => k === 'paid' },
 ]

@@ -114,6 +114,23 @@ describe('Dashboard', () => {
     expect(within(screen.getByRole('table')).getByText('INV-3 Client')).toBeInTheDocument();
   });
 
+  it('counts a promised invoice as still being chased, and shows it under Promised', async () => {
+    state.invoices = [
+      inv('INV-1', { status: 'pending', follow_up_date: '2099-11-15' }),
+      inv('INV-2', { communication_history: [{ direction: 'outbound', type: 'email', content: '', timestamp: '2026-10-01' }] }),
+      inv('INV-3', { status: 'paid', balance_due: 0 }),
+    ];
+    renderDashboard();
+    expect(screen.getByRole('button', { name: /^being chased 2/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^promised 1/i })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: /^promised/i }));
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    expect(rows).toHaveLength(2);
+    // Rendered in both the desktop and mobile layouts of the row.
+    expect(within(screen.getByRole('table')).getAllByText(/promised to pay by nov 15, 2099/i).length).toBeGreaterThan(0);
+  });
+
   it('invites the user to start when there are no invoices', () => {
     renderDashboard();
     expect(screen.getByRole('heading', { name: /start with the invoice you already sent/i })).toBeInTheDocument();
