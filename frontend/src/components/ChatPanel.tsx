@@ -8,12 +8,14 @@ import { useChat } from '../hooks/useChat'
 import { api } from '../api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk, senderQuery } from '../hooks/queries'
+import { formatPromiseDate } from './format'
 
 const DRAFT_TOOLS = ['draft_invoice_delivery_email', 'draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
 const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid', 'record_partial_payment']
 const INVOICE_DELIVERY_PROMPT = 'Please draft the first invoice delivery email for this invoice. The email should tell the client the invoice is attached, reference the invoice number and amount due, and ask them to review and pay it.'
 
 const NEXT_LEVEL_NAMES: Record<number, string> = { 1: 'Friendly', 2: 'Formal', 3: 'Legal' }
+const STATUS_LABELS: Record<string, string> = { active: 'Active', pending: 'Promised to pay', paid: 'Settled' }
 
 export default function ChatPanel() {
   const { invoiceId } = useParams<{ invoiceId: string }>()
@@ -353,7 +355,10 @@ export default function ChatPanel() {
                     ['Original', `$${agentState.invoice_amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
                     ['Paid', `$${agentState.amount_paid.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
                     ['Balance', `$${agentState.balance_due.toLocaleString('en-US', { minimumFractionDigits: 2 })}`],
-                    ['Status', agentState.status === 'paid' ? 'Settled' : agentState.status],
+                    ['Status', STATUS_LABELS[agentState.status] ?? agentState.status],
+                    ...(agentState.status === 'pending' && agentState.follow_up_date
+                      ? [['Promised by', formatPromiseDate(agentState.follow_up_date)]]
+                      : []),
                     ['Overdue', `${agentState.days_overdue} days`],
                     ['Jurisdiction', agentState.jurisdiction],
                   ].map(([label, value]) => (

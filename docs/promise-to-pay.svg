@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 520" width="960" height="520" role="img" aria-labelledby="t d">
+<title id="t">Promise to pay</title>
+<desc id="d">A client promises to pay by a date. The agent proposes marking the invoice pending, you approve, and invoice_service checks the date and saves it on the invoice. The agent sees the promise, the dashboard shows the date, a missed date is flagged, and payment settles the invoice. invoice_service refuses status changes on email approvals, infinite or invalid amounts, and reopening a settled invoice.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#C9B8A6"/></marker>
+  <style>
+    text { font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+    @media (prefers-reduced-motion: reduce) { .pulse, .ring, .blink { display: none; } }
+  </style>
+</defs>
+<rect width="960" height="520" rx="20" fill="#FFF7F0"/>
+<text x="40" y="52" font-size="22" font-weight="700" fill="#111827">Promise to pay</text>
+<text x="920" y="52" font-size="14" text-anchor="end" fill="#6B7280">Saved only after you approve it.</text>
+<line x1="236" y1="135.0" x2="264" y2="135.0" stroke="#C9B8A6" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="466" y1="135.0" x2="494" y2="135.0" stroke="#C9B8A6" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="696" y1="135.0" x2="724" y2="135.0" stroke="#C9B8A6" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="825.0" y1="184" x2="825.0" y2="266" stroke="#C9B8A6" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="724" y1="315.0" x2="696" y2="315.0" stroke="#C9B8A6" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="494" y1="315.0" x2="466" y2="315.0" stroke="#C9B8A6" stroke-width="2" marker-end="url(#arrow)"/>
+<line x1="264" y1="315.0" x2="236" y2="315.0" stroke="#C9B8A6" stroke-width="2" marker-end="url(#arrow)"/>
+<circle class="pulse" r="7" fill="#FF6B35" stroke="#FFFFFF" stroke-width="2.5"><animateMotion dur="16s" repeatCount="indefinite" path="M135.0 135.0 H825.0 V315.0 H135.0"/></circle>
+<rect x="40" y="92" width="190" height="86" rx="14" fill="#FFFFFF" stroke="#C9B8A6" stroke-width="1.5"/>
+<rect class="ring" x="35" y="87" width="200" height="96" rx="18" fill="none" stroke="#FF6B35" stroke-width="3" opacity="0"><animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;0.02;0.115;0.135;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="56" y="118" font-size="12" font-weight="600" fill="#6B7280">Client</text>
+<text x="56" y="142" font-size="16" font-weight="700" fill="#111827">1  Promises to pay</text>
+<text x="56" y="162" font-size="13" fill="#6B7280">&quot;Paying in full Nov 15&quot;</text>
+<rect x="270" y="92" width="190" height="86" rx="14" fill="#111827" stroke="#111827" stroke-width="1.5"/>
+<rect class="ring" x="265" y="87" width="200" height="96" rx="18" fill="none" stroke="#FF6B35" stroke-width="3" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.125;0.145;0.24;0.26;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="286" y="118" font-size="12" font-weight="600" fill="#D1D5DB">Agent</text>
+<text x="286" y="142" font-size="16" font-weight="700" fill="#FFFFFF">2  Proposes it</text>
+<text x="286" y="162" font-size="13" fill="#D1D5DB">mark_invoice_pending</text>
+<rect x="500" y="92" width="190" height="86" rx="14" fill="#FF6B35" stroke="#FF6B35" stroke-width="1.5"/>
+<rect class="ring" x="495" y="87" width="200" height="96" rx="18" fill="none" stroke="#111827" stroke-width="3" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.25;0.27;0.365;0.385;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="516" y="118" font-size="12" font-weight="600" fill="#111827">You</text>
+<text x="516" y="142" font-size="16" font-weight="700" fill="#111827">3  Approve</text>
+<text x="516" y="162" font-size="13" fill="#111827">Nothing is saved before this</text>
+<rect x="730" y="92" width="190" height="86" rx="14" fill="#1F7A55" stroke="#1F7A55" stroke-width="1.5"/>
+<rect class="ring" x="725" y="87" width="200" height="96" rx="18" fill="none" stroke="#FF6B35" stroke-width="3" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.375;0.395;0.49;0.51;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="746" y="118" font-size="12" font-weight="600" fill="#D1FAE5">invoice_service</text>
+<text x="746" y="142" font-size="16" font-weight="700" fill="#FFFFFF">4  Checks and saves</text>
+<text x="746" y="162" font-size="13" fill="#D1FAE5">status pending + the date</text>
+<rect x="730" y="272" width="190" height="86" rx="14" fill="#111827" stroke="#111827" stroke-width="1.5"/>
+<rect class="ring" x="725" y="267" width="200" height="96" rx="18" fill="none" stroke="#FF6B35" stroke-width="3" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.5;0.52;0.615;0.635;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="746" y="298" font-size="12" font-weight="600" fill="#D1D5DB">Agent</text>
+<text x="746" y="322" font-size="16" font-weight="700" fill="#FFFFFF">5  Remembers it</text>
+<text x="746" y="342" font-size="13" fill="#D1D5DB">Promise is in its context</text>
+<rect x="500" y="272" width="190" height="86" rx="14" fill="#2563EB" stroke="#2563EB" stroke-width="1.5"/>
+<rect class="ring" x="495" y="267" width="200" height="96" rx="18" fill="none" stroke="#FF6B35" stroke-width="3" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.625;0.645;0.74;0.76;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="516" y="298" font-size="12" font-weight="600" fill="#DBEAFE">Dashboard</text>
+<text x="516" y="322" font-size="16" font-weight="700" fill="#FFFFFF">6  Shows it</text>
+<text x="516" y="342" font-size="13" fill="#DBEAFE">Promised to pay by Nov 15</text>
+<rect x="270" y="272" width="190" height="86" rx="14" fill="#FFFFFF" stroke="#FF6B35" stroke-width="1.5"/>
+<rect class="ring" x="265" y="267" width="200" height="96" rx="18" fill="none" stroke="#FF6B35" stroke-width="3" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.75;0.77;0.865;0.885;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="286" y="298" font-size="12" font-weight="600" fill="#B4410E">If the date passes</text>
+<text x="286" y="322" font-size="16" font-weight="700" fill="#111827">7  Flags it</text>
+<text x="286" y="342" font-size="13" fill="#B4410E">Promise missed (Nov 15)</text>
+<rect x="40" y="272" width="190" height="86" rx="14" fill="#FFFFFF" stroke="#1F7A55" stroke-width="1.5"/>
+<rect class="ring" x="35" y="267" width="200" height="96" rx="18" fill="none" stroke="#FF6B35" stroke-width="3" opacity="0"><animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.875;0.895;0.99;1" dur="16s" repeatCount="indefinite"/></rect>
+<text x="56" y="298" font-size="12" font-weight="600" fill="#1F7A55">When the money lands</text>
+<text x="56" y="322" font-size="16" font-weight="700" fill="#111827">8  Settled</text>
+<text x="56" y="342" font-size="13" fill="#1F7A55">The agent stops chasing</text>
+<text x="40" y="408" font-size="14" font-weight="700" fill="#111827">invoice_service refuses</text>
+<rect x="40" y="424" width="282" height="34" rx="17" fill="#FFFFFF" stroke="#E5D9CC" stroke-width="1.5"/>
+<text x="56" y="446" font-size="14" font-weight="700" fill="#B4410E">✕</text>
+<text x="74" y="446" font-size="13" fill="#374151">Status changes on email approvals</text>
+<rect class="blink" x="40" y="424" width="282" height="34" rx="17" fill="none" stroke="#FF6B35" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;1;0" dur="2.4s" begin="0.5s" repeatCount="indefinite"/></rect>
+<rect x="334" y="424" width="282" height="34" rx="17" fill="#FFFFFF" stroke="#E5D9CC" stroke-width="1.5"/>
+<text x="350" y="446" font-size="14" font-weight="700" fill="#B4410E">✕</text>
+<text x="368" y="446" font-size="13" fill="#374151">Infinite, NaN or negative amounts</text>
+<rect class="blink" x="334" y="424" width="282" height="34" rx="17" fill="none" stroke="#FF6B35" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;1;0" dur="2.4s" begin="0.9s" repeatCount="indefinite"/></rect>
+<rect x="629" y="424" width="240" height="34" rx="17" fill="#FFFFFF" stroke="#E5D9CC" stroke-width="1.5"/>
+<text x="645" y="446" font-size="14" font-weight="700" fill="#B4410E">✕</text>
+<text x="663" y="446" font-size="13" fill="#374151">Reopening a settled invoice</text>
+<rect class="blink" x="629" y="424" width="240" height="34" rx="17" fill="none" stroke="#FF6B35" stroke-width="2" opacity="0"><animate attributeName="opacity" values="0;1;0" dur="2.4s" begin="1.3s" repeatCount="indefinite"/></rect>
+<text x="40" y="492" font-size="12" fill="#6B7280">Every check above is covered by a test in tests/test_pentest_invoice_writes.py and tests/test_real_graph_payments.py.</text>
+</svg>

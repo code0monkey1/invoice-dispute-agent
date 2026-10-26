@@ -8,12 +8,13 @@ import { formatMoney, formatOverdue } from './format'
 import type { Invoice } from '../types'
 import { usePrefetchHistory } from '../hooks/usePrefetchHistory'
 
-type Filter = 'all' | 'you' | 'active' | 'paid'
+type Filter = 'all' | 'you' | 'active' | 'promised' | 'paid'
 
 const FILTERS: { id: Filter; label: string; match: (kind: InvoiceStatusKind) => boolean }[] = [
   { id: 'all', label: 'All', match: () => true },
   { id: 'you', label: 'Waiting for you', match: (k) => k === 'you' },
   { id: 'active', label: 'Being chased', match: (k) => k === 'agent' || k === 'client' },
+  { id: 'promised', label: 'Promised', match: (k) => k === 'promised' },
   { id: 'paid', label: 'Settled', match: (k) => k === 'paid' },
 ]
 
@@ -21,6 +22,7 @@ const STATUS_STYLE: Record<InvoiceStatusKind, { dot: string; text: string }> = {
   you: { dot: 'bg-[#FF6B35]', text: 'text-[#B4410E] font-semibold' },
   client: { dot: 'bg-[#111827]', text: 'text-[#111827] font-semibold' },
   agent: { dot: 'bg-[#C9B8A6]', text: 'text-[#6B7280]' },
+  promised: { dot: 'bg-[#2563EB]', text: 'text-[#1D4ED8] font-semibold' },
   paid: { dot: 'bg-[#1F7A55]', text: 'text-[#1F7A55] font-semibold' },
 }
 
