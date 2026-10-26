@@ -77,6 +77,9 @@ UPDATE communication_history c
  WHERE c.invoice_id = i.id AND c.user_id IS NULL;
 CREATE INDEX IF NOT EXISTS idx_communication_user ON communication_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_communication_invoice ON communication_history(invoice_id);
+-- A user's invoices, newest first (get_invoices_by_user: every dashboard load and
+-- every chat message). Also serves the guest -> account migration's user_id filter.
+CREATE INDEX IF NOT EXISTS idx_invoices_user_created ON invoices (user_id, created_at DESC);
 
 -- Legacy 'guest' row preserved for any rows still pointing at it.
 -- New unauthenticated visitors get their own guest-<uuid> rows instead (see src/db.py:ensure_guest_user).

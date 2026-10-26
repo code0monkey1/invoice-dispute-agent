@@ -282,6 +282,7 @@ When you approve, `/resume` reads the waiting draft **before** syncing invoice d
 - **Agent state** (`src/state.py`): client, amounts, days overdue, jurisdiction, escalation level and status, persisted per invoice thread (`invoice-{id}`) by the LangGraph checkpointer (Postgres when `DATABASE_URL` is set).
 - **Source of truth:** the Supabase `invoices` table, written only through `src/services/invoice_service.py`. Only fields that have changed are written into the agent, so a waiting draft isn't wiped when you open an invoice.
 - **Promise to pay:** `status: "pending"` plus `follow_up_date` (YYYY-MM-DD), saved when you approve `mark_invoice_pending` and shown in the agent's context.
+- **Indexes:** `invoices (user_id, created_at DESC)` serves "this user's invoices, newest first", which runs on every dashboard load and chat message.
 - **Runtime context** (`FreelancerContext`): your name, business and payment terms, injected per request.
 
 ---
