@@ -10,6 +10,34 @@ function getAuthHeader(): Record<string, string> {
   return {};
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  invoice_id: 'Invoice number',
+  client_name: 'Client name',
+  client_email: 'Client email',
+  invoice_amount: 'Invoice total',
+  amount_paid: 'Amount paid',
+  days_overdue: 'Days overdue',
+};
+
+/** The message to show for a failed response: `detail` text, or a readable list for validation errors. */
+export function errorMessage(body: string): string {
+  try {
+    const json = JSON.parse(body);
+    if (typeof json.detail === 'string') return json.detail;
+    if (Array.isArray(json.detail)) {
+      // FastAPI validation errors: [{loc: ['body', 'invoice_amount'], msg: '...'}]
+      return json.detail
+        .map((d: { loc?: unknown[]; msg?: string }) => {
+          const field = String((d.loc ?? []).at(-1) ?? '');
+          const label = FIELD_LABELS[field] ?? field;
+          return label ? `${label}: ${d.msg ?? 'invalid'}` : (d.msg ?? 'Invalid input');
+        })
+        .join('. ');
+    }
+  } catch { /* not JSON, use raw text */ }
+  return body;
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     credentials: 'include',
@@ -29,13 +57,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       await clearCache();
       window.location.href = '/';
     }
-    const text = await res.text();
-    let detail = text;
-    try {
-      const json = JSON.parse(text);
-      if (json.detail) detail = json.detail;
-    } catch { /* not JSON, use raw text */ }
-    throw new Error(detail);
+    throw new Error(errorMessage(await res.text()));
   }
   return res.json();
 }
@@ -56,13 +78,7 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
       await clearCache();
       window.location.href = '/';
     }
-    const text = await res.text();
-    let detail = text;
-    try {
-      const json = JSON.parse(text);
-      if (json.detail) detail = json.detail;
-    } catch { /* not JSON, use raw text */ }
-    throw new Error(detail);
+    throw new Error(errorMessage(await res.text()));
   }
   return res.json();
 }

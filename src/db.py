@@ -42,6 +42,18 @@ class DatabaseUnavailable(RuntimeError):
         self.retryable = retryable
 
 
+class Conflict(RuntimeError):
+    """The write broke a unique constraint (PostgREST answers 409)."""
+
+
+class InvoiceAlreadyExists(Conflict):
+    """This user already has an invoice with this number.
+
+    The routes check first, but two creates can race past that check; the
+    primary key on invoices.id (user + number) then stops the second insert.
+    """
+
+
 # Waits before retrying a read that hit a network blip.
 _READ_RETRY_DELAYS = (0.3, 1.0)
 _INVOICE_ID_SEPARATOR = "__inv__"
@@ -90,6 +102,8 @@ def _send(request: urllib.request.Request) -> str:
         details = exc.read().decode("utf-8", errors="replace")
         if exc.code >= 500 or exc.code == 429:
             raise DatabaseUnavailable(f"Supabase REST {method} {table} failed: {exc.code}") from exc
+        if exc.code == 409:
+            raise Conflict(f"Supabase REST {method} {table} conflict: {details}") from exc
         raise RuntimeError(f"Supabase REST {method} {table} failed: {exc.code} {details}") from exc
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as exc:
         reason = getattr(exc, "reason", exc)
@@ -419,7 +433,14 @@ def create_invoice(
         "created_at": now,
         "updated_at": now,
     }
-    _supabase_rest_request("POST", "invoices", payload=data)
+    try:
+        _supabase_rest_request("POST", "invoices", payload=data)
+    except Conflict as exc:
+        # PostgREST answers 409 for foreign-key errors (23503) too; only a
+        # duplicate key (23505) means the invoice already exists.
+        if "23505" in str(exc) or "duplicate key" in str(exc):
+            raise InvoiceAlreadyExists(invoice_id) from exc
+        raise
     return get_invoice(invoice_id)
 
 

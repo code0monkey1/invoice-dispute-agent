@@ -101,6 +101,10 @@ class FakeDB:
             row.setdefault("amount_paid", 0)
             row.setdefault("days_overdue", 0)
             row.setdefault("status", "active")
+            if row["id"] in self.invoices:
+                # invoices.id is the primary key: PostgREST answers 409.
+                from src.db import Conflict
+                raise Conflict(f"duplicate key value violates unique constraint (id={row['id']})")
             self.invoices[row["id"]] = row
             return [row]
         if method == "PATCH":
