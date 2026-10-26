@@ -16,7 +16,9 @@ from fastapi import FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
-from pydantic import BaseModel
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, Field
 from typing import Optional
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.types import Command
@@ -42,6 +44,7 @@ from src.tools.drafting import fill_draft_from_context
 from src.db import (
     get_communications_for,
     DatabaseUnavailable,
+    InvoiceAlreadyExists,
     init_db, upsert_user, get_user, get_user_gmail_tokens,
     update_user_history_id, update_user_sender_profile, get_user_by_email,
     create_invoice as db_create_invoice, get_invoice, get_invoices_by_user, get_invoice_by_reply_token,
@@ -124,6 +127,19 @@ UNEXPECTED_ERROR_DETAIL = "Something went wrong on our side. Please try again in
 AI_UNAVAILABLE_DETAIL = "The AI assistant isn't responding right now. Please try again in a moment."
 
 
+@app.exception_handler(RequestValidationError)
+async def request_validation_error(request: Request, exc: RequestValidationError):
+    # FastAPI's default handler echoes the rejected input, and an inf/NaN input
+    # made encoding the 422 itself fail with a 500.
+    return SafeJSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
+
+
+@app.exception_handler(InvoiceAlreadyExists)
+async def invoice_already_exists(request: Request, exc: InvoiceAlreadyExists):
+    # Two creates raced past the "already exists?" check; the primary key stopped the second.
+    return JSONResponse(status_code=409, content={"detail": "An invoice with this number already exists."})
+
+
 @app.exception_handler(DatabaseUnavailable)
 async def database_unavailable(request: Request, exc: DatabaseUnavailable):
     # A network blip or a database outage: say so plainly instead of a bare 500.
@@ -172,13 +188,16 @@ class ChatRequest(BaseModel):
 
 
 class InvoiceCreateRequest(BaseModel):
-    invoice_id: str
-    client_name: str
-    client_email: str
-    invoice_amount: float
-    days_overdue: int
+    # Trimmed, so "INV-1 " can't become a second invoice next to "INV-1".
+    model_config = {"str_strip_whitespace": True}
+
+    invoice_id: str = Field(min_length=1, max_length=300)
+    client_name: str = Field(min_length=1, max_length=200)
+    client_email: str = Field(min_length=1, max_length=254)
+    invoice_amount: float = Field(gt=0, allow_inf_nan=False)
+    days_overdue: int = Field(ge=0)
     jurisdiction: str
-    amount_paid: float = 0
+    amount_paid: float = Field(default=0, ge=0, allow_inf_nan=False)
 
 
 class InvoiceUploadMetadata(InvoiceCreateRequest):
@@ -1272,10 +1291,10 @@ class GenerateInvoicePayload(BaseModel):
     """Schema for creating a generated invoice from an already-uploaded PDF."""
     model_config = {"extra": "forbid"}
 
-    invoice_id: str
-    client_name: str
-    client_email: str
-    invoice_amount_cents: int
+    invoice_id: str = Field(min_length=1, max_length=300)
+    client_name: str = Field(min_length=1, max_length=200)
+    client_email: str = Field(min_length=1, max_length=254)
+    invoice_amount_cents: int = Field(gt=0)
     due_date: str  # yyyy-mm-dd
     jurisdiction: Optional[str] = None
     storage_path: str
@@ -2028,6 +2047,9 @@ _frontend_dist = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(_
 if os.path.exists(_frontend_dist):
     @app.get("/{full_path:path}")
     def serve_spa(full_path: str):
+        if full_path == "api" or full_path.startswith("api/"):
+            # An unknown API path is a JSON 404, never the HTML app shell.
+            raise HTTPException(status_code=404, detail="Not found")
         # Resolve the real path and refuse anything outside dist: an encoded
         # "../" (e.g. /..%2F..%2F.env) must never reach source files or secrets.
         file = os.path.realpath(os.path.join(_frontend_dist, full_path))
