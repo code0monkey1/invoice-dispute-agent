@@ -8,7 +8,7 @@ Drop in an overdue invoice. The agent reads it, drafts each reminder, reads the 
 
 **Built with LangChain · LangGraph · Groq · FastAPI · React · Supabase · Resend**
 
-[Live app](https://invoice-chaser-chi.vercel.app/) &nbsp;&bull;&nbsp; [How it works](#how-it-works) &nbsp;&bull;&nbsp; [Architecture](#architecture) &nbsp;&bull;&nbsp; [Setup](#getting-started) &nbsp;&bull;&nbsp; [Agent design](#how-the-agent-is-built)
+[Live app](https://invoice-chaser-chi.vercel.app/) &nbsp;&bull;&nbsp; [How it works](#how-it-works) &nbsp;&bull;&nbsp; [Promise to pay](#promise-to-pay-and-how-invoice-data-is-written) &nbsp;&bull;&nbsp; [Architecture](#architecture) &nbsp;&bull;&nbsp; [Setup](#getting-started) &nbsp;&bull;&nbsp; [Agent design](#how-the-agent-is-built)
 
 </div>
 
@@ -77,10 +77,137 @@ sequenceDiagram
 | **Sends from your Gmail** | Uses Google's `gmail.send` scope only. InvoiceChaser can send the emails you approve, but it can't read your inbox. |
 | **Reply tracking** | Each email carries a unique Reply-To address. Client replies reach your inbox and, through Resend Inbound, the invoice's timeline, where the agent analyses them. |
 | **Small-claims research** | At the Legal level, the agent looks up small-claims procedures for the client's jurisdiction (Tavily web search) and can write a court-filing guide. This is information, not legal advice. |
+| **Promise to pay** | When a client commits to a date, the agent proposes marking the invoice pending. After you approve, the date is saved on the invoice, shown on the dashboard ("Promised to pay by Nov 15, 2026") and flagged if it passes. [More below](#promise-to-pay-and-how-invoice-data-is-written). |
 | **Dashboard** | A "Waiting for you" queue of drafts needing approval, the amount outstanding and collected, and every invoice's current status in plain language. |
 | **Demo mode** | Try everything without signing up. Demo data stays in your browser session, and no emails are sent. |
 
 > **Removed for now:** late-fee calculation and Telegram notifications. Neither is offered in the app or advertised on the site.
+
+---
+
+## Promise to pay, and how invoice data is written
+
+<p align="center">
+  <img src="docs/promise-to-pay.svg" alt="Animated flow: the client promises to pay by a date, the agent proposes marking the invoice pending, you approve, invoice_service checks the date and saves it, the agent remembers it, the dashboard shows it, a missed date is flagged, and payment settles the invoice. Underneath, the three kinds of change invoice_service refuses." width="100%">
+</p>
+
+### Why it was added
+
+"I'll pay on the 15th" is the most common reply to a reminder, and the most important one to remember. Before this change, approving `mark_invoice_pending` returned a confirmation message and **saved nothing**. The promise and its date disappeared, the dashboard never showed them, and the agent didn't know them on the next turn. You'd either chase a client who had already committed, or forget to follow up when the date passed.
+
+Fixing it showed a deeper problem: invoice data was written from several places in `api/index.py`. The escalation level was written in three routes, one of which rewrote it after every approval. Payment changes were reconciled inside `/resume`. Settling lived in its own route. So the fix had two parts:
+
+1. **Promise to pay.** `mark_invoice_pending` now proposes `status: "pending"` and a validated `follow_up_date`. Approving it saves both on the invoice (`invoices.follow_up_date`). The agent sees the promise in its context, and the dashboard shows it.
+2. **One writer for invoice data.** Every change to an invoice's status, payments, promised date, escalation level or client details goes through `src/services/invoice_service.py`. Routes call it, and tools never touch the database.
+
+### Approving a promise
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    actor You
+    participant App as Dashboard / Chat
+    participant API as FastAPI /resume
+    participant Agent as LangGraph agent
+    participant Svc as invoice_service
+    participant DB as Supabase invoices
+
+    Client-->>App: "Paying in full on Nov 15" (reply on the timeline)
+    You->>App: "Client promised to pay on 2026-11-15"
+    App->>API: POST /api/chat
+    API->>Agent: invoke
+    Agent-->>API: mark_invoice_pending(follow_up_date="2026-11-15"), paused
+    API-->>App: Status change to confirm
+    Note over DB: Nothing has been saved yet
+    You->>App: Approve
+    App->>API: POST /api/invoices/{id}/resume
+    API->>Agent: Command(resume=approve)
+    Agent->>Agent: Tool checks the date, sets status "pending" + follow_up_date in state
+    Agent-->>API: Final state
+    API->>Svc: apply_approved_outcome(id, state, "mark_invoice_pending")
+    Svc->>DB: GET invoice (is it settled?)
+    Svc->>DB: PATCH status=pending, follow_up_date WHERE status != paid
+    Svc-->>API: Saved invoice as agent state
+    API->>Agent: Write back only the fields that differ
+    API-->>App: state.status = pending, follow_up_date
+    Note over App: "Promised to pay by Nov 15, 2026"<br/>after Nov 15: "Promise missed (Nov 15, 2026)"
+```
+
+### What approval is allowed to change
+
+Approving a tool commits only what that tool is allowed to change. Each payment tool has its own allow-list (`COMMITTABLE_BY_TOOL`), and everything else in agent state is ignored:
+
+| Approved tool | May change | Allowed statuses |
+|---|---|---|
+| `mark_invoice_pending` | `status`, `follow_up_date` | `pending` |
+| `record_partial_payment` | `amount_paid`, `status` | `active`, `pending`, `paid` |
+| `mark_invoice_paid` | `amount_paid`, `status` | `paid` |
+| any email draft | nothing on the invoice | n/a |
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant API as /resume
+    participant Svc as invoice_service
+    participant DB as Supabase
+
+    API->>Svc: apply_approved_outcome(id, state, approved_tool)
+    Svc->>DB: GET invoice
+    alt invoice is settled (status = paid)
+        Svc-->>API: unchanged, nothing written
+    else approved tool is an email draft
+        Svc-->>API: unchanged, even if state says "paid"
+    else payment tool
+        Svc->>Svc: keep only this tool's fields
+        Svc->>Svc: amount finite? clamp to 0..invoice total
+        Svc->>Svc: status in this tool's allow-list?
+        Svc->>Svc: follow_up_date a real YYYY-MM-DD date?
+        Svc->>DB: PATCH changes WHERE status != paid
+        Svc-->>API: saved state
+    end
+```
+
+### A settle that races an approval
+
+The settle button and a late approval can arrive at the same moment. Both writes carry the condition `status != paid`, so the database decides. A settled invoice stays settled.
+
+```mermaid
+sequenceDiagram
+    participant A as Request A: /settle
+    participant B as Request B: /resume (approve pending)
+    participant DB as Supabase
+
+    B->>DB: GET invoice: status = active
+    A->>DB: PATCH status=paid WHERE status != paid
+    DB-->>A: 1 row updated, settled
+    B->>DB: PATCH status=pending WHERE status != paid
+    DB-->>B: 0 rows updated
+    Note over DB: Invoice stays settled.<br/>The promise isn't saved.
+```
+
+### Found by trying to break it
+
+The feature was tested adversarially, including through the real LangGraph agent with a scripted model (`tests/test_real_graph_payments.py`). These are the failures that turned up, and what fixes them now:
+
+| Attack | What used to happen | Now |
+|---|---|---|
+| Approve an email draft while agent state says `status: "paid"` | The invoice was marked paid and chasing stopped | Email approvals commit no invoice changes |
+| The model records a payment of `inf` | The tool clamped it to the total and the invoice was marked paid | The tool and the service reject non-finite or non-positive amounts |
+| The model puts `inf`/`NaN` in any tool call | Chat and history returned 500 on every load, so that invoice's chat stopped loading | Responses replace `inf`/`NaN` with `null` (`SafeJSONResponse`) |
+| An approval lands just after a settle | The invoice could be reopened | Writes carry `status != paid` |
+| `PATCH /details` with `a@x.com, evil@y.com` or a 5,000-character name | Saved as is | 422: one address, names up to 200 characters |
+| An ungated tool (`update_invoice_details`) resets the level to 1 | The level was written back on the next approval | The level can only go up |
+
+Other accounts, guests, replayed approvals and dates like `"next friday"` were tried too. They're covered in `tests/test_pentest_invoice_writes.py`.
+
+### Why not an open-source CRM?
+
+We considered giving the agent a CRM (contacts, notes, deals) to work through. We decided against it:
+
+- **Licences:** the popular open-source CRMs (Twenty, EspoCRM, SuiteCRM, Frappe CRM) are AGPL-3.0. The serious MIT option, Atomic CRM, has no model for invoices, payments or disputes.
+- **Right shape for an agent:** agents do better with a few workflow-shaped tools than with a CRM's generic create/read/update API. `invoice_service` is that layer, built around invoices.
+- **How collections tools work:** AR products like Chaser and Upflow treat the accounting ledger (Xero, QuickBooks) as the source of truth and keep only the chasing layer themselves. An accounting connector is the likely next integration, not a CRM.
 
 ---
 
@@ -153,7 +280,8 @@ When you approve, `/resume` reads the waiting draft **before** syncing invoice d
 ### State, memory and context
 
 - **Agent state** (`src/state.py`): client, amounts, days overdue, jurisdiction, escalation level and status, persisted per invoice thread (`invoice-{id}`) by the LangGraph checkpointer (Postgres when `DATABASE_URL` is set).
-- **Source of truth:** the Supabase `invoices` table. Only fields that have changed are written into the agent, so a waiting draft isn't wiped when you open an invoice.
+- **Source of truth:** the Supabase `invoices` table, written only through `src/services/invoice_service.py`. Only fields that have changed are written into the agent, so a waiting draft isn't wiped when you open an invoice.
+- **Promise to pay:** `status: "pending"` plus `follow_up_date` (YYYY-MM-DD), saved when you approve `mark_invoice_pending` and shown in the agent's context.
 - **Runtime context** (`FreelancerContext`): your name, business and payment terms, injected per request.
 
 ---
@@ -187,13 +315,15 @@ src/
   services/
     gmail_service.py          Send-only Gmail client (supports Reply-To)
     resend_inbound.py         Reply tokens, webhook signature check, received-email fetch
+    invoice_service.py        The only writer of invoice data: status, payments, promise to pay, level, settling
 frontend/src/
   components/                 LandingPage, Dashboard, InvoiceTable, ChatPanel, DraftApproval, invoice-generator/
   contexts/AuthContext.tsx    Sign-in, Connect Gmail, demo mode
   hooks/                      useChat (approve, reject, escalate), useInvoices
-supabase/schema.sql           Tables, including invoices.reply_token
+supabase/schema.sql           Tables, including invoices.reply_token and invoices.follow_up_date
 tests/                        Backend tests (pytest)
 docs/how-it-works.svg         The animated flow above
+docs/promise-to-pay.svg       The animated promise-to-pay flow
 ```
 
 ---
@@ -242,7 +372,7 @@ Open http://localhost:5173.
 ### Tests
 
 ```bash
-pytest                       # backend
+pytest                       # backend (includes adversarial tests and real-graph payment flows)
 cd frontend && npm run test  # frontend
 ```
 
