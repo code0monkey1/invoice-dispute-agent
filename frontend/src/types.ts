@@ -11,6 +11,8 @@ export interface Invoice {
   escalation_level: number;
   communication_history: CommunicationEntry[];
   status: string;
+  /** YYYY-MM-DD the client promised to pay by; set while status is "pending". */
+  follow_up_date?: string | null;
   invoice_file_path?: string | null;
   invoice_file_name?: string | null;
   invoice_file_mime?: string | null;
@@ -61,6 +63,7 @@ export interface AgentState {
   days_overdue: number;
   jurisdiction: string;
   status: string;
+  follow_up_date?: string | null;
   communication_history: CommunicationEntry[];
 }
 

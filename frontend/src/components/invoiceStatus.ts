@@ -1,8 +1,10 @@
 import type { Invoice } from '../types'
+import { formatPromiseDate, isPromiseMissed } from './format'
 
 // What the agent is doing with an invoice, in the user's terms. `you` is the
 // only kind that needs the user, and the dashboard colours it orange.
-export type InvoiceStatusKind = 'you' | 'agent' | 'client' | 'paid'
+// `promised` means the client agreed to pay by a date (status "pending").
+export type InvoiceStatusKind = 'you' | 'agent' | 'client' | 'promised' | 'paid'
 
 export interface InvoiceStatus {
   kind: InvoiceStatusKind
@@ -19,7 +21,14 @@ const DRAFT_LABELS: Record<string, string> = {
   mark_invoice_pending: 'Status change to confirm',
 }
 
-export function invoiceStatus(invoice: Invoice): InvoiceStatus {
+function promiseStatus(invoice: Invoice, today: Date): InvoiceStatus {
+  const date = invoice.follow_up_date
+  if (!date) return { kind: 'promised', label: 'Client promised to pay' }
+  if (isPromiseMissed(date, today)) return { kind: 'promised', label: `Promise missed (${formatPromiseDate(date)})` }
+  return { kind: 'promised', label: `Promised to pay by ${formatPromiseDate(date)}` }
+}
+
+export function invoiceStatus(invoice: Invoice, today: Date = new Date()): InvoiceStatus {
   if (invoice.status === 'paid') return { kind: 'paid', label: 'Settled' }
 
   if (invoice.awaiting_approval) {
@@ -30,6 +39,7 @@ export function invoiceStatus(invoice: Invoice): InvoiceStatus {
   const history = invoice.communication_history ?? []
   const last = history[history.length - 1]
   if (last?.direction === 'inbound') return { kind: 'client', label: 'Client replied' }
+  if (invoice.status === 'pending') return promiseStatus(invoice, today)
   if (last?.direction === 'outbound') return { kind: 'agent', label: 'Waiting for the client' }
   return { kind: 'agent', label: 'Agent is preparing the first email' }
 }
