@@ -75,31 +75,37 @@ def _make_checkpointer():
 
 checkpointer = _make_checkpointer()
 
-agent = create_agent(
-    model=model,
-    tools=ALL_TOOLS,
-    checkpointer=checkpointer,
-    state_schema=InvoiceDisputeState,
-    context_schema=FreelancerContext,
-    middleware=[
-        dynamic_tool_middleware,
-        escalation_prompt,
-        HumanInTheLoopMiddleware(
-            interrupt_on={
-                "draft_polite_reminder": True,
-                "draft_invoice_delivery_email": True,
-                "draft_formal_demand_letter": True,
-                "draft_final_notice": True,
-                "update_invoice_details": False,
-                "check_invoice_status": False,
-                "escalate_dispute": False,
-                "lookup_small_claims_procedures": False,
-                "generate_court_filing_guide": False,
-                "mark_invoice_pending": True,
-                "mark_invoice_paid": True,
-                "record_partial_payment": True,
-            },
-            description_prefix="APPROVAL REQUIRED: Review this draft before sending",
-        ),
-    ],
-)
+
+def build_agent(model, checkpointer):
+    """The agent graph. Tests build it with a scripted model to exercise real HITL flows."""
+    return create_agent(
+        model=model,
+        tools=ALL_TOOLS,
+        checkpointer=checkpointer,
+        state_schema=InvoiceDisputeState,
+        context_schema=FreelancerContext,
+        middleware=[
+            dynamic_tool_middleware,
+            escalation_prompt,
+            HumanInTheLoopMiddleware(
+                interrupt_on={
+                    "draft_polite_reminder": True,
+                    "draft_invoice_delivery_email": True,
+                    "draft_formal_demand_letter": True,
+                    "draft_final_notice": True,
+                    "update_invoice_details": False,
+                    "check_invoice_status": False,
+                    "escalate_dispute": False,
+                    "lookup_small_claims_procedures": False,
+                    "generate_court_filing_guide": False,
+                    "mark_invoice_pending": True,
+                    "mark_invoice_paid": True,
+                    "record_partial_payment": True,
+                },
+                description_prefix="APPROVAL REQUIRED: Review this draft before sending",
+            ),
+        ],
+    )
+
+
+agent = build_agent(model, checkpointer)

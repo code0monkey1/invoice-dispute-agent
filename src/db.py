@@ -452,11 +452,13 @@ def get_invoices_by_user(user_id: str) -> list[dict]:
     ) or []
 
 
-def update_invoice(invoice_id: str, **kwargs) -> Optional[dict]:
+def update_invoice(invoice_id: str, *, only_if_unpaid: bool = False, **kwargs) -> Optional[dict]:
     """
     Update arbitrary columns on an invoice row.
 
     Always bumps ``updated_at`` to the current timestamp.
+    With *only_if_unpaid*, a settled invoice is left alone. The condition is
+    part of the update itself, so it holds against a concurrent settle.
     Returns the updated row as a ``dict``, or ``None`` if not found.
     """
     if not kwargs:
@@ -471,12 +473,10 @@ def update_invoice(invoice_id: str, **kwargs) -> Optional[dict]:
             updates["status"] = "paid"
     updates["updated_at"] = _now()
 
-    _supabase_rest_request(
-        "PATCH",
-        "invoices",
-        query=[("id", f"eq.{invoice_id}")],
-        payload=updates,
-    )
+    query = [("id", f"eq.{invoice_id}")]
+    if only_if_unpaid:
+        query.append(("status", "neq.paid"))
+    _supabase_rest_request("PATCH", "invoices", query=query, payload=updates)
     return get_invoice(invoice_id)
 
 
@@ -494,19 +494,6 @@ def mark_invoice_settled(invoice_id: str) -> bool:
         prefer="return=representation",
     )
     return bool(rows)
-
-
-def get_invoices_by_client_email(client_email: str) -> list[dict]:
-    """
-    Return all active (non-resolved, non-cancelled) invoices for a given
-    client email address, newest first.
-    """
-    rows = _supabase_rest_request(
-        "GET",
-        "invoices",
-        query=[("select", "*"), ("client_email", f"eq.{client_email}"), ("order", "created_at.desc")],
-    ) or []
-    return [row for row in rows if row.get("status") not in {"resolved", "cancelled", "paid"}]
 
 
 def upload_invoice_file(

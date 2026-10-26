@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS invoices (
     sender_business   TEXT,
     sender_email      TEXT,
     status            TEXT NOT NULL DEFAULT 'active',
+    follow_up_date    TEXT,
     created_at        TEXT DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS'),
     updated_at        TEXT DEFAULT to_char(NOW(), 'YYYY-MM-DD HH24:MI:SS')
 );
@@ -54,6 +55,8 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS invoice_file_size INTEGER;
 ALTER TABLE invoices ALTER COLUMN status SET DEFAULT 'active';
 -- Reply tracking: approved emails carry Reply-To inv-<reply_token>@<inbound domain>.
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS reply_token TEXT UNIQUE;
+-- Promise to pay: set with status "pending" when the user approves mark_invoice_pending.
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS follow_up_date TEXT;
 
 CREATE TABLE IF NOT EXISTS communication_history (
     id          BIGSERIAL PRIMARY KEY,

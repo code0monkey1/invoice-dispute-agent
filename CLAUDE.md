@@ -35,7 +35,8 @@ Vercel serverless — `vercel.json` routes frontend to `frontend/dist`, backend 
   - `dynamic_prompts.py` — Shifts system prompt tone per escalation level
   - HITL middleware for draft approval interrupts
 - **`tools/`** — Tool definitions organized by function: `drafting.py` (email templates), `escalation.py` (level progression), `invoice.py` (status/fees), `legal.py` (Tavily web search), `payment_tools.py` (mark paid/pending)
-- **`services/`** — `gmail_service.py` (send/read/watch via Gmail API), `telegram_service.py` (per-user bot notifications via `users.telegram_chat_id`)
+- **`services/`** — `invoice_service.py` (the only writer of invoice facts: status, payments, promise-to-pay `follow_up_date`, escalation level, settling; routes call it, tools never touch the DB), `gmail_service.py` (send/read/watch via Gmail API), `resend_inbound.py` (client replies matched by per-invoice `reply_token`)
+- **Data flow for agent changes:** payment/status tools are HITL-gated and only propose changes in agent state. On approve, `/resume` passes the agent's response to `invoice_service.apply_approved_outcome`, which validates and commits it. `sync_agent_state_from_invoice` then refreshes the checkpoint from the DB, which is the source of truth.
 - **`db.py`** — Supabase REST wrappers with Fernet-encrypted token storage. Tables (in `supabase/schema.sql`): `users`, `invoices`, `communication_history`. Per-user scoping enforced at the API layer; guests get a per-session `guest-<uuid>` ID via HTTP-only cookie.
 
 ### API (`api/index.py`)

@@ -1,3 +1,4 @@
+import math
 import os
 import sys
 
@@ -41,11 +42,10 @@ from src.tools.drafting import fill_draft_from_context
 from src.db import (
     get_communications_for,
     DatabaseUnavailable,
-    mark_invoice_settled,
     init_db, upsert_user, get_user, get_user_gmail_tokens,
     update_user_history_id, update_user_sender_profile, get_user_by_email,
     create_invoice as db_create_invoice, get_invoice, get_invoices_by_user, get_invoice_by_reply_token,
-    update_invoice, get_invoices_by_client_email,
+    update_invoice,
     add_communication, get_communications,
     build_invoice_storage_id, parse_public_invoice_id, upload_invoice_file,
     download_invoice_file,
@@ -57,6 +57,8 @@ from src.invoice_parser import (
     parsed_invoice_payload,
     validate_invoice_upload,
 )
+from src.services import invoice_service
+from src.services.invoice_service import compute_balance, invoice_state_from_db
 from src.services.gmail_service import GmailService, SCOPES, SIGN_IN_SCOPES, GMAIL_SEND_SCOPE
 from src.services.resend_inbound import (
     new_reply_token, reply_address, inbound_domain, parse_reply_token,
@@ -95,7 +97,27 @@ GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 # Initialize database on startup
 init_db()
 
-app = FastAPI(title="Invoice Dispute Agent API")
+def _json_safe(value):
+    """Replace inf/NaN (which JSON can't encode) with None, recursively."""
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(v) for v in value]
+    return value
+
+
+class SafeJSONResponse(JSONResponse):
+    """A model can put inf/NaN in tool-call args, which are checkpointed and
+    returned by chat and history. Plain JSONResponse raises on them, which made
+    the invoice's chat fail on every load."""
+
+    def render(self, content) -> bytes:
+        return super().render(_json_safe(content))
+
+
+app = FastAPI(title="Invoice Dispute Agent API", default_response_class=SafeJSONResponse)
 
 DATABASE_UNAVAILABLE_DETAIL = "We couldn't reach the database just now, so this didn't finish. Please try again in a moment."
 UNEXPECTED_ERROR_DETAIL = "Something went wrong on our side. Please try again in a moment."
@@ -213,27 +235,6 @@ def safe_filename(filename: str) -> str:
     base = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._")
     return cleaned or "invoice"
-
-
-def compute_balance(invoice_amount: float, amount_paid: float) -> float:
-    return max(0, float(invoice_amount or 0) - float(amount_paid or 0))
-
-
-def invoice_state_from_db(invoice: dict) -> dict:
-    amount_paid = float(invoice.get("amount_paid", 0) or 0)
-    invoice_amount = float(invoice.get("invoice_amount", 0) or 0)
-    return {
-        "client_name": invoice.get("client_name", ""),
-        "client_email": invoice.get("client_email", ""),
-        "invoice_id": parse_public_invoice_id(invoice["id"]),
-        "invoice_amount": invoice_amount,
-        "amount_paid": amount_paid,
-        "balance_due": compute_balance(invoice_amount, amount_paid),
-        "days_overdue": invoice.get("days_overdue", 0) or 0,
-        "jurisdiction": invoice.get("jurisdiction", "") or "",
-        "escalation_level": invoice.get("escalation_level", 1) or 1,
-        "status": invoice.get("status", "active") or "active",
-    }
 
 
 def sync_agent_state_from_invoice(invoice_id: str, config: dict) -> dict | None:
@@ -566,6 +567,7 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
             f"  Client email: {current.get('client_email') or 'unknown'}",
             f"  Invoice total: ${amount:,.2f}; balance due: ${balance:,.2f}",
             f"  Days overdue: {current.get('days_overdue', 0) or 0}; status: {current.get('status', 'active')}",
+            *([f"  Client promised to pay by: {current['follow_up_date']}"] if current.get("follow_up_date") else []),
             "",
             "All invoices for this user:",
         ]
@@ -587,6 +589,7 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
             f"- [{marker}] Invoice #{public_id}: {invoice.get('client_name', '')} "
             f"<{invoice.get('client_email', '')}>, status {invoice.get('status', 'active')}, "
             f"balance ${balance:,.2f}, {invoice.get('days_overdue', 0) or 0} days overdue."
+            + (f" Promised to pay by {invoice['follow_up_date']}." if invoice.get("follow_up_date") else "")
         )
         comms = communications.get(invoice["id"], [])
         # Only our own outgoing subjects: inbound ones are written by outsiders.
@@ -684,6 +687,7 @@ def extract_state(response):
         "days_overdue": response.get("days_overdue", 0),
         "jurisdiction": response.get("jurisdiction", ""),
         "status": response.get("status", "active"),
+        "follow_up_date": response.get("follow_up_date", "") or "",
         "communication_history": response.get("communication_history", []),
     }
 
@@ -1168,11 +1172,11 @@ def update_invoice_details_route(
     if not updates:
         return {"error": "No fields to update"}
 
-    # Persist to DB
-    update_invoice(invoice_id, **updates)
-
-    # Update the agent's graph state directly
-    agent.update_state(config, updates)
+    try:
+        saved = invoice_service.update_client_details(invoice_id, updates)
+    except invoice_service.InvalidClientDetails as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    agent.update_state(config, saved)
 
     # Return refreshed state
     snapshot = agent.get_state(config)
@@ -1539,10 +1543,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
         raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
 
     # Persist escalation level changes from the agent response.
-    new_level = response.get("escalation_level", 0)
-    invoice_data = get_invoice(inv_id)
-    if invoice_data and new_level > invoice_data.get("escalation_level", 0):
-        update_invoice(inv_id, escalation_level=new_level)
+    invoice_service.set_escalation_level(inv_id, response.get("escalation_level"))
 
     return {
         "messages": serialize_messages(response["messages"]),
@@ -1573,7 +1574,7 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     new_level = current + 1
     level_name = ESCALATION_LEVEL_NAMES[new_level]
 
-    update_invoice(invoice_id, escalation_level=new_level)
+    invoice_service.set_escalation_level(invoice_id, new_level)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
     persisted_state = sync_agent_state_from_invoice(invoice_id, config)
 
@@ -1618,15 +1619,7 @@ def settle_invoice(invoice_id: str, request: Request, authorization: str | None 
     client replies all respect. A draft waiting for approval is dropped.
     """
     invoice = authorize_invoice_access(invoice_id, request, authorization)
-    if mark_invoice_settled(invoice_id):
-        add_communication(
-            invoice_id=invoice_id,
-            comm_type="invoice_settled",
-            subject="Marked as settled",
-            content="Marked as settled. The agent will take no further action on this invoice.",
-            direction="internal",
-            user_id=invoice.get("user_id"),
-        )
+    if invoice_service.settle(invoice_id, invoice.get("user_id")):
         sync_agent_state_from_invoice(invoice_id, {"configurable": {"thread_id": f"invoice-{invoice_id}"}})
     updated = get_invoice(invoice_id)
     updated["communication_history"] = get_communications(invoice_id)
@@ -1870,26 +1863,14 @@ def record_resume_outcome(invoice_id, config, decision, approved_tool_name, appr
     # post-invoke response state rather than the pre-invoke interrupt task, because
     # sync_agent_state_from_invoice clears pending tasks before we can inspect them.
     if decision == "approve":
-        invoice_data = get_invoice(invoice_id)
-        if invoice_data:
-            invoice_amount = float(invoice_data.get("invoice_amount", 0) or 0)
-            db_paid = float(invoice_data.get("amount_paid", 0) or 0)
-            db_status = invoice_data.get("status") or "active"
-            new_paid_raw = response.get("amount_paid")
-            new_status = response.get("status")
-            updates = {}
-            if isinstance(new_paid_raw, (int, float)):
-                new_paid = max(0.0, min(invoice_amount, float(new_paid_raw)))
-                if abs(new_paid - db_paid) > 0.005:
-                    updates["amount_paid"] = new_paid
-            if new_status and new_status != db_status and new_status in {"active", "pending", "paid"}:
-                updates["status"] = new_status
-            if updates:
-                updated = update_invoice(invoice_id, **updates)
-                if updated:
-                    persisted_state = invoice_state_from_db(updated)
-                    agent.update_state(config, persisted_state)
-                    response.update(persisted_state)
+        persisted_state = invoice_service.apply_approved_outcome(invoice_id, response, approved_tool_name)
+        if persisted_state:
+            # Only write fields that differ: update_state() empties any new
+            # draft the resumed run is waiting on.
+            changes = {k: v for k, v in persisted_state.items() if response.get(k) != v}
+            if changes:
+                agent.update_state(config, changes)
+                response.update(changes)
 
     # Log the approved action into agent state. The outbound email itself was
     # recorded in the database by send_approved_draft as soon as it was sent.
@@ -1904,7 +1885,7 @@ def record_resume_outcome(invoice_id, config, decision, approved_tool_name, appr
         agent.update_state(config, {"communication_history": history})
         response["communication_history"] = history
 
-    update_invoice(invoice_id, escalation_level=response.get("escalation_level", 1))
+    invoice_service.set_escalation_level(invoice_id, response.get("escalation_level"))
 
 
 def current_state(invoice_id: str, fallback: dict) -> dict:

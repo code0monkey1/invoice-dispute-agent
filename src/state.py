@@ -14,6 +14,7 @@ class InvoiceDisputeState(AgentState):
     communication_history: list  # [{"type": str, "content": str, "timestamp": str}]
     jurisdiction: str            # e.g., "California", "England and Wales"
     status: str                  # active, pending, paid
+    follow_up_date: str          # YYYY-MM-DD the client promised to pay by (status pending)
     gmail_thread_id: str         # Gmail thread ID for tracking replies
     gmail_message_ids: list      # List of sent message IDs
 
