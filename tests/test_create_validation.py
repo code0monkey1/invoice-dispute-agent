@@ -114,3 +114,27 @@ async def test_unknown_api_paths_are_json_404_not_the_app_shell(client, path):
     r = await client.get(path)
     assert r.status_code == 404
     assert r.headers["content-type"].startswith("application/json")
+
+
+def test_a_foreign_key_409_is_not_reported_as_a_duplicate(monkeypatch):
+    """PostgREST also answers 409 when user_id doesn't exist (23503)."""
+    from src import db
+
+    def fk_error(*a, **k):
+        raise db.Conflict('Supabase REST POST invoices conflict: {"code":"23503","message":"violates foreign key constraint"}')
+
+    monkeypatch.setattr(db, "_supabase_rest_request", fk_error)
+    with pytest.raises(db.Conflict) as info:
+        db.create_invoice("u__inv__X", "u", "Acme", "a@b.example", 100.0, 1, "CA")
+    assert not isinstance(info.value, db.InvoiceAlreadyExists)
+
+
+def test_a_duplicate_key_409_is_reported_as_a_duplicate(monkeypatch):
+    from src import db
+
+    def dup_error(*a, **k):
+        raise db.Conflict('Supabase REST POST invoices conflict: {"code":"23505","message":"duplicate key value"}')
+
+    monkeypatch.setattr(db, "_supabase_rest_request", dup_error)
+    with pytest.raises(db.InvoiceAlreadyExists):
+        db.create_invoice("u__inv__X", "u", "Acme", "a@b.example", 100.0, 1, "CA")

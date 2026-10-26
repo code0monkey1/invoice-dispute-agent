@@ -1289,7 +1289,7 @@ async def upload_invoice_and_create(
 
 class GenerateInvoicePayload(BaseModel):
     """Schema for creating a generated invoice from an already-uploaded PDF."""
-    model_config = {"extra": "forbid"}
+    model_config = {"extra": "forbid", "str_strip_whitespace": True}
 
     invoice_id: str = Field(min_length=1, max_length=300)
     client_name: str = Field(min_length=1, max_length=200)

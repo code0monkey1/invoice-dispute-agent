@@ -436,7 +436,11 @@ def create_invoice(
     try:
         _supabase_rest_request("POST", "invoices", payload=data)
     except Conflict as exc:
-        raise InvoiceAlreadyExists(invoice_id) from exc
+        # PostgREST answers 409 for foreign-key errors (23503) too; only a
+        # duplicate key (23505) means the invoice already exists.
+        if "23505" in str(exc) or "duplicate key" in str(exc):
+            raise InvoiceAlreadyExists(invoice_id) from exc
+        raise
     return get_invoice(invoice_id)
 
 
