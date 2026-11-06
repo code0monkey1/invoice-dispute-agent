@@ -109,3 +109,18 @@ def test_record_step_without_an_open_run_is_a_noop():
         context = Ctx()
 
     tracer.record_step(Runtime(), "tool_call", "x", {})  # must not raise
+
+
+def test_redact_stays_fast_on_hostile_input():
+    """Client replies and search results are untrusted: no quadratic regex work on long text."""
+    import time
+    t0 = time.monotonic()
+    redact("a." * 500_000)  # 1 MB, many email-like local parts, no "@"
+    redact("1-" * 300_000)
+    assert time.monotonic() - t0 < 1.0
+
+
+def test_an_email_cut_by_the_length_cap_is_not_leaked():
+    text = "x" * (7_990) + " leaky.person@client-domain.example tail"
+    out = redact(text)
+    assert "leaky" not in out and "client-domain" not in out

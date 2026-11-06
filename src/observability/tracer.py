@@ -48,20 +48,30 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     "llama-3.1-8b-instant": (0.05, 0.08),
 }
 
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# Quantifiers are bounded (RFC 5321 lengths) so matching stays linear on
+# untrusted text such as client replies and web search results.
+_EMAIL = re.compile(r"[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}")
 _IBAN = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b")
 _LONG_NUMBER = re.compile(r"(?<![\w-])(?:\d[ -]?){12,19}\d(?![\w-])")
 _PHONE = re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\w)")
 
 
+# Text is cut before redacting so hostile input can't make the regexes slow.
+# The margin is longer than any email address (254 chars), so an address that
+# starts before the cut is still seen whole and masked, never left half-shown.
+_REDACT_MARGIN = 320
+
+
 def redact(text: str) -> str:
-    """Mask contact details and account-like numbers, then cap the length."""
+    """Mask contact details and account-like numbers, and cap the length."""
+    original_length = len(text)
+    text = text[: MAX_TEXT_CHARS + _REDACT_MARGIN]
     text = _EMAIL.sub("[email]", text)
     text = _IBAN.sub("[number]", text)
     text = _LONG_NUMBER.sub("[number]", text)
     text = _PHONE.sub("[phone]", text)
-    if len(text) > MAX_TEXT_CHARS:
-        text = f"{text[:MAX_TEXT_CHARS]}…[truncated {len(text) - MAX_TEXT_CHARS} chars]"
+    if original_length > MAX_TEXT_CHARS:
+        text = f"{text[:MAX_TEXT_CHARS]}…[truncated {original_length - MAX_TEXT_CHARS} chars]"
     return text
 
 
