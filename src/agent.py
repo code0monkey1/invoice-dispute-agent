@@ -8,7 +8,7 @@ import os
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 
 from src.state import InvoiceDisputeState, FreelancerContext
-from src.middleware.dynamic_tools import dynamic_tool_middleware
+from src.middleware.dynamic_tools import dynamic_tool_middleware, enforce_tool_gate
 from src.middleware.dynamic_prompts import escalation_prompt
 
 from src.tools.drafting import (
@@ -104,6 +104,8 @@ def build_agent(model, checkpointer):
                 },
                 description_prefix="APPROVAL REQUIRED: Review this draft before sending",
             ),
+            # Listed after HITL so its after_model runs first: refused calls never reach approval.
+            enforce_tool_gate,
         ],
     )
 
