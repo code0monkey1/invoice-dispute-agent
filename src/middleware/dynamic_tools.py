@@ -4,6 +4,7 @@ from typing import Callable
 from langchain.agents.middleware import after_model, wrap_model_call, ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, ToolMessage
 
+from src.observability.tracer import record_step
 from src.tools.drafting import (
     draft_invoice_delivery_email,
     draft_polite_reminder,
@@ -96,5 +97,6 @@ def enforce_tool_gate(state, runtime) -> dict | None:
         else:
             content = f"Tool {call['name']} is not available at escalation level {level}."
             logger.warning("tool gate refused %s at level %s", call["name"], level)
+            record_step(runtime, "gate_blocked", call["name"], {"level": level, "args": call.get("args", {})})
         replies.append(ToolMessage(content=content, name=call["name"], tool_call_id=call["id"], status="error"))
     return {"messages": replies, "jump_to": "model"}

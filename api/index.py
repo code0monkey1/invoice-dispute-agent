@@ -29,6 +29,8 @@ import jwt
 import json as json_lib
 import re
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from difflib import SequenceMatcher
 import time
 import uuid
 from email.utils import parseaddr
@@ -39,6 +41,8 @@ from google.auth.transport import requests as google_requests
 from fastapi import Header, HTTPException
 
 from src.agent import agent
+from src.observability import tracer
+from src.observability.tracer import RunRecorder, note_run_outcome, trace_run
 from src.state import FreelancerContext
 from src.tools.drafting import fill_draft_from_context
 from src.db import (
@@ -161,7 +165,8 @@ def health():
     cp_type = type(checkpointer).__name__
     db_url_set = bool(os.getenv("DATABASE_URL"))
     return {"status": "ok", "python": sys.version, "checkpointer": cp_type,
-            "database_url_set": db_url_set, "checkpointer_error": _checkpointer_error}
+            "database_url_set": db_url_set, "checkpointer_error": _checkpointer_error,
+            "traces": tracer.stats()}
 
 
 # CORS — explicit origins so credentials (guest_session cookie) can flow.
@@ -176,7 +181,22 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Trace-Id"],
 )
+
+
+@app.middleware("http")
+async def trace_id_header(request: Request, call_next):
+    """Name the agent run(s) a request made, so a bug report maps straight to its trace.
+
+    Created before the route runs: request.state lives in the ASGI scope, which
+    the route shares, so traced_run() can append to this list.
+    """
+    request.state.trace_ids = []
+    response = await call_next(request)
+    if request.state.trace_ids:
+        response.headers["X-Trace-Id"] = ",".join(request.state.trace_ids)
+    return response
 
 
 
@@ -273,6 +293,55 @@ def sync_agent_state_from_invoice(invoice_id: str, config: dict) -> dict | None:
     except Exception:
         logger.exception("Failed to sync agent state for invoice %s", invoice_id)
     return persisted_state
+
+
+@contextmanager
+def traced_run(kind: str, invoice_id: str, context: FreelancerContext,
+               request: Request | None = None, level: int | None = None):
+    """Trace one agent run. Middleware finds the run through context.trace_run_id."""
+    with trace_run(kind, user_id=context.user_id or None, invoice_id=invoice_id, level=level) as run:
+        context.trace_run_id = run.id
+        if request is not None:
+            trace_ids = getattr(request.state, "trace_ids", None)
+            if trace_ids is None:
+                request.state.trace_ids = trace_ids = []
+            trace_ids.append(run.id)
+        try:
+            yield run
+        finally:
+            context.trace_run_id = None
+
+
+def run_id_of(request: Request | None) -> str | None:
+    ids = getattr(getattr(request, "state", None), "trace_ids", None) if request is not None else None
+    return ids[-1] if ids else None
+
+
+def _normalized(text: str | None) -> str:
+    return " ".join((text or "").split())
+
+
+def describe_decision(decision: str, message: str | None, pending_action: dict | None,
+                      pending_state: dict, context: FreelancerContext) -> dict:
+    """What the human decided. An approval whose text differs from the draft is an edit.
+
+    The app sends an edited draft as an approval with the new text, so the
+    difference is found by comparing it with the draft the user was shown.
+    """
+    tool_name = (pending_action or {}).get("name")
+    payload: dict = {"decision": decision, "had_pending_action": bool(pending_action)}
+    if decision == "reject" and message:
+        payload["feedback"] = message
+    if decision == "approve" and message and tool_name in EMAIL_DRAFT_TOOLS:
+        proposed = generate_draft_preview(tool_name, pending_state, context, pending_action.get("args", {}))
+        if _normalized(proposed) != _normalized(message):
+            payload.update(
+                decision="approved_with_edits",
+                similarity=round(SequenceMatcher(None, proposed, message).ratio(), 3),
+                proposed_chars=len(proposed),
+                approved_chars=len(message),
+            )
+    return payload
 
 
 def invoke_agent_with_retry(payload, *, context: FreelancerContext, config: dict):
@@ -1549,16 +1618,18 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
         }
 
     try:
-        response = invoke_agent_with_retry(
-            {"messages": [HumanMessage(content=req.message)]},
-            context=context,
-            config=config,
-        )
+        with traced_run("chat", inv_id, context, request, level=(persisted_state or {}).get("escalation_level")) as run:
+            response = invoke_agent_with_retry(
+                {"messages": [HumanMessage(content=req.message)]},
+                context=context,
+                config=config,
+            )
+            note_run_outcome(run, response)
     except Exception as e:
         error_msg = str(e)
         if "rate_limit" in error_msg.lower() or "429" in error_msg:
             raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
-        logger.exception("Agent invocation failed")
+        logger.exception("Agent invocation failed run_id=%s", context.trace_run_id or run_id_of(request))
         raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
 
     # Persist escalation level changes from the agent response.
@@ -1606,9 +1677,11 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
         f"Please draft the next email to the client in a {level_name.lower()} tone."
     )
     try:
-        response = invoke_agent_with_retry({"messages": [HumanMessage(content=prompt)]}, context=context, config=config)
+        with traced_run("escalate", invoice_id, context, request, level=new_level) as run:
+            response = invoke_agent_with_retry({"messages": [HumanMessage(content=prompt)]}, context=context, config=config)
+            note_run_outcome(run, response)
     except Exception:
-        logger.exception("Agent could not draft after escalating invoice %s", invoice_id)
+        logger.exception("Agent could not draft after escalating invoice %s run_id=%s", invoice_id, run_id_of(request))
         try:
             snapshot = agent.get_state(config)
             messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
@@ -1808,6 +1881,14 @@ def resume(
         logger.exception("Could not read the pending action for invoice %s", invoice_id)
 
     sync_agent_state_from_invoice(invoice_id, config)
+    level = pending_state.get("escalation_level", invoice.get("escalation_level"))
+    with traced_run("resume", invoice_id, context, request, level=level) as run:
+        run.add("human_decision", (pending_action or {}).get("name"),
+                describe_decision(req.decision, req.message, pending_action, pending_state, context))
+        return _resume_run(invoice_id, req, user, context, config, pending_action, pending_state, run)
+
+
+def _resume_run(invoice_id, req, user, context, config, pending_action, pending_state, run: RunRecorder):
     email_result = None
     email_status = None
 
@@ -1818,15 +1899,21 @@ def resume(
     if req.decision == "approve" and pending_action:
         approved_tool_name = pending_action["name"]
         approved_args = pending_action.get("args", {}) or {}
-        logger.info(f"[RESUME] approving tool={approved_tool_name}")
+        logger.info("[RESUME] approving tool=%s run_id=%s", approved_tool_name, run.id)
         if approved_tool_name in EMAIL_DRAFT_TOOLS:
             try:
                 email_status, email_result, approved_subject, approved_draft_text = send_approved_draft(
                     invoice_id, user, context, approved_tool_name, approved_args, pending_state, req.message,
                 )
             except Exception:
-                logger.exception("Error sending email on approve for invoice %s", invoice_id)
+                logger.exception("Error sending email on approve for invoice %s run_id=%s", invoice_id, run.id)
                 email_status = "failed"
+            run.add("email_send", approved_tool_name, {
+                "status": email_status,
+                "subject": approved_subject,
+                "gmail_message_id": email_result.get("id") if isinstance(email_result, dict) else None,
+                "gmail_thread_id": email_result.get("threadId") if isinstance(email_result, dict) else None,
+            })
 
     if req.decision == "approve":
         decisions = [{"type": "approve"}]
@@ -1848,7 +1935,8 @@ def resume(
             config=config,
         )
     except Exception as e:
-        logger.exception("Agent resume failed for invoice %s", invoice_id)
+        run.fail(e)
+        logger.exception("Agent resume failed for invoice %s run_id=%s", invoice_id, run.id)
         if email_went_out:
             return with_email_status(
                 {"messages": current_messages(config), "interrupt": None, "state": current_state(invoice_id, pending_state)},
@@ -1867,6 +1955,7 @@ def resume(
             raise
         logger.exception("Email sent for invoice %s, but updating its state failed", invoice_id)
 
+    note_run_outcome(run, response)
     result = {
         "messages": serialize_messages(response["messages"]),
         "interrupt": extract_interrupt(response, context),
@@ -1980,7 +2069,9 @@ def handle_client_reply(invoice: dict, from_addr: str, subject: str, body: str) 
             f"{_unfence(body[:2000])}\n</client_reply>\n\n"
             f"Please analyze this reply and suggest the appropriate next action."
         )
-        invoke_agent_with_retry({"messages": [HumanMessage(content=agent_msg)]}, context=context, config=config)
+        with traced_run("inbound_reply", invoice["id"], context, level=invoice.get("escalation_level")) as run:
+            response = invoke_agent_with_retry({"messages": [HumanMessage(content=agent_msg)]}, context=context, config=config)
+            note_run_outcome(run, response)
     except Exception as e:
         logger.error(f"Agent failed to process reply for invoice {invoice['id']}: {e}")
 

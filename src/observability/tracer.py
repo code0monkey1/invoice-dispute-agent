@@ -282,6 +282,15 @@ def _count(key: str) -> None:
         _counters[key] += 1
 
 
+def note_run_outcome(run: RunRecorder, response: dict) -> None:
+    """Record where an agent run stopped: its level, and any approval card it is waiting on."""
+    run.level_end = response.get("escalation_level")
+    for interrupt in response.get("__interrupt__", []) or []:
+        for action in (getattr(interrupt, "value", None) or {}).get("action_requests", []):
+            run.add("interrupt", action.get("name"), {"args": action.get("args", {})})
+            run.status = "interrupted"
+
+
 @contextmanager
 def trace_run(kind: str, *, user_id: str | None, invoice_id: str | None,
               level: int | None = None, model: str | None = None) -> Iterator[RunRecorder]:

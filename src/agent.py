@@ -10,6 +10,7 @@ from langchain.agents.middleware import HumanInTheLoopMiddleware
 from src.state import InvoiceDisputeState, FreelancerContext
 from src.middleware.dynamic_tools import dynamic_tool_middleware, enforce_tool_gate
 from src.middleware.dynamic_prompts import escalation_prompt
+from src.middleware.tracing import tracing_middleware
 
 from src.tools.drafting import (
     draft_invoice_delivery_email,
@@ -87,6 +88,8 @@ def build_agent(model, checkpointer):
         middleware=[
             dynamic_tool_middleware,
             escalation_prompt,
+            # Innermost model-call wrapper: records the prompt and tools as sent.
+            tracing_middleware,
             HumanInTheLoopMiddleware(
                 interrupt_on={
                     "draft_polite_reminder": True,

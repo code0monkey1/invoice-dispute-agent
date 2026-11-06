@@ -5,6 +5,7 @@ load_dotenv()
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from src.agent import agent
+from src.observability.tracer import note_run_outcome, trace_run
 from src.state import FreelancerContext
 
 
@@ -21,6 +22,29 @@ def print_interrupt(response):
     print(f"{'='*60}")
     print("  Type 'approve', 'reject', or 'edit' to respond.")
     print()
+
+
+def run_traced(payload, context, config, decision=None):
+    """One traced agent run. Resumes pass the context too: the system prompt is built from it."""
+    with trace_run("cli", user_id=context.user_id or None, invoice_id=None) as run:
+        context.trace_run_id = run.id
+        try:
+            if decision is not None:
+                run.add("human_decision", None, decision)
+            response = agent.invoke(payload, context=context, config=config)
+            note_run_outcome(run, response)
+            return response
+        finally:
+            context.trace_run_id = None
+
+
+def resume(decision_type, context, config, message=None):
+    decision = {"type": decision_type}
+    traced = {"decision": decision_type}
+    if message is not None:
+        decision["message"] = message
+        traced["feedback"] = message
+    return run_traced(Command(resume={"decisions": [decision]}), context, config, decision=traced)
 
 
 def main():
@@ -43,32 +67,19 @@ def main():
 
         # Handle HITL resume commands
         if user_input.lower() == "approve":
-            response = agent.invoke(
-                Command(resume={"decisions": [{"type": "approve"}]}),
-                config=config
-            )
+            response = resume("approve", context, config)
         elif user_input.lower() == "reject":
             reason = input("Rejection reason (optional): ").strip()
-            response = agent.invoke(
-                Command(resume={"decisions": [{"type": "reject", "message": reason or "Please revise."}]}),
-                config=config
-            )
+            response = resume("reject", context, config, reason or "Please revise.")
         elif user_input.lower() == "edit":
             new_text = input("Enter your edited version: ").strip()
-            if new_text:
-                response = agent.invoke(
-                    Command(resume={"decisions": [{"type": "reject", "message": new_text}]}),
-                    config=config
-                )
-            else:
+            if not new_text:
                 print("No edit provided, skipping.")
                 continue
+            # Sent as feedback: the agent rewrites the draft from the edited text.
+            response = resume("reject", context, config, new_text)
         else:
-            response = agent.invoke(
-                {"messages": [HumanMessage(content=user_input)]},
-                context=context,
-                config=config,
-            )
+            response = run_traced({"messages": [HumanMessage(content=user_input)]}, context, config)
 
         # Check for HITL interrupt
         if response.get("__interrupt__"):

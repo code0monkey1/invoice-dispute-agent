@@ -189,6 +189,7 @@ def fake_db():
 @pytest_asyncio.fixture
 async def client(fake_db):
     """Async HTTPX client hitting the FastAPI app in-process, with fake DB."""
-    from api.index import app
+    from api.index import RATE_LIMITS, app
+    RATE_LIMITS.clear()  # per-test isolation: the limiter is process-global
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
