@@ -38,6 +38,11 @@ MAX_JUDGE_DROP = 0.5
 RATE_METRICS = (("tool_accuracy", "tool accuracy"), ("hitl_rate", "approval rule"), ("rule_rate", "tone rules"))
 
 
+def judge_model_name(requested: str | None) -> str:
+    """--judge-model, else EVAL_JUDGE_MODEL, else the default. Empty values count as unset."""
+    return requested or os.getenv("EVAL_JUDGE_MODEL") or DEFAULT_JUDGE_MODEL
+
+
 def _percentile(values: list[int], pct: float) -> int | None:
     if not values:
         return None
@@ -211,7 +216,7 @@ def main(argv: list[str] | None = None, *, model_factory: Callable[[Any], Any] |
     if not args.no_judge:
         if judge_factory is None:
             from langchain.chat_models import init_chat_model
-            judge_name = args.judge_model or os.getenv("EVAL_JUDGE_MODEL", DEFAULT_JUDGE_MODEL)
+            judge_name = judge_model_name(args.judge_model)
             judge = init_chat_model(judge_name, model_provider="groq", temperature=0)
         else:
             judge = judge_factory()

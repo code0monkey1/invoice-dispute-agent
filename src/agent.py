@@ -40,7 +40,8 @@ ALL_TOOLS = [
 
 # Groq retires models over time, so the model is configurable. The default
 # must support tool calling, which the agent depends on.
-GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+# An empty value (e.g. an unset CI variable) means "use the default".
+GROQ_MODEL = os.getenv("GROQ_MODEL") or "openai/gpt-oss-120b"
 
 model = init_chat_model(GROQ_MODEL, model_provider="groq")
 
