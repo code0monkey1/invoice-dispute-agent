@@ -124,3 +124,16 @@ def test_an_email_cut_by_the_length_cap_is_not_leaked():
     text = "x" * (7_990) + " leaky.person@client-domain.example tail"
     out = redact(text)
     assert "leaky" not in out and "client-domain" not in out
+
+
+@pytest.mark.parametrize("boundary", ["cap", "window"])
+@pytest.mark.parametrize("shift", range(-45, 46, 9))
+def test_no_fragment_of_an_email_survives_near_the_cut(boundary, shift):
+    """Earlier redactions shorten the text; a half-cut address must still never be emitted."""
+    shrinking = "someone.long@customer-domain.example " * 40  # each becomes "[email] "
+    edge = tracer.MAX_TEXT_CHARS + (tracer._REDACT_MARGIN if boundary == "window" else 0)
+    filler = "x" * (edge - len(shrinking) + shift)
+    text = shrinking + filler + " secretname@leak-domain.example and more text " * 3
+    out = redact(text)
+    assert "secretname" not in out and "leak-domain" not in out
+    assert "customer-domain" not in out

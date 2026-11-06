@@ -48,31 +48,44 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     "llama-3.1-8b-instant": (0.05, 0.08),
 }
 
-# Quantifiers are bounded (RFC 5321 lengths) so matching stays linear on
-# untrusted text such as client replies and web search results.
-_EMAIL = re.compile(r"[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}")
-_IBAN = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b")
-_LONG_NUMBER = re.compile(r"(?<![\w-])(?:\d[ -]?){12,19}\d(?![\w-])")
-_PHONE = re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\w)")
-
-
-# Text is cut before redacting so hostile input can't make the regexes slow.
-# The margin is longer than any email address (254 chars), so an address that
-# starts before the cut is still seen whole and masked, never left half-shown.
-_REDACT_MARGIN = 320
+# One pass over the text with every pattern. Quantifiers are bounded (RFC 5321
+# lengths) so matching stays linear on untrusted text such as client replies
+# and web search results. The longest possible match is under _REDACT_MARGIN.
+_SENSITIVE = re.compile(
+    r"(?P<email>[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,4})"
+    r"|(?P<number>\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b|(?<![\w-])(?:\d[ -]?){12,19}\d(?![\w-]))"
+    r"|(?P<phone>(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\w))"
+)
+_REDACT_MARGIN = 512
 
 
 def redact(text: str) -> str:
-    """Mask contact details and account-like numbers, and cap the length."""
-    original_length = len(text)
-    text = text[: MAX_TEXT_CHARS + _REDACT_MARGIN]
-    text = _EMAIL.sub("[email]", text)
-    text = _IBAN.sub("[number]", text)
-    text = _LONG_NUMBER.sub("[number]", text)
-    text = _PHONE.sub("[phone]", text)
-    if original_length > MAX_TEXT_CHARS:
-        text = f"{text[:MAX_TEXT_CHARS]}…[truncated {original_length - MAX_TEXT_CHARS} chars]"
-    return text
+    """Mask contact details and account-like numbers, and cap the length.
+
+    Only a window of the text is scanned, so hostile input can't make this
+    slow. When the window cuts the text, nothing from its last _REDACT_MARGIN
+    characters is emitted: a match can't start before that point and run past
+    the window, so no half-cut address or number is ever shown.
+
+        |<------------- MAX_TEXT_CHARS ------------->|<- margin ->|  rest (dropped)
+        |   emitted, with matches masked             | matches that start here are dropped
+    """
+    window = text[: MAX_TEXT_CHARS + _REDACT_MARGIN]
+    safe_end = len(window) if len(window) == len(text) else MAX_TEXT_CHARS
+    parts: list[str] = []
+    position = 0
+    for match in _SENSITIVE.finditer(window):
+        if match.start() >= safe_end:
+            break
+        parts.append(window[position:match.start()])
+        parts.append(f"[{match.lastgroup}]")
+        position = match.end()
+    if position < safe_end:
+        parts.append(window[position:safe_end])
+    out = "".join(parts)
+    if len(text) > MAX_TEXT_CHARS:
+        out = f"{out[:MAX_TEXT_CHARS]}…[truncated {len(text) - MAX_TEXT_CHARS} chars]"
+    return out
 
 
 def _clean(value: Any) -> Any:
@@ -164,8 +177,10 @@ class RunRecorder:
         return round(self._cost, 8)
 
     def fail(self, exc: BaseException) -> None:
+        """Mark the run failed. The first error is kept: it is the cause, later ones are consequences."""
         self.status = "error"
-        self.error = redact(f"{type(exc).__name__}: {exc}")[:MAX_ERROR_CHARS]
+        if self.error is None:
+            self.error = redact(f"{type(exc).__name__}: {exc}")[:MAX_ERROR_CHARS]
 
     def finish(self) -> None:
         self.ended_at = _iso_now()
