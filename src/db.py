@@ -700,3 +700,8 @@ def get_trace_steps(run_ids: list[str]) -> dict[str, list[dict]]:
     for steps in grouped.values():
         steps.sort(key=lambda s: s.get("seq") or 0)
     return grouped
+
+
+def get_agent_run(run_id: str) -> Optional[dict]:
+    rows = _supabase_rest_request("GET", "agent_runs", query=[("id", f"eq.{run_id}")]) or []
+    return rows[0] if rows else None
