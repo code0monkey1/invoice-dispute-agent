@@ -103,6 +103,11 @@ export const api = {
   // Invoices
   getInvoices: () => request<import('./types').Invoice[]>('/api/invoices'),
 
+  getTraces: (invoiceId: string, before?: string) =>
+    request<import('./types').TracesResponse>(
+      `/api/invoices/${invoiceId}/traces${before ? `?before=${encodeURIComponent(before)}` : ''}`
+    ),
+
   getHistory: (invoiceId: string) =>
     request<import('./types').ChatResponse>(`/api/invoices/${invoiceId}/history`),
 

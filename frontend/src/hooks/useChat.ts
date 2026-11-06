@@ -49,6 +49,8 @@ export function useChat(invoiceId: string) {
     onSettled: () => {
       setPending(null)
       void qc.invalidateQueries({ queryKey: qk.invoices })
+      // Every chat, escalation or decision is a new agent run.
+      void qc.invalidateQueries({ queryKey: qk.traces(invoiceId) })
     },
   })
   const settleMutation = useSettleInvoice()

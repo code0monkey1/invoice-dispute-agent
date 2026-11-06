@@ -6,7 +6,7 @@ import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { Analytics } from '@vercel/analytics/react'
 import { AuthProvider } from './contexts/AuthContext'
 import App from './App'
-import { CACHE_MAX_AGE, cacheBuster, persister, queryClient } from './queryClient'
+import { CACHE_MAX_AGE, cacheBuster, persister, queryClient, shouldPersistQuery } from './queryClient'
 import './index.css'
 
 createRoot(document.getElementById('root')!).render(
@@ -15,7 +15,12 @@ createRoot(document.getElementById('root')!).render(
         refreshes stale entries in the background. */}
     <PersistQueryClientProvider
       client={queryClient}
-      persistOptions={{ persister, maxAge: CACHE_MAX_AGE, buster: cacheBuster() }}
+      persistOptions={{
+        persister,
+        maxAge: CACHE_MAX_AGE,
+        buster: cacheBuster(),
+        dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
+      }}
     >
       <BrowserRouter>
         <AuthProvider>
