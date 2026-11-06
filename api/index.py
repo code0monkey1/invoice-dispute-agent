@@ -288,12 +288,21 @@ def sync_agent_state_from_invoice(invoice_id: str, config: dict) -> dict | None:
         # is opened or chatted with.
         snapshot = agent.get_state(config)
         current = dict(getattr(snapshot, "values", None) or {})
-        changes = {k: v for k, v in persisted_state.items() if current.get(k) != v}
+        changes = {k: v for k, v in persisted_state.items() if not _same_value(current.get(k), v)}
         if changes:
             agent.update_state(config, changes)
     except Exception:
         logger.exception("Failed to sync agent state for invoice %s", invoice_id)
     return persisted_state
+
+
+def _same_value(a, b) -> bool:
+    """Equal, counting None and '' as the same "no value" (the database gives '' for NULL)."""
+    return a == b or (a in (None, "") and b in (None, ""))
+
+
+def has_pending_interrupt(snapshot) -> bool:
+    return any(getattr(task, "interrupts", None) for task in (getattr(snapshot, "tasks", None) or []))
 
 
 @contextmanager
@@ -1200,9 +1209,19 @@ def get_invoice_history(
     authorization: str | None = Header(None),
 ):
     """Retrieve the full conversation history and state for an existing thread."""
-    authorize_invoice_access(invoice_id, request, authorization)
+    invoice = authorize_invoice_access(invoice_id, request, authorization)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
-    persisted_state = sync_agent_state_from_invoice(invoice_id, config)
+    # Reading must never lose a waiting approval card: any agent state write
+    # empties it. With a card waiting, show the database values without
+    # syncing; the next chat or decision syncs as usual.
+    try:
+        pending = has_pending_interrupt(agent.get_state(config))
+    except Exception:
+        pending = False
+    if pending:
+        persisted_state = invoice_state_from_db(invoice)
+    else:
+        persisted_state = sync_agent_state_from_invoice(invoice_id, config)
     try:
         snapshot = agent.get_state(config)
     except Exception:
