@@ -34,6 +34,15 @@ def event_loop():
     loop.close()
 
 
+def _as_time(value):
+    """Compare timestamps the way Postgres does, not as strings."""
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return str(value)
+
+
 class FakeDB:
     """Minimal in-memory replacement for the Supabase REST layer."""
 
@@ -77,6 +86,8 @@ class FakeDB:
             elif v.startswith("in.(") and v.endswith(")"):
                 wanted = {x.strip().strip('"') for x in v[4:-1].split(",")}
                 rows = [r for r in rows if str(r.get(k, "")) in wanted]
+            elif v.startswith("lt."):
+                rows = [r for r in rows if r.get(k) is not None and _as_time(r[k]) < _as_time(v[3:])]
             elif v.startswith("neq."):
                 unwanted = v[4:]
                 rows = [r for r in rows if str(r.get(k, "")) != unwanted]

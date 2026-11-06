@@ -9,6 +9,7 @@ supabase/schema.sql — run that once in the Supabase SQL editor.
 import base64
 import hashlib
 import json
+import logging
 import time
 import os
 import urllib.error
@@ -24,6 +25,8 @@ from supabase import create_client, Client
 # ---------------------------------------------------------------------------
 # Supabase client singleton
 # ---------------------------------------------------------------------------
+
+logger = logging.getLogger("invoicechaser")
 
 _supabase_client: Optional[Client] = None
 
@@ -377,6 +380,18 @@ def migrate_guest_to_user(guest_id: str, real_user_id: str) -> None:
         query=[("user_id", f"eq.{guest_id}")],
         payload={"user_id": real_user_id},
     )
+
+    # Reassign agent traces. Optional data: if the trace table is missing or
+    # down, signing in must still work, so this failure is logged, not raised.
+    try:
+        _supabase_rest_request(
+            "PATCH",
+            "agent_runs",
+            query=[("user_id", f"eq.{guest_id}")],
+            payload={"user_id": real_user_id},
+        )
+    except RuntimeError as exc:
+        logger.warning("Could not move agent traces from %s to %s: %s", guest_id, real_user_id, exc)
 
     # Delete the guest user row (only if it was a per-session guest, not the legacy shared one)
     if guest_id != "guest":

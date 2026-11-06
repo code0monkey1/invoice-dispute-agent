@@ -38,7 +38,7 @@ import urllib.error
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Query
 
 from src.agent import agent
 from src.observability import tracer
@@ -46,6 +46,7 @@ from src.observability.tracer import RunRecorder, note_run_outcome, trace_run
 from src.state import FreelancerContext
 from src.tools.drafting import fill_draft_from_context
 from src.db import (
+    TRACE_RUNS_MAX_LIMIT, get_trace_steps, list_agent_runs,
     get_communications_for,
     DatabaseUnavailable,
     InvoiceAlreadyExists,
@@ -1849,6 +1850,28 @@ def send_approved_draft(
     except Exception:
         logger.exception("Email sent for invoice %s, but recording it failed", invoice_id)
     return "sent", result, subject, draft
+
+
+@app.get("/api/invoices/{invoice_id}/traces")
+def invoice_traces(
+    invoice_id: str,
+    request: Request,
+    limit: int = Query(20, ge=1, le=TRACE_RUNS_MAX_LIMIT),
+    before: datetime | None = Query(None, description="started_at cursor from next_before"),
+    authorization: str | None = Header(None),
+):
+    """The invoice's agent runs, newest first, each with its steps in order.
+
+    Access goes through the invoice: a run is visible to whoever owns the
+    invoice now, which also covers a guest who has since signed in.
+    """
+    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    runs = list_agent_runs(invoice["id"], limit=limit, before=before.isoformat() if before else None)
+    steps = get_trace_steps([run["id"] for run in runs])
+    for run in runs:
+        run["steps"] = steps.get(run["id"], [])
+    next_before = runs[-1]["started_at"] if len(runs) == limit else None
+    return {"runs": runs, "next_before": next_before}
 
 
 @app.post("/api/invoices/{invoice_id}/resume")
