@@ -137,3 +137,16 @@ def test_no_fragment_of_an_email_survives_near_the_cut(boundary, shift):
     out = redact(text)
     assert "secretname" not in out and "leak-domain" not in out
     assert "customer-domain" not in out
+
+
+@pytest.mark.parametrize("text, secrets", [
+    ("reach me at +1 (415) 555-0199@x.com today", ["415", "0199", "x.com"]),        # phone-shaped local part
+    ("reach me at john.4155550199@x.com today", ["john", "4155550199", "x.com"]),     # digits inside a local part
+    ("account 4155550199123456789012 please", ["4155550199123456789012", "0199123"]),  # longer than a card number
+    ("ref 415-555-0199-1234-5678-9012 ok", ["0199", "1234", "9012"]),                  # phone prefix on a long number
+    ("x@a.b.c.d.e.f.g.h.example is the inbox", ["example", "a.b.c"]),                 # many domain labels
+])
+def test_overlapping_and_unusual_shapes_are_masked_whole(text, secrets):
+    out = redact(text)
+    for secret in secrets:
+        assert secret not in out, (secret, out)

@@ -48,15 +48,33 @@ MODEL_PRICES: dict[str, tuple[float, float]] = {
     "llama-3.1-8b-instant": (0.05, 0.08),
 }
 
-# One pass over the text with every pattern. Quantifiers are bounded (RFC 5321
-# lengths) so matching stays linear on untrusted text such as client replies
-# and web search results. The longest possible match is under _REDACT_MARGIN.
-_SENSITIVE = re.compile(
-    r"(?P<email>[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,4})"
-    r"|(?P<number>\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b|(?<![\w-])(?:\d[ -]?){12,19}\d(?![\w-]))"
-    r"|(?P<phone>(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\w))"
-)
-_REDACT_MARGIN = 512
+# Each pattern is matched on its own, and overlapping or touching matches are
+# merged, so no ordering leaves part of a value showing: "+1 (415) 555-0199@x.com"
+# (a phone and an email that share digits) is masked as one span. Repetition is
+# bounded or deterministic, so matching stays linear on untrusted text (client
+# replies, web search results).
+_EMAIL = re.compile(r"[\w.+-]{1,64}@[\w-]{1,63}(?:\.[\w-]{1,63}){1,8}")
+_NUMBER = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b|(?<![\w-])(?:\d[ -]?){12,}\d")
+_PHONE = re.compile(r"(?<!\w)(?:\+?\d{1,3}[\s.-]?)?(?:\(\d{3}\)|\d{3})[\s.-]?\d{3}[\s.-]?\d{4}(?!\w)")
+_PATTERNS = (("email", _EMAIL), ("number", _NUMBER), ("phone", _PHONE))  # label priority order
+_PRIORITY = {label: rank for rank, (label, _) in enumerate(_PATTERNS)}
+# Longer than any single email match (64 + 1 + 9 * 64 = 641 chars).
+_REDACT_MARGIN = 768
+
+
+def _sensitive_spans(text: str) -> list[tuple[int, int, str]]:
+    spans = sorted(
+        (m.start(), m.end(), label) for label, pattern in _PATTERNS for m in pattern.finditer(text)
+    )
+    merged: list[tuple[int, int, str]] = []
+    for start, end, label in spans:
+        if merged and start <= merged[-1][1]:
+            prev_start, prev_end, prev_label = merged[-1]
+            best = prev_label if _PRIORITY[prev_label] <= _PRIORITY[label] else label
+            merged[-1] = (prev_start, max(prev_end, end), best)
+        else:
+            merged.append((start, end, label))
+    return merged
 
 
 def redact(text: str) -> str:
@@ -64,8 +82,8 @@ def redact(text: str) -> str:
 
     Only a window of the text is scanned, so hostile input can't make this
     slow. When the window cuts the text, nothing from its last _REDACT_MARGIN
-    characters is emitted: a match can't start before that point and run past
-    the window, so no half-cut address or number is ever shown.
+    characters is emitted as text: a value can't start before that point and
+    run past the window, so no half-cut address or number is ever shown.
 
         |<------------- MAX_TEXT_CHARS ------------->|<- margin ->|  rest (dropped)
         |   emitted, with matches masked             | matches that start here are dropped
@@ -74,12 +92,12 @@ def redact(text: str) -> str:
     safe_end = len(window) if len(window) == len(text) else MAX_TEXT_CHARS
     parts: list[str] = []
     position = 0
-    for match in _SENSITIVE.finditer(window):
-        if match.start() >= safe_end:
+    for start, end, label in _sensitive_spans(window):
+        if start >= safe_end:
             break
-        parts.append(window[position:match.start()])
-        parts.append(f"[{match.lastgroup}]")
-        position = match.end()
+        parts.append(window[position:start])
+        parts.append(f"[{label}]")
+        position = end
     if position < safe_end:
         parts.append(window[position:safe_end])
     out = "".join(parts)
