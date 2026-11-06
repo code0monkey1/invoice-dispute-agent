@@ -116,7 +116,7 @@ def _supabase_rest_request(
     table: str,
     *,
     query: Optional[Sequence[tuple[str, str]]] = None,
-    payload: Optional[dict] = None,
+    payload: Optional[dict | list] = None,
     prefer: Optional[str] = None,
 ):
     key = os.environ.get("SUPABASE_KEY")
@@ -639,3 +639,49 @@ def get_communications(invoice_id: str) -> list[dict]:
         "communication_history",
         query=[("select", "*"), ("invoice_id", f"eq.{invoice_id}"), ("order", "timestamp.asc")],
     ) or []
+
+
+# ---------------------------------------------------------------------------
+# Agent traces (written by src.observability.tracer, read by the trace viewer)
+# ---------------------------------------------------------------------------
+
+TRACE_RUNS_MAX_LIMIT = 50
+
+
+def insert_agent_run(row: dict) -> None:
+    _supabase_rest_request("POST", "agent_runs", payload=row, prefer="return=minimal")
+
+
+def insert_trace_steps(steps: list[dict]) -> None:
+    """All of a run's steps in one request."""
+    if steps:
+        _supabase_rest_request("POST", "agent_trace_steps", payload=steps, prefer="return=minimal")
+
+
+def list_agent_runs(invoice_id: str, limit: int = 20, before: Optional[str] = None) -> list[dict]:
+    """An invoice's runs, newest first. *before* is a started_at cursor for the next page."""
+    query = [
+        ("invoice_id", f"eq.{invoice_id}"),
+        ("order", "started_at.desc"),
+        ("limit", str(max(1, min(int(limit), TRACE_RUNS_MAX_LIMIT)))),
+    ]
+    if before:
+        query.append(("started_at", f"lt.{before}"))
+    return _supabase_rest_request("GET", "agent_runs", query=query) or []
+
+
+def get_trace_steps(run_ids: list[str]) -> dict[str, list[dict]]:
+    """Steps for several runs in one query, grouped by run and in order."""
+    grouped: dict[str, list[dict]] = {run_id: [] for run_id in run_ids}
+    if not run_ids:
+        return grouped
+    rows = _supabase_rest_request(
+        "GET",
+        "agent_trace_steps",
+        query=[("run_id", f"in.({','.join(run_ids)})"), ("order", "seq.asc")],
+    ) or []
+    for row in rows:
+        grouped.setdefault(row["run_id"], []).append(row)
+    for steps in grouped.values():
+        steps.sort(key=lambda s: s.get("seq") or 0)
+    return grouped

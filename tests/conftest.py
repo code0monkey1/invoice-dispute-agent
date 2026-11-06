@@ -43,12 +43,22 @@ class FakeDB:
         self.communications: list[dict] = []
         self.storage: dict = {}  # path -> bytes
         self.requests: list[tuple] = []  # (method, table, params), to count round trips
+        self.agent_runs: list[dict] = []
+        self.trace_steps: list[dict] = []
+        self.down_tables: set[str] = set()  # tables that answer like a Supabase outage
 
     def handle(self, method, path_segments, query=None, payload=None, prefer=None):
         query = query or []
         params = dict(query)
         table = path_segments[0] if path_segments else ""
         self.requests.append((method, table, params))
+        if table in self.down_tables:
+            from src.db import DatabaseUnavailable
+            raise DatabaseUnavailable(f"{table} is down (simulated)")
+        if table == "agent_runs":
+            return self._rows(self.agent_runs, method, params, payload, order_key="started_at")
+        if table == "agent_trace_steps":
+            return self._rows(self.trace_steps, method, params, payload, order_key="seq")
         if table == "users":
             return self._users(method, params, payload)
         if table == "invoices":
@@ -59,7 +69,7 @@ class FakeDB:
 
     def _filter(self, rows, params):
         for k, v in params.items():
-            if k in ("select", "order"):
+            if k in ("select", "order", "limit"):
                 continue
             if v.startswith("eq."):
                 wanted = v[3:]
@@ -71,6 +81,31 @@ class FakeDB:
                 unwanted = v[4:]
                 rows = [r for r in rows if str(r.get(k, "")) != unwanted]
         return rows
+
+    def _rows(self, rows, method, params, payload, order_key):
+        """Generic table: bulk POST, filtered GET with order/limit, PATCH."""
+        if method == "POST":
+            new = payload if isinstance(payload, list) else [payload]
+            for row in new:
+                row = dict(row)
+                row.setdefault("id", len(rows) + 1)
+                rows.append(row)
+            return new
+        if method == "GET":
+            found = self._filter(list(rows), params)
+            order = params.get("order", "")
+            if order.startswith(order_key) or order.split(".")[0] in ("started_at", "seq", "run_id"):
+                key = order.split(".")[0]
+                found.sort(key=lambda r: (r.get(key) is None, r.get(key)), reverse=order.endswith(".desc"))
+            if "limit" in params:
+                found = found[: int(params["limit"])]
+            return found
+        if method == "PATCH":
+            found = self._filter(list(rows), params)
+            for r in found:
+                r.update(payload or {})
+            return found
+        return None
 
     def _users(self, method, params, payload):
         if method == "GET":
