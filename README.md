@@ -393,12 +393,35 @@ An edited approval is labelled `approved_with_edits`: the app sends your edited 
 - **In the app:** open an invoice and choose the **Trace** tab. Each run shows what started it, where it stopped, time, tokens and cost, and opens into its steps. It refetches after every chat message or decision, and the Chat tab says when a draft is waiting.
 - **From a bug report:** every response that ran the agent carries an `X-Trace-Id` header, and the server's log lines for that request include `run_id=`.
 - **API:** `GET /api/invoices/{id}/traces?limit=20&before=<started_at>` returns runs newest first, with their steps, for the invoice's owner only (others get 404). Steps for a page of runs are read in one query.
+- **Across all users (operators):** the traces are ordinary Postgres tables in the app's Supabase project. Open the Table Editor (`agent_runs`, `agent_trace_steps`), or run SQL like:
+
+  ```sql
+  -- The last 20 runs, with what each one did
+  SELECT r.started_at, r.kind, r.status, r.latency_ms, r.cost_usd,
+         string_agg(s.type || coalesce(':' || s.name, ''), ' > ' ORDER BY s.seq) AS steps
+  FROM agent_runs r JOIN agent_trace_steps s ON s.run_id = r.id
+  GROUP BY r.id ORDER BY r.started_at DESC LIMIT 20;
+
+  -- The exact prompt and tools of one model call, from an X-Trace-Id
+  SELECT seq, payload->>'system_prompt', payload->'tools_offered', payload->'tool_calls'
+  FROM agent_trace_steps WHERE run_id = '<X-Trace-Id>' AND type = 'model_call' ORDER BY seq;
+  ```
+
+### Why not LangSmith (or Langfuse)?
+
+There is no LangSmith in this project. No `LANGSMITH_*` or `LANGCHAIN_TRACING*` variables are set, and no callback sends data anywhere. Tracing is a small LangChain middleware (`src/middleware/tracing.py`) that writes to the app's own Supabase. That fits this agent better for three reasons:
+
+- **The human decision is the important step.** Approving, editing and sending happen in the API, between two agent runs, where a callback-based tracer can't see them. Here they are steps of the same run.
+- **Client data stays in the app.** Prompts contain client names, amounts and replies. They are redacted, kept 30 days and readable only by the server, rather than copied to a third party.
+- **The eval grades the same traces**, so debugging and evaluation never disagree about what happened.
+
+Adding LangSmith later is cheap if a hosted UI is wanted: set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY`, and LangChain sends its own traces alongside these. It is listed as optional in [TODOS.md](TODOS.md).
 
 ### Privacy, retention and failure
 
 - **Redacted before it is stored.** Emails, phone numbers and account-like numbers are masked as `[email]`, `[phone]` and `[number]`. Matches that overlap merge into one mask, so no part of a value shows. Text is capped at 8,000 characters per field and 32 KB per step. Redaction runs in linear time on a bounded window, because client replies and search results are untrusted.
 - **Kept 30 days.** A `pg_cron` job (`purge-agent-traces`, daily at 03:15) deletes older runs, and their steps go with them. Deleting an invoice deletes its runs.
-- **Server-only.** Row-level security is on with no policies, so only the service role can read traces, and the app never saves them in the browser's offline cache.
+- **Server-only.** Row-level security is on with no policies, and the public and signed-in roles have no grants on the trace tables, so only the service role can read them (they don't appear in the GraphQL schema either). The app never saves traces in the browser's offline cache.
 - **Fail-open.** A run that can't be written (database down, tables missing) is logged as `trace.flush failed run_id=…` and counted in `/api/health` under `traces.traces_dropped`. The request itself always completes: an email that already went out is never reported as failed because its trace wasn't saved.
 
 > **Runbook. Traces are missing:** check `/api/health` → `traces`. If `traces_dropped` is rising, look for `trace.flush failed` in the Vercel logs. The usual causes are a Supabase outage or `supabase/schema.sql` not yet applied.
@@ -464,6 +487,8 @@ sequenceDiagram
 |---|---|---|---|
 | 1. Deterministic | `pytest tests/test_eval_invariants.py` | each case's `scripted` good run | every test run and PR (free) |
 | 2. Live | `python -m evals.run` | `GROQ_MODEL`, judge `EVAL_JUDGE_MODEL` | PRs touching the agent (`.github/workflows/evals.yml`), or by hand |
+
+The live tier in CI needs a `GROQ_API_KEY` repository secret (`gh secret set GROQ_API_KEY`). Without it, the check fails straight away with a message saying so. `GROQ_MODEL` and `EVAL_JUDGE_MODEL` can be set as repository variables.
 
 Tier 1 proves the harness, the checks and the golden set agree. Tier 2 grades the real model. Live runs vary, so cases can be repeated (`--repeat 3`) and every gate is a rate. The live run fails when:
 
