@@ -32,13 +32,13 @@ def _render(template: str, ctx) -> str:
 def prompt_for_state(state, ctx) -> str:
     """The system prompt for the agent's state.
 
-    An invoice that exists but hasn't been sent (level 0) gets its own prompt,
-    naming only the tools level 0 has, so the prompt never offers tools the
-    model doesn't have.
+    A saved invoice always works at level 1 or above (invoice_state_from_db
+    reads a stored 0 as 1), so level 0 with an invoice id only happens before
+    the first sync; it gets the level-1 prompt.
     """
     level = state.get("escalation_level", 0) or 0
     if level <= 0 and state.get("invoice_id"):
-        return _render(load_prompt("invoice_not_sent"), ctx)
+        level = 1
     return render_escalation_prompt(level, ctx)
 
 
