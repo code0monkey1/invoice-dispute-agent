@@ -1,4 +1,5 @@
-import { QueryClient } from '@tanstack/react-query'
+import { defaultShouldDehydrateQuery, QueryClient } from '@tanstack/react-query'
+import type { Query } from '@tanstack/react-query'
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister'
 import { del, get, set } from 'idb-keyval'
 
@@ -32,6 +33,14 @@ export const persister = createAsyncStoragePersister({
     removeItem: (key: string) => del(key),
   },
 })
+
+// Agent traces are debug data: fetched fresh when the Trace tab opens, never
+// written to IndexedDB with the rest of the cache.
+const NOT_PERSISTED = new Set<unknown>(['traces'])
+
+export function shouldPersistQuery(query: Query): boolean {
+  return defaultShouldDehydrateQuery(query) && !query.queryKey.some((part) => NOT_PERSISTED.has(part))
+}
 
 // A cache saved for one account is discarded when another account (or a
 // guest) opens the app in the same browser.

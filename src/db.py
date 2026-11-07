@@ -9,6 +9,7 @@ supabase/schema.sql — run that once in the Supabase SQL editor.
 import base64
 import hashlib
 import json
+import logging
 import time
 import os
 import urllib.error
@@ -24,6 +25,8 @@ from supabase import create_client, Client
 # ---------------------------------------------------------------------------
 # Supabase client singleton
 # ---------------------------------------------------------------------------
+
+logger = logging.getLogger("invoicechaser")
 
 _supabase_client: Optional[Client] = None
 
@@ -93,10 +96,10 @@ def _supabase_rest_url(table: str, query: Optional[Sequence[tuple[str, str]]] = 
     return url
 
 
-def _send(request: urllib.request.Request) -> str:
+def _send(request: urllib.request.Request, timeout: float | None = None) -> str:
     method, table = request.get_method(), urllib.parse.urlsplit(request.full_url).path.rsplit("/", 1)[-1]
     try:
-        with urllib.request.urlopen(request, timeout=_SUPABASE_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(request, timeout=timeout or _SUPABASE_TIMEOUT_SECONDS) as response:
             return response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
@@ -116,8 +119,9 @@ def _supabase_rest_request(
     table: str,
     *,
     query: Optional[Sequence[tuple[str, str]]] = None,
-    payload: Optional[dict] = None,
+    payload: Optional[dict | list] = None,
     prefer: Optional[str] = None,
+    timeout: Optional[float] = None,
 ):
     key = os.environ.get("SUPABASE_KEY")
     if not key:
@@ -145,7 +149,7 @@ def _supabase_rest_request(
     delays = _READ_RETRY_DELAYS if method == "GET" else ()
     for attempt in range(len(delays) + 1):
         try:
-            raw = _send(request)
+            raw = _send(request, timeout)
             break
         except DatabaseUnavailable as exc:
             if attempt == len(delays) or not exc.retryable:
@@ -377,6 +381,18 @@ def migrate_guest_to_user(guest_id: str, real_user_id: str) -> None:
         query=[("user_id", f"eq.{guest_id}")],
         payload={"user_id": real_user_id},
     )
+
+    # Reassign agent traces. Optional data: if the trace table is missing or
+    # down, signing in must still work, so this failure is logged, not raised.
+    try:
+        _supabase_rest_request(
+            "PATCH",
+            "agent_runs",
+            query=[("user_id", f"eq.{guest_id}")],
+            payload={"user_id": real_user_id},
+        )
+    except RuntimeError as exc:
+        logger.warning("Could not move agent traces from %s to %s: %s", guest_id, real_user_id, exc)
 
     # Delete the guest user row (only if it was a per-session guest, not the legacy shared one)
     if guest_id != "guest":
@@ -639,3 +655,59 @@ def get_communications(invoice_id: str) -> list[dict]:
         "communication_history",
         query=[("select", "*"), ("invoice_id", f"eq.{invoice_id}"), ("order", "timestamp.asc")],
     ) or []
+
+
+# ---------------------------------------------------------------------------
+# Agent traces (written by src.observability.tracer, read by the trace viewer)
+# ---------------------------------------------------------------------------
+
+TRACE_RUNS_MAX_LIMIT = 50
+# Trace writes happen after a request's real work, inside the 60 s serverless
+# limit, so they get a short timeout: a slow database drops the trace, not the request.
+TRACE_WRITE_TIMEOUT_SECONDS = 3
+
+
+def insert_agent_run(row: dict) -> None:
+    _supabase_rest_request("POST", "agent_runs", payload=row, prefer="return=minimal",
+                           timeout=TRACE_WRITE_TIMEOUT_SECONDS)
+
+
+def insert_trace_steps(steps: list[dict]) -> None:
+    """All of a run's steps in one request."""
+    if steps:
+        _supabase_rest_request("POST", "agent_trace_steps", payload=steps, prefer="return=minimal",
+                               timeout=TRACE_WRITE_TIMEOUT_SECONDS)
+
+
+def list_agent_runs(invoice_id: str, limit: int = 20, before: Optional[str] = None) -> list[dict]:
+    """An invoice's runs, newest first. *before* is a started_at cursor for the next page."""
+    query = [
+        ("invoice_id", f"eq.{invoice_id}"),
+        ("order", "started_at.desc"),
+        ("limit", str(max(1, min(int(limit), TRACE_RUNS_MAX_LIMIT)))),
+    ]
+    if before:
+        query.append(("started_at", f"lt.{before}"))
+    return _supabase_rest_request("GET", "agent_runs", query=query) or []
+
+
+def get_trace_steps(run_ids: list[str]) -> dict[str, list[dict]]:
+    """Steps for several runs in one query, grouped by run and in order."""
+    grouped: dict[str, list[dict]] = {run_id: [] for run_id in run_ids}
+    if not run_ids:
+        return grouped
+    rows = _supabase_rest_request(
+        "GET",
+        "agent_trace_steps",
+        query=[("run_id", f"in.({','.join(run_ids)})"), ("order", "seq.asc")],
+    ) or []
+    for row in rows:
+        grouped.setdefault(row["run_id"], []).append(row)
+    for steps in grouped.values():
+        steps.sort(key=lambda s: s.get("seq") or 0)
+    return grouped
+
+
+def get_agent_run(run_id: str) -> Optional[dict]:
+    rows = _supabase_rest_request("GET", "agent_runs", query=[("id", f"eq.{run_id}")]) or []
+    return rows[0] if rows else None

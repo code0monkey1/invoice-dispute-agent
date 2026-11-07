@@ -1,4 +1,4 @@
-import { queryOptions } from '@tanstack/react-query'
+import { infiniteQueryOptions, queryOptions } from '@tanstack/react-query'
 import { api } from '../api'
 import type { ChatResponse, Invoice, SupabaseCommEntry } from '../types'
 
@@ -10,6 +10,8 @@ export const qk = {
   history: (id: string) => ['invoice', id, 'history'] as const,
   sender: (id: string) => ['invoice', id, 'sender'] as const,
   senderProfile: ['senderProfile'] as const,
+  // Debug data: never saved to the device (see shouldPersistQuery).
+  traces: (id: string) => ['invoice', id, 'traces'] as const,
 }
 
 export const invoicesQuery = () =>
@@ -23,6 +25,14 @@ export const historyQuery = (invoiceId: string) =>
     queryFn: () => api.getHistory(invoiceId),
     // Client replies arrive by webhook, so a chat is re-checked often.
     staleTime: 10_000,
+  })
+
+export const tracesQuery = (invoiceId: string) =>
+  infiniteQueryOptions({
+    queryKey: qk.traces(invoiceId),
+    queryFn: ({ pageParam }) => api.getTraces(invoiceId, pageParam),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.next_before ?? undefined,
   })
 
 export const senderQuery = (invoiceId: string) =>

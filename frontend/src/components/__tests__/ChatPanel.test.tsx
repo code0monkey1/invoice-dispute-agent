@@ -68,6 +68,7 @@ vi.mock('../../api', () => ({
     }),
     updateDetails: vi.fn(),
     updateSender: vi.fn(),
+    getTraces: vi.fn().mockResolvedValue({ runs: [], next_before: null }),
   },
 }));
 
@@ -238,5 +239,34 @@ describe('ChatPanel email send result', () => {
     mocks.hookState.lastEmailSent = { sent: true, id: 'msg-1', status: 'sent', note: 'Sent from your Gmail.' };
     renderChat();
     expect(await screen.findByText(/sent to ap@acme.example/i)).toBeInTheDocument();
+  });
+});
+
+
+describe('ChatPanel trace tab', () => {
+  it('starts on the chat and switches to the agent trace and back', async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    const chatTab = screen.getByRole('tab', { name: /chat/i });
+    const traceTab = screen.getByRole('tab', { name: /trace/i });
+    expect(chatTab).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByPlaceholderText(/type your message|ask about this invoice/i)).toBeInTheDocument();
+
+    await user.click(traceTab);
+    expect(traceTab).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText(/no agent runs yet/i)).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/type your message/i)).not.toBeInTheDocument();
+
+    await user.click(chatTab);
+    expect(screen.getByPlaceholderText(/type your message|ask about this invoice/i)).toBeInTheDocument();
+  });
+
+  it('keeps an approval card reachable: the chat tab shows when a draft is waiting', async () => {
+    mocks.hookState.interrupt = { tool: 'draft_polite_reminder', args: {}, description: 'Subject: Reminder\n\nHi' };
+    const user = userEvent.setup();
+    renderChat();
+    await user.click(screen.getByRole('tab', { name: /trace/i }));
+    expect(screen.getByRole('tab', { name: /chat/i })).toHaveTextContent(/1 waiting/i);
   });
 });

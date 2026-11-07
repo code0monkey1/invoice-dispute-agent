@@ -16,7 +16,11 @@ def _load_escalation_prompt(level: int) -> str:
 
 
 def render_escalation_prompt(level: int, ctx) -> str:
-    return _load_escalation_prompt(level).format(
+    return _render(_load_escalation_prompt(level), ctx)
+
+
+def _render(template: str, ctx) -> str:
+    return template.format(
         freelancer_name=ctx.freelancer_name,
         freelancer_email=ctx.freelancer_email,
         business_name=ctx.business_name,
@@ -25,10 +29,20 @@ def render_escalation_prompt(level: int, ctx) -> str:
     )
 
 
+def prompt_for_state(state, ctx) -> str:
+    """The system prompt for the agent's state.
+
+    A saved invoice always works at level 1 or above (invoice_state_from_db
+    reads a stored 0 as 1), so level 0 with an invoice id only happens before
+    the first sync; it gets the level-1 prompt.
+    """
+    level = state.get("escalation_level", 0) or 0
+    if level <= 0 and state.get("invoice_id"):
+        level = 1
+    return render_escalation_prompt(level, ctx)
+
+
 @dynamic_prompt
 def escalation_prompt(request: ModelRequest) -> str:
     """Generate system prompt based on escalation level."""
-    level = request.state.get("escalation_level", 0)
-    if level <= 0 and request.state.get("invoice_id"):
-        level = 1
-    return render_escalation_prompt(level, request.runtime.context)
+    return prompt_for_state(request.state, request.runtime.context)

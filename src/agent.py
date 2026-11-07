@@ -8,8 +8,9 @@ import os
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 
 from src.state import InvoiceDisputeState, FreelancerContext
-from src.middleware.dynamic_tools import dynamic_tool_middleware
+from src.middleware.dynamic_tools import dynamic_tool_middleware, enforce_tool_gate
 from src.middleware.dynamic_prompts import escalation_prompt
+from src.middleware.tracing import tracing_middleware
 
 from src.tools.drafting import (
     draft_invoice_delivery_email,
@@ -39,7 +40,8 @@ ALL_TOOLS = [
 
 # Groq retires models over time, so the model is configurable. The default
 # must support tool calling, which the agent depends on.
-GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+# An empty value (e.g. an unset CI variable) means "use the default".
+GROQ_MODEL = os.getenv("GROQ_MODEL") or "openai/gpt-oss-120b"
 
 model = init_chat_model(GROQ_MODEL, model_provider="groq")
 
@@ -76,6 +78,24 @@ def _make_checkpointer():
 checkpointer = _make_checkpointer()
 
 
+# Which tools wait for the user's approval before they run. The eval's HITL
+# check (evals/checks.py) reads this too, so the rule and its test can't drift.
+APPROVAL_REQUIRED = {
+    "draft_polite_reminder": True,
+    "draft_invoice_delivery_email": True,
+    "draft_formal_demand_letter": True,
+    "draft_final_notice": True,
+    "update_invoice_details": False,
+    "check_invoice_status": False,
+    "escalate_dispute": False,
+    "lookup_small_claims_procedures": False,
+    "generate_court_filing_guide": False,
+    "mark_invoice_pending": True,
+    "mark_invoice_paid": True,
+    "record_partial_payment": True,
+}
+
+
 def build_agent(model, checkpointer):
     """The agent graph. Tests build it with a scripted model to exercise real HITL flows."""
     return create_agent(
@@ -87,23 +107,14 @@ def build_agent(model, checkpointer):
         middleware=[
             dynamic_tool_middleware,
             escalation_prompt,
+            # Innermost model-call wrapper: records the prompt and tools as sent.
+            tracing_middleware,
             HumanInTheLoopMiddleware(
-                interrupt_on={
-                    "draft_polite_reminder": True,
-                    "draft_invoice_delivery_email": True,
-                    "draft_formal_demand_letter": True,
-                    "draft_final_notice": True,
-                    "update_invoice_details": False,
-                    "check_invoice_status": False,
-                    "escalate_dispute": False,
-                    "lookup_small_claims_procedures": False,
-                    "generate_court_filing_guide": False,
-                    "mark_invoice_pending": True,
-                    "mark_invoice_paid": True,
-                    "record_partial_payment": True,
-                },
+                interrupt_on=APPROVAL_REQUIRED,
                 description_prefix="APPROVAL REQUIRED: Review this draft before sending",
             ),
+            # Listed after HITL so its after_model runs first: refused calls never reach approval.
+            enforce_tool_gate,
         ],
     )
 

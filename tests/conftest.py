@@ -34,98 +34,7 @@ def event_loop():
     loop.close()
 
 
-class FakeDB:
-    """Minimal in-memory replacement for the Supabase REST layer."""
-
-    def __init__(self):
-        self.users: dict = {}
-        self.invoices: dict = {}
-        self.communications: list[dict] = []
-        self.storage: dict = {}  # path -> bytes
-        self.requests: list[tuple] = []  # (method, table, params), to count round trips
-
-    def handle(self, method, path_segments, query=None, payload=None, prefer=None):
-        query = query or []
-        params = dict(query)
-        table = path_segments[0] if path_segments else ""
-        self.requests.append((method, table, params))
-        if table == "users":
-            return self._users(method, params, payload)
-        if table == "invoices":
-            return self._invoices(method, params, payload)
-        if table == "communication_history":
-            return self._communications(method, params, payload)
-        return None
-
-    def _filter(self, rows, params):
-        for k, v in params.items():
-            if k in ("select", "order"):
-                continue
-            if v.startswith("eq."):
-                wanted = v[3:]
-                rows = [r for r in rows if str(r.get(k, "")) == wanted]
-            elif v.startswith("in.(") and v.endswith(")"):
-                wanted = {x.strip().strip('"') for x in v[4:-1].split(",")}
-                rows = [r for r in rows if str(r.get(k, "")) in wanted]
-            elif v.startswith("neq."):
-                unwanted = v[4:]
-                rows = [r for r in rows if str(r.get(k, "")) != unwanted]
-        return rows
-
-    def _users(self, method, params, payload):
-        if method == "GET":
-            return self._filter(list(self.users.values()), params)
-        if method == "POST":
-            row = dict(payload or {})
-            uid = row.get("id")
-            if uid in self.users:
-                self.users[uid].update(row)
-            else:
-                self.users[uid] = row
-            return [self.users[uid]]
-        if method == "PATCH":
-            rows = self._filter(list(self.users.values()), params)
-            for r in rows:
-                r.update(payload or {})
-            return rows
-        return None
-
-    def _invoices(self, method, params, payload):
-        if method == "GET":
-            rows = self._filter(list(self.invoices.values()), params)
-            return rows
-        if method == "POST":
-            row = dict(payload or {})
-            # Apply DB defaults that the real schema would supply.
-            row.setdefault("escalation_level", 0)
-            row.setdefault("amount_paid", 0)
-            row.setdefault("days_overdue", 0)
-            row.setdefault("status", "active")
-            if row["id"] in self.invoices:
-                # invoices.id is the primary key: PostgREST answers 409.
-                from src.db import Conflict
-                raise Conflict(f"duplicate key value violates unique constraint (id={row['id']})")
-            self.invoices[row["id"]] = row
-            return [row]
-        if method == "PATCH":
-            rows = self._filter(list(self.invoices.values()), params)
-            for r in rows:
-                r.update(payload or {})
-            return rows
-        return None
-
-    def _communications(self, method, params, payload):
-        if method == "GET":
-            rows = self._filter(list(self.communications), params)
-            if params.get("order") == "timestamp.asc":
-                rows = sorted(rows, key=lambda r: r.get("timestamp", ""))
-            return rows
-        if method == "POST":
-            row = dict(payload or {})
-            row["id"] = len(self.communications) + 1
-            self.communications.append(row)
-            return [row]
-        return None
+from tests.fakes import FakeDB  # noqa: E402  (shared with the eval harness)
 
 
 @pytest.fixture
@@ -154,6 +63,7 @@ def fake_db():
 @pytest_asyncio.fixture
 async def client(fake_db):
     """Async HTTPX client hitting the FastAPI app in-process, with fake DB."""
-    from api.index import app
+    from api.index import RATE_LIMITS, app
+    RATE_LIMITS.clear()  # per-test isolation: the limiter is process-global
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac

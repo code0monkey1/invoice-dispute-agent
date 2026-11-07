@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Send, ArrowUpCircle, FileText, Shield, MessageSquare, ChevronUp, Pencil, Check, X, MailCheck, MailX, User, AlertCircle } from 'lucide-react'
+import { ArrowLeft, Send, ArrowUpCircle, FileText, Shield, MessageSquare, ChevronUp, Pencil, Check, X, MailCheck, MailX, User, AlertCircle, Activity } from 'lucide-react'
 import MessageBubble from './MessageBubble'
 import DraftApproval from './DraftApproval'
 import EscalationBadge from './EscalationBadge'
+import TracePanel from './TracePanel'
 import { useChat } from '../hooks/useChat'
 import { api } from '../api'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -23,6 +24,7 @@ export default function ChatPanel() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const [chatFocused, setChatFocused] = useState(false)
+  const [view, setView] = useState<'chat' | 'trace'>('chat')
   const [editingDetails, setEditingDetails] = useState(false)
   const [editName, setEditName] = useState('')
   const [editEmail, setEditEmail] = useState('')
@@ -135,6 +137,39 @@ export default function ChatPanel() {
           {agentState && <EscalationBadge level={agentState.escalation_level} />}
         </div>
 
+        {/* Chat | Trace */}
+        <div role="tablist" aria-label="Invoice view" className="flex gap-1 px-4 pt-2 border-b border-gray-100 bg-white">
+          {([
+            { id: 'chat', label: 'Chat', icon: MessageSquare },
+            { id: 'trace', label: 'Trace', icon: Activity },
+          ] as const).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`tab-${id}`}
+              aria-selected={view === id}
+              aria-controls={`panel-${id}`}
+              onClick={() => setView(id)}
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 -mb-px transition-colors ${
+                view === id ? 'border-[#FF6B35] text-[#FF6B35]' : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" aria-hidden />
+              {label}
+              {id === 'chat' && view !== 'chat' && interrupt && APPROVAL_TOOLS.includes(interrupt.tool) && (
+                <span className="rounded-full bg-amber-100 text-amber-700 px-1.5 text-[10px]">1 waiting</span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {view === 'trace' ? (
+          <div role="tabpanel" id="panel-trace" aria-labelledby="tab-trace" className="flex-1 flex flex-col min-h-0">
+            <TracePanel invoiceId={invoiceId || ''} />
+          </div>
+        ) : (
+        <div role="tabpanel" id="panel-chat" aria-labelledby="tab-chat" className="flex-1 flex flex-col min-h-0">
         {/* Messages */}
         <div className="flex-1 overflow-y-auto py-4 space-y-1 bg-gradient-to-b from-orange-50/20 to-white">
           {messages.length === 0 && !loading && !showFirstOpenActions && (
@@ -260,6 +295,8 @@ export default function ChatPanel() {
             </button>
           </div>
         </div>
+        </div>
+        )}
       </div>
 
       {/* Sidebar */}

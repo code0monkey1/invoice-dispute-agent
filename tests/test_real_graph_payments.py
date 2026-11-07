@@ -5,36 +5,13 @@ middleware and HITL config, via src.agent.build_agent) with a scripted chat
 model, so they catch anything the fake gets wrong about interrupts, resumes
 and state.
 """
-import uuid
-
 import pytest
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.messages import AIMessage
-from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import MemorySaver
 
 from tests.test_approve_sends_email import create_invoice, sent, signed_in  # noqa: F401
 
 
-class ScriptedModel(BaseChatModel):
-    """Returns the queued replies in order; ends a run with plain text when the queue is empty."""
-
-    replies: list = []
-
-    @property
-    def _llm_type(self) -> str:
-        return "scripted"
-
-    def bind_tools(self, tools, **kwargs):
-        return self
-
-    def _generate(self, messages, stop=None, run_manager=None, **kwargs):
-        reply = self.replies.pop(0) if self.replies else AIMessage(content="Okay.")
-        return ChatResult(generations=[ChatGeneration(message=reply)])
-
-
-def tool_call(name, **args):
-    return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": f"call-{uuid.uuid4().hex[:8]}"}])
+from tests.fakes import ScriptedModel, tool_call  # noqa: E402,F401  (re-exported for other tests)
 
 
 @pytest.fixture

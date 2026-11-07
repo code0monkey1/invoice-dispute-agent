@@ -1,0 +1,79 @@
+# The live golden-set eval (python -m evals.run) on PRs that can change how the
+# agent behaves: prompts, middleware, tools, the agent, or the eval itself.
+# Posts the scorecard as one PR comment (updated on each push) and fails the
+# check if a gate fails. See evals/run.py for the gates.
+#
+# Needs the GROQ_API_KEY repository secret. Optional repository variables:
+# GROQ_MODEL (agent model) and EVAL_JUDGE_MODEL (judge model).
+name: Agent eval
+
+on:
+  pull_request:
+    paths:
+      - src/prompts/**
+      - src/prompts.py
+      - src/middleware/**
+      - src/tools/**
+      - src/agent.py
+      - evals/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden-set:
+    # Fork PRs can't read secrets (pull_request, not pull_request_target, on purpose).
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+      EVAL_JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Run the golden set
+        id: eval
+        run: |
+          set +e
+          python -m evals.run --out-dir eval-out --baseline evals/results/baseline.json
+          echo "code=$?" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: eval-results
+          path: eval-out/
+
+      - name: Post the scorecard on the PR
+        if: github.event_name == 'pull_request' && hashFiles('eval-out/latest.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh pr comment "$PR" --body-file eval-out/latest.md --edit-last \
+            || gh pr comment "$PR" --body-file eval-out/latest.md
+
+      - name: Fail if a gate failed
+        if: steps.eval.outputs.code != '0'
+        env:
+          CODE: ${{ steps.eval.outputs.code }}
+        run: |
+          if [ "$CODE" = "2" ]; then
+            echo "::error::The eval couldn't run: set the GROQ_API_KEY repository secret (or check evals/results/baseline.json)."
+          else
+            echo "::error::The golden-set eval failed a gate (exit $CODE). See the scorecard on the PR or in the eval-results artifact."
+          fi
+          exit 1

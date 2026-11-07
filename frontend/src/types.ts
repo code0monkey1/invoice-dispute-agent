@@ -169,3 +169,39 @@ export interface GenerateInvoiceRequest {
   file_name: string;
   file_size: number;
 }
+
+// Agent traces (GET /api/invoices/{id}/traces). Text in payloads is redacted server-side.
+export type TraceStepType =
+  | 'model_call' | 'tool_call' | 'gate_blocked' | 'interrupt' | 'human_decision' | 'email_send'
+
+export interface TraceStep {
+  seq: number
+  type: TraceStepType | string
+  name: string | null
+  payload: Record<string, unknown>
+  latency_ms: number | null
+  input_tokens?: number | null
+  output_tokens?: number | null
+}
+
+export interface TraceRun {
+  id: string
+  kind: 'chat' | 'escalate' | 'resume' | 'inbound_reply' | 'cli' | string
+  status: 'ok' | 'interrupted' | 'error' | string
+  model: string | null
+  prompt_version: string | null
+  level_start: number | null
+  level_end: number | null
+  started_at: string
+  latency_ms: number | null
+  input_tokens: number | null
+  output_tokens: number | null
+  cost_usd: number | null
+  error: string | null
+  steps: TraceStep[]
+}
+
+export interface TracesResponse {
+  runs: TraceRun[]
+  next_before: string | null
+}

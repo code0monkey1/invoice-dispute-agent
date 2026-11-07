@@ -94,3 +94,73 @@ ON CONFLICT (id) DO NOTHING;
 
 -- Sender profile (used by the Invoice Generator module).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS sender_profile JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+-- ---------------------------------------------------------------------------
+-- Agent traces (src/observability/tracer.py). One row per agent run (a chat
+-- message, an escalation, a resume after a human decision, a client reply),
+-- and one row per step of it: model calls, tool calls, refused tools,
+-- interrupts, human decisions, sent emails. Text is redacted before it is
+-- written. Times are TIMESTAMPTZ (unlike the TEXT columns above) because
+-- retention needs date arithmetic and the trace viewer needs ms ordering.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS agent_runs (
+    id              TEXT PRIMARY KEY,
+    user_id         TEXT,                     -- owner at the time; access goes through the invoice
+    invoice_id      TEXT REFERENCES invoices(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,            -- chat | escalate | resume | inbound_reply | cli
+    status          TEXT NOT NULL,            -- ok | interrupted | error
+    prompt_version  TEXT,
+    model           TEXT,
+    level_start     INTEGER,
+    level_end       INTEGER,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ended_at        TIMESTAMPTZ,
+    latency_ms      INTEGER,
+    input_tokens    INTEGER,
+    output_tokens   INTEGER,
+    cost_usd        NUMERIC(12, 8),
+    step_count      INTEGER,
+    error           TEXT
+);
+
+CREATE TABLE IF NOT EXISTS agent_trace_steps (
+    id            BIGSERIAL PRIMARY KEY,
+    run_id        TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
+    seq           INTEGER NOT NULL,
+    type          TEXT NOT NULL,              -- model_call | tool_call | gate_blocked | interrupt | human_decision | email_send
+    name          TEXT,
+    payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
+    latency_ms    INTEGER,
+    input_tokens  INTEGER,
+    output_tokens INTEGER,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (run_id, seq)
+);
+
+-- The trace viewer: an invoice's runs, newest first. The UNIQUE above serves step lookups.
+CREATE INDEX IF NOT EXISTS idx_agent_runs_invoice_started ON agent_runs (invoice_id, started_at DESC);
+-- Guest -> account migration, and the retention purge.
+CREATE INDEX IF NOT EXISTS idx_agent_runs_user ON agent_runs (user_id);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_started ON agent_runs (started_at);
+
+-- Only the server (service role, which bypasses RLS) reads or writes traces.
+-- With RLS on and no policies, the public anon key can't read them via PostgREST.
+ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agent_trace_steps ENABLE ROW LEVEL SECURITY;
+-- And not even discoverable (e.g. in the GraphQL schema) to the public or signed-in roles.
+REVOKE ALL ON agent_runs, agent_trace_steps FROM anon, authenticated;
+REVOKE ALL ON SEQUENCE agent_trace_steps_id_seq FROM anon, authenticated;
+
+-- Keep traces for 30 days. Steps go with their run (ON DELETE CASCADE).
+-- Re-running reschedules the same named job.
+CREATE EXTENSION IF NOT EXISTS pg_cron;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'pg_cron') THEN
+        PERFORM cron.schedule(
+            'purge-agent-traces',
+            '15 3 * * *',
+            $job$DELETE FROM agent_runs WHERE started_at < NOW() - INTERVAL '30 days'$job$
+        );
+    END IF;
+END $$;
