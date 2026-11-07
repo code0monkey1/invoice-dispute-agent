@@ -161,3 +161,41 @@ def test_traceable_inputs_never_include_the_user_row_or_tokens():
     for inputs in (resume_inputs, send_inputs, reply_inputs):
         text = str(inputs)
         assert "secret" not in text and "tok" not in text.replace("tool", "") and "owner@example.com" not in text
+
+
+def test_agent_addressed_tracing_never_breaks_a_client_reply(monkeypatch, fake_db, scripted):
+    """With an agent-addressed LangSmith setup, a traced client reply must still run the agent.
+
+    langchain-core < 1.6.11 sent a default project alongside the agent address,
+    so LangSmith refused the run and the reply was never processed.
+    """
+    from langsmith import Client
+    from langsmith.run_helpers import tracing_context
+    from langchain_core.messages import AIMessage
+    import api.index as api_index
+
+    class NoNetwork(Client):
+        def __init__(self):
+            super().__init__(api_key="test", auto_batch_tracing=False)
+
+        def create_run(self, *args, **kwargs):
+            return None
+
+        def update_run(self, *args, **kwargs):
+            return None
+
+    for name, value in {"LANGSMITH_TRACING": "true", "LANGSMITH_API_KEY": "test",
+                        "LANGSMITH_AGENT_ID": "invoice-chaser", "LANGSMITH_AGENT_ENVIRONMENT": "local"}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("LANGSMITH_PROJECT", raising=False)
+    fake_db.users["u1"] = {"id": "u1", "email": "o@x.io"}
+    fake_db.invoices["u1__inv__X"] = {"id": "u1__inv__X", "user_id": "u1", "client_email": "ap@acme.example",
+                                      "status": "active", "escalation_level": 1, "invoice_id": "X",
+                                      "client_name": "Acme", "invoice_amount": 100, "amount_paid": 0, "days_overdue": 3}
+    scripted.replies = [AIMessage(content="They will pay Friday.")]
+
+    with tracing_context(enabled=True, client=NoNetwork()):
+        api_index.handle_client_reply(fake_db.invoices["u1__inv__X"], "ap@acme.example", "Re", "We will pay Friday.")
+
+    [run] = fake_db.agent_runs
+    assert run["status"] == "ok", run.get("error")
