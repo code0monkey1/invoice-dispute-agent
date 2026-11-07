@@ -68,6 +68,12 @@ jobs:
 
       - name: Fail if a gate failed
         if: steps.eval.outputs.code != '0'
+        env:
+          CODE: ${{ steps.eval.outputs.code }}
         run: |
-          echo "The golden-set eval failed (exit ${{ steps.eval.outputs.code }}). See the scorecard above."
+          if [ "$CODE" = "2" ]; then
+            echo "::error::The eval couldn't run: set the GROQ_API_KEY repository secret (or check evals/results/baseline.json)."
+          else
+            echo "::error::The golden-set eval failed a gate (exit $CODE). See the scorecard on the PR or in the eval-results artifact."
+          fi
           exit 1
