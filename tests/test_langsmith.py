@@ -120,3 +120,44 @@ def test_health_names_a_langsmith_misconfiguration(monkeypatch, env, problem):
 async def test_health_reports_langsmith(client):
     body = (await client.get("/api/health")).json()
     assert body["langsmith"] == {"enabled": False}
+
+
+# ─── @traceable on the steps LangChain can't see ─────────────────────────────
+# The client's reply, your decision and the email send happen outside the
+# agent graph. Wrapped with @traceable, each appears in LangSmith as a parent
+# run with the agent run nested inside it.
+
+def test_the_steps_outside_the_agent_are_traceable():
+    from langsmith.run_helpers import is_traceable_function
+    import api.index as api_index
+    for fn in (api_index.handle_client_reply, api_index._resume_run, api_index.send_approved_draft):
+        assert is_traceable_function(fn), fn.__name__
+
+
+def test_traceable_inputs_never_include_the_user_row_or_tokens():
+    """The user row carries encrypted Gmail tokens: only an allow-list of fields is uploaded."""
+    import api.index as api_index
+    from types import SimpleNamespace
+    user = {"id": "u1", "email": "owner@example.com", "gmail_access_token": "secret-a", "gmail_refresh_token": "secret-r"}
+
+    resume_inputs = api_index._resume_trace_inputs({
+        "invoice_id": "inv-1", "req": SimpleNamespace(decision="approve", message="edited text"),
+        "user": user, "context": object(), "config": {}, "pending_action": {"name": "draft_polite_reminder", "args": {}},
+        "pending_state": {"client_email": "ap@acme.example"}, "run": SimpleNamespace(id="run-1"),
+    })
+    send_inputs = api_index._send_trace_inputs({
+        "invoice_id": "inv-1", "user": user, "context": object(), "tool_name": "draft_polite_reminder",
+        "tool_args": {}, "agent_state": {"client_email": "ap@acme.example"}, "edited_draft": None,
+    })
+    reply_inputs = api_index._reply_trace_inputs({
+        "invoice": {"id": "inv-1", "reply_token": "tok", "user_id": "u1", "client_email": "ap@acme.example"},
+        "from_addr": "ap@acme.example", "subject": "Re: invoice", "body": "We will pay Friday.",
+    })
+
+    assert resume_inputs == {"invoice_id": "inv-1", "decision": "approve", "tool": "draft_polite_reminder",
+                             "edited": True, "trace_run_id": "run-1"}
+    assert send_inputs == {"invoice_id": "inv-1", "tool": "draft_polite_reminder", "edited": False}
+    assert reply_inputs == {"invoice_id": "inv-1", "subject": "Re: invoice", "body": "We will pay Friday."}
+    for inputs in (resume_inputs, send_inputs, reply_inputs):
+        text = str(inputs)
+        assert "secret" not in text and "tok" not in text.replace("tool", "") and "owner@example.com" not in text
