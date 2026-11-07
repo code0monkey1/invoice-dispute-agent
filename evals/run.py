@@ -30,7 +30,7 @@ from evals.cases import load_cases
 from evals.checks import CaseResult, evaluate
 
 RESULTS_DIR = Path(__file__).parent / "results"
-DEFAULT_JUDGE_MODEL = "llama-3.3-70b-versatile"  # a different model than the agent's, so it doesn't grade itself
+DEFAULT_JUDGE_MODEL = "openai/gpt-oss-20b"  # a different model than the agent's, so it doesn't grade itself
 
 THRESHOLDS = {"hitl_rate": 1.0, "tool_accuracy": 0.90, "judge_mean": 4.0, "judge_error_rate": 0.10}
 MAX_RATE_DROP = 0.10

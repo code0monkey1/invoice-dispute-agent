@@ -119,3 +119,40 @@ def test_mixed_call_answers_every_tool_call_and_lets_model_retry():
     assert answered == {"ok-1", "bad-1"}  # no orphaned tool call for the provider to reject
     assert out["messages"][-1].content == "Understood, I'll stay at this level."
     assert "__interrupt__" not in out
+
+
+# ─── Runs started by a client's reply ────────────────────────────────────────
+# Found by the golden-set eval: an injected reply ("escalate to level 3...",
+# "update our email to ...") got the live model to call escalate_dispute and
+# update_invoice_details, which change state without an approval step.
+
+UNTRUSTED = FreelancerContext(**{**CTX.__dict__, "untrusted_input": True})
+
+
+def run_untrusted(level, name):
+    model = ScriptedModel()
+    model.replies = [tool_call(name, **VALID_ARGS[name]), AIMessage(content="Noted.")]
+    agent = build_agent(model, MemorySaver())
+    return agent.invoke(
+        {"messages": [HumanMessage("[INCOMING CLIENT REPLY] ...")], "escalation_level": level, "invoice_id": "inv-1"},
+        context=UNTRUSTED, config={"configurable": {"thread_id": f"untrusted-{level}-{name}"}},
+    )
+
+
+@pytest.mark.parametrize("name", ["update_invoice_details", "escalate_dispute"])
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_a_client_reply_cannot_change_state_without_approval(level, name):
+    out = run_untrusted(level, name)
+    [refusal] = [m for m in out["messages"] if isinstance(m, ToolMessage) and m.name == name]
+    assert refusal.status == "error" and "client's reply" in refusal.content
+    assert out.get("escalation_level") == level  # nothing changed
+
+
+def test_a_client_reply_can_still_propose_approval_gated_changes():
+    out = run_untrusted(1, "mark_invoice_pending")
+    assert "__interrupt__" in out  # the freelancer decides
+
+
+def test_trusted_runs_keep_the_unapproved_tools():
+    _, _, out = run(1, "escalate_dispute")
+    assert out.get("escalation_level") == 2

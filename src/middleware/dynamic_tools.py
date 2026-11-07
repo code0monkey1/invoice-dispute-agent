@@ -84,19 +84,44 @@ def enforce_tool_gate(state, runtime) -> dict | None:
     if not messages or not isinstance(messages[-1], AIMessage) or not messages[-1].tool_calls:
         return None
     level = state.get("escalation_level", 0) or 0
-    allowed = {t.name for t in tools_for_level(level)}
+    untrusted = bool(getattr(runtime.context, "untrusted_input", False))
     calls = messages[-1].tool_calls
-    refused = [c for c in calls if c["name"] not in allowed]
-    if not refused:
+    reasons = {c["id"]: _refusal(c["name"], level, untrusted) for c in calls}
+    if not any(reasons.values()):
         return None
 
     replies = []
     for call in calls:
-        if call["name"] in allowed:
+        reason = reasons[call["id"]]
+        if reason is None:
             content = "Not run: the same turn asked for a tool that isn't available. Retry without it."
         else:
-            content = f"Tool {call['name']} is not available at escalation level {level}."
-            logger.warning("tool gate refused %s at level %s", call["name"], level)
-            record_step(runtime, "gate_blocked", call["name"], {"level": level, "args": call.get("args", {})})
+            content = REFUSAL_MESSAGES[reason].format(tool=call["name"], level=level)
+            logger.warning("tool gate refused %s at level %s (%s)", call["name"], level, reason)
+            record_step(runtime, "gate_blocked", call["name"],
+                        {"level": level, "reason": reason, "args": call.get("args", {})})
         replies.append(ToolMessage(content=content, name=call["name"], tool_call_id=call["id"], status="error"))
     return {"messages": replies, "jump_to": "model"}
+
+
+# Tools that change the invoice or the agent's state without an approval step.
+# A run started by a client's reply is untrusted text, so it can't use them:
+# found by the golden-set eval, where injected replies made the live model
+# escalate and rewrite the client's email address.
+UNAPPROVED_STATE_TOOLS = {"update_invoice_details", "escalate_dispute"}
+
+REFUSAL_MESSAGES = {
+    "level": "Tool {tool} is not available at escalation level {level}.",
+    "untrusted_input": (
+        "Tool {tool} can't run on a client's reply: it changes the invoice without the freelancer's approval. "
+        "Tell the freelancer what the client asked for instead."
+    ),
+}
+
+
+def _refusal(name: str, level: int, untrusted: bool) -> str | None:
+    if name not in {t.name for t in tools_for_level(level)}:
+        return "level"
+    if untrusted and name in UNAPPROVED_STATE_TOOLS:
+        return "untrusted_input"
+    return None

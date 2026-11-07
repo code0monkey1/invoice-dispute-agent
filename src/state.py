@@ -35,3 +35,6 @@ class FreelancerContext:
     invoice_context_summary: str = ""
     # Set by the API for the length of one traced agent run (src/observability).
     trace_run_id: str | None = None
+    # True for runs started by text from outside the app (a client's reply).
+    # Such runs can't use tools that change state without an approval step.
+    untrusted_input: bool = False
