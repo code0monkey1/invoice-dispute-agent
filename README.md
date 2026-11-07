@@ -429,6 +429,19 @@ Every agent call is labelled (`src/observability/tracer.py: langsmith_config`), 
 | Tags | the run kind and `level-N` |
 | Metadata | `trace_run_id` (our `X-Trace-Id`), `invoice_id`, `escalation_level`, `prompt_version`, `thread_id` (one conversation per invoice), plus `decision` on resumes and `untrusted_input` on client replies |
 
+The steps around the agent are wrapped with `@traceable`, so in LangSmith each one is a parent run with the agent run nested inside it:
+
+```
+client_reply                      (a client's email arrives: invoice, subject, body)
+└── invoicechaser.inbound_reply   (the agent reads it: model and tool calls)
+human_decision                    (you approve, edit or reject: decision, tool, edited?)
+├── send_approved_email           (Gmail send: status, subject)
+└── invoicechaser.resume          (the agent continues)
+invoicechaser.chat                (your chat messages)
+```
+
+`@traceable` uploads a function's arguments by default. These upload an allow-list instead (`_resume_trace_inputs`, `_send_trace_inputs`, `_reply_trace_inputs` in `api/index.py`), so the user row and its Gmail tokens never leave the app.
+
 To find a run in LangSmith from a bug report, filter by metadata `trace_run_id` = the `X-Trace-Id`. The Threads view groups each invoice's conversation by `thread_id`.
 
 Both exist because they cover different things. LangSmith shows the full LangChain/LangGraph call tree, including node timings. The built-in tracer also records what happens *outside* the agent (your decision and the email send), redacts before storing, keeps 30 days, and is what the golden-set eval grades. Prompts contain client names, amounts and replies, so set `LANGSMITH_HIDE_INPUTS=true` and `LANGSMITH_HIDE_OUTPUTS=true` if they shouldn't leave the app. Tests and eval runs never send to LangSmith, unless an eval is run with `EVAL_LANGSMITH_TRACING=true`.

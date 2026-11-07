@@ -40,6 +40,8 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from fastapi import Header, HTTPException, Query
 
+from langsmith import traceable
+
 from src.agent import agent
 from src.observability import tracer
 from src.observability.tracer import RunRecorder, langsmith_config, langsmith_status, note_run_outcome, trace_run
@@ -1813,6 +1815,41 @@ def ensure_reply_token(invoice_id: str) -> str | None:
     return token if (updated or {}).get("reply_token") == token else None
 
 
+
+# ─── LangSmith: the steps outside the agent graph ─────────────────────────────
+# LangChain traces the agent itself. A client's reply, your decision and the
+# email send happen around it, so they are wrapped with @traceable and the
+# agent run nests inside them in LangSmith. By default @traceable uploads every
+# argument; these allow-lists keep the user row (which holds Gmail tokens) and
+# other internals out. A no-op unless LANGSMITH_TRACING is on.
+
+def _resume_trace_inputs(inputs: dict) -> dict:
+    req = inputs.get("req")
+    return {
+        "invoice_id": inputs.get("invoice_id"),
+        "decision": getattr(req, "decision", None),
+        "tool": (inputs.get("pending_action") or {}).get("name"),
+        "edited": bool(getattr(req, "message", None)),
+        "trace_run_id": getattr(inputs.get("run"), "id", None),
+    }
+
+
+def _send_trace_inputs(inputs: dict) -> dict:
+    return {"invoice_id": inputs.get("invoice_id"), "tool": inputs.get("tool_name"),
+            "edited": bool(inputs.get("edited_draft"))}
+
+
+def _reply_trace_inputs(inputs: dict) -> dict:
+    return {"invoice_id": (inputs.get("invoice") or {}).get("id"),
+            "subject": inputs.get("subject"), "body": inputs.get("body")}
+
+
+def _send_trace_outputs(outputs) -> dict:
+    status, _result, subject, _draft = outputs if isinstance(outputs, tuple) else (outputs, None, None, None)
+    return {"status": status, "subject": subject}
+
+@traceable(name="send_approved_email", run_type="tool",
+           process_inputs=_send_trace_inputs, process_outputs=_send_trace_outputs)
 def send_approved_draft(
     invoice_id: str,
     user: dict | None,
@@ -1936,6 +1973,7 @@ def resume(
         return _resume_run(invoice_id, req, user, context, config, pending_action, pending_state, run)
 
 
+@traceable(name="human_decision", process_inputs=_resume_trace_inputs)
 def _resume_run(invoice_id, req, user, context, config, pending_action, pending_state, run: RunRecorder):
     email_result = None
     email_status = None
@@ -2087,6 +2125,7 @@ def _unfence(text: str) -> str:
         text = cleaned
 
 
+@traceable(name="client_reply", process_inputs=_reply_trace_inputs)
 def handle_client_reply(invoice: dict, from_addr: str, subject: str, body: str) -> None:
     """Store a client's reply on its invoice and ask the agent to analyse it.
 
