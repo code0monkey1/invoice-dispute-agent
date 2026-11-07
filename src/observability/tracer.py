@@ -282,6 +282,30 @@ def _count(key: str) -> None:
         _counters[key] += 1
 
 
+def langsmith_config(config: dict, run: RunRecorder, **extra: Any) -> dict:
+    """The LangChain config for one agent call, labelled for LangSmith.
+
+    LangChain sends traces to LangSmith by itself when LANGSMITH_TRACING=true.
+    These labels make each LangSmith trace findable from ours and back: search
+    LangSmith for metadata trace_run_id = an X-Trace-Id, and conversations
+    group by thread_id (one per invoice). Harmless when LangSmith is off.
+    """
+    thread_id = (config.get("configurable") or {}).get("thread_id")
+    level = run.level_start
+    metadata = {
+        **(config.get("metadata") or {}),
+        "trace_run_id": run.id,
+        "invoice_id": run.invoice_id,
+        "kind": run.kind,
+        "escalation_level": level,
+        "prompt_version": PROMPT_VERSION,
+        **({"thread_id": thread_id} if thread_id else {}),
+        **extra,
+    }
+    tags = [*(config.get("tags") or []), run.kind, *([f"level-{level}"] if level is not None else [])]
+    return {**config, "run_name": f"invoicechaser.{run.kind}", "tags": tags, "metadata": metadata}
+
+
 def note_run_outcome(run: RunRecorder, response: dict) -> None:
     """Record where an agent run stopped: its level, and any approval card it is waiting on."""
     run.level_end = response.get("escalation_level")

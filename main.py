@@ -5,7 +5,7 @@ load_dotenv()
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from src.agent import agent
-from src.observability.tracer import note_run_outcome, trace_run
+from src.observability.tracer import langsmith_config, note_run_outcome, trace_run
 from src.state import FreelancerContext
 
 
@@ -31,7 +31,7 @@ def run_traced(payload, context, config, decision=None):
         try:
             if decision is not None:
                 run.add("human_decision", None, decision)
-            response = agent.invoke(payload, context=context, config=config)
+            response = agent.invoke(payload, context=context, config=langsmith_config(config, run))
             note_run_outcome(run, response)
             return response
         finally:

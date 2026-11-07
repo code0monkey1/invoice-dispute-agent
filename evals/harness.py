@@ -30,6 +30,10 @@ for _key, _value in {
 }.items():
     os.environ.setdefault(_key, _value)
 
+# Eval runs stay out of LangSmith unless asked for (EVAL_LANGSMITH_TRACING=true),
+# so the project there only holds real traffic.
+os.environ["LANGSMITH_TRACING"] = os.getenv("EVAL_LANGSMITH_TRACING") or "false"
+
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
