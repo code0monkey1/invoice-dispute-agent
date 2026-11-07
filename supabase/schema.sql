@@ -147,6 +147,9 @@ CREATE INDEX IF NOT EXISTS idx_agent_runs_started ON agent_runs (started_at);
 -- With RLS on and no policies, the public anon key can't read them via PostgREST.
 ALTER TABLE agent_runs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE agent_trace_steps ENABLE ROW LEVEL SECURITY;
+-- And not even discoverable (e.g. in the GraphQL schema) to the public or signed-in roles.
+REVOKE ALL ON agent_runs, agent_trace_steps FROM anon, authenticated;
+REVOKE ALL ON SEQUENCE agent_trace_steps_id_seq FROM anon, authenticated;
 
 -- Keep traces for 30 days. Steps go with their run (ON DELETE CASCADE).
 -- Re-running reschedules the same named job.
