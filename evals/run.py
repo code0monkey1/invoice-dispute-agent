@@ -181,14 +181,26 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-async def _run_all(cases, repeat, model_factory, judge, pace) -> list[CaseResult]:
-    from evals.harness import EvalHarness
+def _provider_busy(error: str | None) -> bool:
+    """The API's 429/503 means the model provider was rate limited or down, not that the agent misbehaved."""
+    return bool(error) and any(code in error for code in (" 429", " 503", "rate limit"))
+
+
+async def _run_all(cases, repeat, model_factory, judge, pace, *, retries: int = 2,
+                   retry_wait: float = 30.0) -> list[CaseResult]:
+    import evals.harness as harness_module
 
     results = []
-    async with EvalHarness() as harness:
+    async with harness_module.EvalHarness() as harness:
         for case in cases:
             for attempt in range(repeat):
                 run = await harness.run_case(case, model_factory(case))
+                for retry in range(retries):
+                    if not _provider_busy(run.error):
+                        break
+                    print(f"[wait] {case.id}: provider busy, retrying in {retry_wait * (retry + 1):.0f}s", file=sys.stderr)
+                    await asyncio.sleep(retry_wait * (retry + 1))
+                    run = await harness.run_case(case, model_factory(case))
                 res = evaluate(case, run, judge)
                 results.append(res)
                 mark = "pass" if res.passed else "FAIL"

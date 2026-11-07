@@ -170,3 +170,31 @@ def test_promote_reports_a_missing_run(monkeypatch, capsys):
     monkeypatch.setattr(promote, "fetch_run", lambda run_id: None)
     assert promote_main(["--run-id", "nope", "--level", "1", "--name", "x"]) == 2
     assert "nope" in capsys.readouterr().err
+
+
+def test_a_case_hit_by_provider_rate_limits_is_retried_then_graded(monkeypatch):
+    """A 429/503 from the provider is capacity, not behaviour: retry after a wait, and report it if it persists."""
+    import asyncio
+    import evals.run as runner
+    from evals.harness import CaseRun
+
+    case = load_cases(level=1)[0]
+    outcomes = [CaseRun(case_id=case.id, error='RuntimeError: chat failed: 503 {"detail":"..."}'), None, None]
+    calls = []
+
+    class Harness:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *a):
+            return None
+
+        async def run_case(self, c, model):
+            calls.append(c.id)
+            out = outcomes.pop(0)  # 503, then 429 twice
+            return out if out else CaseRun(case_id=c.id, error="RuntimeError: chat failed: 429 rate limit")
+
+    monkeypatch.setattr("evals.harness.EvalHarness", Harness)
+    results = asyncio.run(runner._run_all([case], 1, lambda c: None, None, 0, retries=2, retry_wait=0))
+    assert len(calls) == 3 and len(results) == 1  # first try + 2 retries, graded once
+    assert "429" in (results[0].error or "")  # still failing after the retries: reported, not hidden
