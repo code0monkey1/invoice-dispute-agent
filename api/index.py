@@ -42,7 +42,7 @@ from fastapi import Header, HTTPException, Query
 
 from src.agent import agent
 from src.observability import tracer
-from src.observability.tracer import RunRecorder, note_run_outcome, trace_run
+from src.observability.tracer import RunRecorder, langsmith_config, langsmith_status, note_run_outcome, trace_run
 from src.state import FreelancerContext
 from src.tools.drafting import fill_draft_from_context
 from src.db import (
@@ -167,7 +167,7 @@ def health():
     db_url_set = bool(os.getenv("DATABASE_URL"))
     return {"status": "ok", "python": sys.version, "checkpointer": cp_type,
             "database_url_set": db_url_set, "checkpointer_error": _checkpointer_error,
-            "traces": tracer.stats()}
+            "traces": tracer.stats(), "langsmith": langsmith_status()}
 
 
 # CORS — explicit origins so credentials (guest_session cookie) can flow.
@@ -1647,7 +1647,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
             response = invoke_agent_with_retry(
                 {"messages": [HumanMessage(content=req.message)]},
                 context=context,
-                config=config,
+                config=langsmith_config(config, run),
             )
             note_run_outcome(run, response)
     except Exception as e:
@@ -1703,7 +1703,8 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     )
     try:
         with traced_run("escalate", invoice_id, context, request, level=new_level) as run:
-            response = invoke_agent_with_retry({"messages": [HumanMessage(content=prompt)]}, context=context, config=config)
+            response = invoke_agent_with_retry({"messages": [HumanMessage(content=prompt)]}, context=context,
+                                               config=langsmith_config(config, run))
             note_run_outcome(run, response)
     except Exception:
         logger.exception("Agent could not draft after escalating invoice %s run_id=%s", invoice_id, run_id_of(request))
@@ -1979,7 +1980,7 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
         response = agent.invoke(
             Command(resume={"decisions": decisions}),
             context=context,
-            config=config,
+            config=langsmith_config(config, run, decision=req.decision),
         )
     except Exception as e:
         run.fail(e)
@@ -2118,7 +2119,8 @@ def handle_client_reply(invoice: dict, from_addr: str, subject: str, body: str) 
             f"Please analyze this reply and suggest the appropriate next action."
         )
         with traced_run("inbound_reply", invoice["id"], context, level=invoice.get("escalation_level")) as run:
-            response = invoke_agent_with_retry({"messages": [HumanMessage(content=agent_msg)]}, context=context, config=config)
+            response = invoke_agent_with_retry({"messages": [HumanMessage(content=agent_msg)]}, context=context,
+                                               config=langsmith_config(config, run, untrusted_input=True))
             note_run_outcome(run, response)
     except Exception as e:
         logger.error(f"Agent failed to process reply for invoice {invoice['id']}: {e}")

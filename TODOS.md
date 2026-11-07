@@ -23,6 +23,6 @@ Deferred from the agent observability and evals work (Nov 2026). Each item says 
 
 ## P3
 
-- **Export traces to OpenTelemetry or LangSmith** behind an env flag, if a hosted trace UI becomes useful. The Supabase tables stay the source of truth.
+- **OpenTelemetry export** if traces need to reach a backend other than LangSmith (done: LangSmith, via `LANGSMITH_*` env vars).
 - **Score production runs online:** sample real (redacted) runs nightly through the tone judge and alert on drift.
 - **Real `edit` decisions:** the app sends an edited draft as an approval plus text, so the agent never learns a human changed its draft (traces label it `approved_with_edits`). Sending `{"type": "edit"}` would let the model learn from the edits.

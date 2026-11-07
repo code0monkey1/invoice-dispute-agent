@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import threading
 import time
@@ -280,6 +281,55 @@ def flush(recorder: RunRecorder) -> bool:
 def _count(key: str) -> None:
     with _active_lock:
         _counters[key] += 1
+
+
+def langsmith_status() -> dict:
+    """Whether LangSmith tracing is on and where runs go, or why it can't work.
+
+    A misconfigured LangSmith only loses traces (LangChain swallows tracer
+    errors and logs them), so /api/health reports this to make it visible.
+    """
+    if os.getenv("LANGSMITH_TRACING", "").strip().lower() not in ("true", "1", "yes"):
+        return {"enabled": False}
+    if not os.getenv("LANGSMITH_API_KEY"):
+        return {"enabled": True, "error": "LANGSMITH_API_KEY is not set"}
+    # Read the environment directly: the SDK caches env lookups. Its rule:
+    # agent id + environment together, or a project, never both.
+    agent_id = os.getenv("LANGSMITH_AGENT_ID")
+    agent_env = os.getenv("LANGSMITH_AGENT_ENVIRONMENT")
+    project = os.getenv("LANGSMITH_PROJECT")
+    if agent_id or agent_env:
+        if not (agent_id and agent_env):
+            missing = "LANGSMITH_AGENT_ENVIRONMENT" if agent_id else "LANGSMITH_AGENT_ID"
+            return {"enabled": True, "error": f"{missing} is not set: an agent needs both its id and environment"}
+        if project:
+            return {"enabled": True, "error": "set LANGSMITH_AGENT_ID/LANGSMITH_AGENT_ENVIRONMENT or LANGSMITH_PROJECT, not both"}
+        return {"enabled": True, "destination": f"agent {agent_id} ({agent_env.lower()})"}
+    return {"enabled": True, "destination": f"project {project or 'default'}"}
+
+
+def langsmith_config(config: dict, run: RunRecorder, **extra: Any) -> dict:
+    """The LangChain config for one agent call, labelled for LangSmith.
+
+    LangChain sends traces to LangSmith by itself when LANGSMITH_TRACING=true.
+    These labels make each LangSmith trace findable from ours and back: search
+    LangSmith for metadata trace_run_id = an X-Trace-Id, and conversations
+    group by thread_id (one per invoice). Harmless when LangSmith is off.
+    """
+    thread_id = (config.get("configurable") or {}).get("thread_id")
+    level = run.level_start
+    metadata = {
+        **(config.get("metadata") or {}),
+        "trace_run_id": run.id,
+        "invoice_id": run.invoice_id,
+        "kind": run.kind,
+        "escalation_level": level,
+        "prompt_version": PROMPT_VERSION,
+        **({"thread_id": thread_id} if thread_id else {}),
+        **extra,
+    }
+    tags = [*(config.get("tags") or []), run.kind, *([f"level-{level}"] if level is not None else [])]
+    return {**config, "run_name": f"invoicechaser.{run.kind}", "tags": tags, "metadata": metadata}
 
 
 def note_run_outcome(run: RunRecorder, response: dict) -> None:

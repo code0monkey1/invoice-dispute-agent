@@ -407,15 +407,31 @@ An edited approval is labelled `approved_with_edits`: the app sends your edited 
   FROM agent_trace_steps WHERE run_id = '<X-Trace-Id>' AND type = 'model_call' ORDER BY seq;
   ```
 
-### Why not LangSmith (or Langfuse)?
+### LangSmith, alongside
 
-There is no LangSmith in this project. No `LANGSMITH_*` or `LANGCHAIN_TRACING*` variables are set, and no callback sends data anywhere. Tracing is a small LangChain middleware (`src/middleware/tracing.py`) that writes to the app's own Supabase. That fits this agent better for three reasons:
+The built-in tracer is the source of truth. [LangSmith](https://smith.langchain.com) can run alongside it as a hosted trace UI, with nothing extra installed: LangChain sends every agent run there by itself when these are set (see `.env.example`):
 
-- **The human decision is the important step.** Approving, editing and sending happen in the API, between two agent runs, where a callback-based tracer can't see them. Here they are steps of the same run.
-- **Client data stays in the app.** Prompts contain client names, amounts and replies. They are redacted, kept 30 days and readable only by the server, rather than copied to a third party.
-- **The eval grades the same traces**, so debugging and evaluation never disagree about what happened.
+```bash
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=<your key>
+LANGSMITH_AGENT_ID=invoice-chaser
+LANGSMITH_AGENT_ENVIRONMENT=production   # or local
+# Project-based workspaces use LANGSMITH_PROJECT instead (never both)
+```
 
-Adding LangSmith later is cheap if a hosted UI is wanted: set `LANGSMITH_TRACING=true` and `LANGSMITH_API_KEY`, and LangChain sends its own traces alongside these. It is listed as optional in [TODOS.md](TODOS.md).
+`GET /api/health` shows `"langsmith": {"enabled": true, "destination": "agent invoice-chaser (production)"}`, or an `error` naming what is wrong. A bad setup only loses traces, because LangChain swallows tracer errors, so this is where you check.
+
+Every agent call is labelled (`src/observability/tracer.py: langsmith_config`), so the two systems cross-reference:
+
+| LangSmith field | Value |
+|---|---|
+| Run name | `invoicechaser.chat`, `.escalate`, `.resume`, `.inbound_reply`, `.cli` |
+| Tags | the run kind and `level-N` |
+| Metadata | `trace_run_id` (our `X-Trace-Id`), `invoice_id`, `escalation_level`, `prompt_version`, `thread_id` (one conversation per invoice), plus `decision` on resumes and `untrusted_input` on client replies |
+
+To find a run in LangSmith from a bug report, filter by metadata `trace_run_id` = the `X-Trace-Id`. The Threads view groups each invoice's conversation by `thread_id`.
+
+Both exist because they cover different things. LangSmith shows the full LangChain/LangGraph call tree, including node timings. The built-in tracer also records what happens *outside* the agent (your decision and the email send), redacts before storing, keeps 30 days, and is what the golden-set eval grades. Prompts contain client names, amounts and replies, so set `LANGSMITH_HIDE_INPUTS=true` and `LANGSMITH_HIDE_OUTPUTS=true` if they shouldn't leave the app. Tests and eval runs never send to LangSmith, unless an eval is run with `EVAL_LANGSMITH_TRACING=true`.
 
 ### Privacy, retention and failure
 
@@ -543,7 +559,7 @@ The two failing cases are real: a `[Client Name]` placeholder in one reply to an
 | Email | Gmail API (send-only) for sending; Resend Inbound (free plan) for replies |
 | Search | Tavily (Legal level only) |
 | Frontend | React 19, Vite, Tailwind CSS 4, Vitest |
-| Observability | Own tracer → Supabase (`agent_runs`, `agent_trace_steps`), golden-set eval with an LLM judge, GitHub Actions |
+| Observability | Own tracer → Supabase (`agent_runs`, `agent_trace_steps`), optional LangSmith, golden-set eval with an LLM judge, GitHub Actions |
 
 ---
 

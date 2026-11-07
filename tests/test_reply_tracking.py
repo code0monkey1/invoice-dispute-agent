@@ -143,7 +143,9 @@ async def test_inbound_reply_is_stored_on_the_matching_invoice(client, fake_db, 
     # Separation: the other invoice is untouched.
     assert not [c for c in api_index.get_communications(other["id"]) if c.get("direction") == "inbound"]
     # The agent was asked to analyse the reply on this invoice's thread.
-    assert inbound_fakes == [{"configurable": {"thread_id": f"invoice-{invoice['id']}"}}]
+    [config] = inbound_fakes
+    assert config["configurable"] == {"thread_id": f"invoice-{invoice['id']}"}  # the invoice's own thread
+    assert config["metadata"]["untrusted_input"] is True
 
 
 @pytest.mark.asyncio
