@@ -79,3 +79,44 @@ def test_the_eval_harness_keeps_langsmith_off_unless_asked(monkeypatch):
     monkeypatch.setenv("EVAL_LANGSMITH_TRACING", "true")
     importlib.reload(harness)
     assert os.environ["LANGSMITH_TRACING"] == "true"
+
+
+@pytest.mark.parametrize("env, expected", [
+    ({"LANGSMITH_TRACING": "false"}, {"enabled": False}),
+    ({"LANGSMITH_TRACING": "true", "LANGSMITH_API_KEY": "k", "LANGSMITH_AGENT_ID": "invoice-chaser",
+      "LANGSMITH_AGENT_ENVIRONMENT": "production"},
+     {"enabled": True, "destination": "agent invoice-chaser (production)"}),
+    ({"LANGSMITH_TRACING": "true", "LANGSMITH_API_KEY": "k", "LANGSMITH_PROJECT": "invoice chaser"},
+     {"enabled": True, "destination": "project invoice chaser"}),
+])
+def test_health_says_where_langsmith_traces_go(monkeypatch, env, expected):
+    from src.observability.tracer import langsmith_status
+    for name in ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGSMITH_PROJECT", "LANGSMITH_AGENT_ID", "LANGSMITH_AGENT_ENVIRONMENT"):
+        monkeypatch.delenv(name, raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    assert langsmith_status() == expected
+
+
+@pytest.mark.parametrize("env, problem", [
+    ({"LANGSMITH_AGENT_ID": "invoice-chaser"}, "LANGSMITH_AGENT_ENVIRONMENT"),
+    ({}, "LANGSMITH_API_KEY"),
+])
+def test_health_names_a_langsmith_misconfiguration(monkeypatch, env, problem):
+    """A bad setup only loses traces (LangChain swallows tracer errors), so it must be visible somewhere."""
+    from src.observability.tracer import langsmith_status
+    for name in ("LANGSMITH_API_KEY", "LANGSMITH_PROJECT", "LANGSMITH_AGENT_ID", "LANGSMITH_AGENT_ENVIRONMENT"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("LANGSMITH_TRACING", "true")
+    if "LANGSMITH_AGENT_ID" in env or not env:
+        monkeypatch.setenv("LANGSMITH_API_KEY", "k") if env else None
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    status = langsmith_status()
+    assert status["enabled"] is True and problem in status["error"]
+
+
+@pytest.mark.asyncio
+async def test_health_reports_langsmith(client):
+    body = (await client.get("/api/health")).json()
+    assert body["langsmith"] == {"enabled": False}

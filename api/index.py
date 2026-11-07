@@ -42,7 +42,7 @@ from fastapi import Header, HTTPException, Query
 
 from src.agent import agent
 from src.observability import tracer
-from src.observability.tracer import RunRecorder, langsmith_config, note_run_outcome, trace_run
+from src.observability.tracer import RunRecorder, langsmith_config, langsmith_status, note_run_outcome, trace_run
 from src.state import FreelancerContext
 from src.tools.drafting import fill_draft_from_context
 from src.db import (
@@ -167,7 +167,7 @@ def health():
     db_url_set = bool(os.getenv("DATABASE_URL"))
     return {"status": "ok", "python": sys.version, "checkpointer": cp_type,
             "database_url_set": db_url_set, "checkpointer_error": _checkpointer_error,
-            "traces": tracer.stats()}
+            "traces": tracer.stats(), "langsmith": langsmith_status()}
 
 
 # CORS — explicit origins so credentials (guest_session cookie) can flow.

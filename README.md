@@ -414,8 +414,12 @@ The built-in tracer is the source of truth. [LangSmith](https://smith.langchain.
 ```bash
 LANGSMITH_TRACING=true
 LANGSMITH_API_KEY=<your key>
-LANGSMITH_PROJECT=invoice-chaser
+LANGSMITH_AGENT_ID=invoice-chaser
+LANGSMITH_AGENT_ENVIRONMENT=production   # or local
+# Project-based workspaces use LANGSMITH_PROJECT instead (never both)
 ```
+
+`GET /api/health` shows `"langsmith": {"enabled": true, "destination": "agent invoice-chaser (production)"}`, or an `error` naming what is wrong. A bad setup only loses traces, because LangChain swallows tracer errors, so this is where you check.
 
 Every agent call is labelled (`src/observability/tracer.py: langsmith_config`), so the two systems cross-reference:
 
