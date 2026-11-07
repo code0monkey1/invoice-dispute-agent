@@ -265,3 +265,35 @@ async def test_a_client_reply_that_tries_to_escalate_is_refused_and_traced(clien
     [run] = runs(fake_db, "inbound_reply")
     blocked = next(s for s in steps(fake_db, run["id"]) if s["type"] == "gate_blocked")
     assert blocked["name"] == "escalate_dispute" and blocked["payload"]["reason"] == "untrusted_input"
+
+
+@pytest.mark.asyncio
+async def test_a_draft_that_cant_be_rebuilt_still_sends_and_is_traced_as_approved(client, fake_db, scripted, sent, monkeypatch):
+    """Labelling the decision must never fail the approval itself."""
+    import api.index as api_index
+    headers, invoice, _ = await drafted_reminder(client, fake_db, scripted)
+    real = api_index.generate_draft_preview
+    calls = {"n": 0}
+
+    def flaky(*args, **kwargs):  # the first call is describe_decision's comparison
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real(*args, **kwargs)
+
+    monkeypatch.setattr(api_index, "generate_draft_preview", flaky)
+    r = await resume(client, headers, invoice, "approve", message="Subject: Hi\n\nMy own words")
+    assert r.status_code == 200, r.text
+    assert len(sent) == 1
+    [run] = runs(fake_db, "resume")
+    decision = steps(fake_db, run["id"])[0]["payload"]
+    assert decision["decision"] == "approve" and decision["compared_with_draft"] is False
+
+
+def test_trace_writes_use_a_short_timeout(monkeypatch):
+    """A slow database must not push a finished request past the 60 s serverless limit."""
+    import src.db as db
+    seen = []
+    monkeypatch.setenv("SUPABASE_URL", "http://supabase.invalid")
+    monkeypatch.setattr(db, "_send", lambda request, timeout=None: seen.append(timeout) or "")
+    db.insert_agent_run({"id": "r"})
+    db.insert_trace_steps([{"run_id": "r", "seq": 1}])
+    assert seen and all(t is not None and t <= db.TRACE_WRITE_TIMEOUT_SECONDS <= 5 for t in seen)

@@ -96,10 +96,10 @@ def _supabase_rest_url(table: str, query: Optional[Sequence[tuple[str, str]]] = 
     return url
 
 
-def _send(request: urllib.request.Request) -> str:
+def _send(request: urllib.request.Request, timeout: float | None = None) -> str:
     method, table = request.get_method(), urllib.parse.urlsplit(request.full_url).path.rsplit("/", 1)[-1]
     try:
-        with urllib.request.urlopen(request, timeout=_SUPABASE_TIMEOUT_SECONDS) as response:
+        with urllib.request.urlopen(request, timeout=timeout or _SUPABASE_TIMEOUT_SECONDS) as response:
             return response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
         details = exc.read().decode("utf-8", errors="replace")
@@ -121,6 +121,7 @@ def _supabase_rest_request(
     query: Optional[Sequence[tuple[str, str]]] = None,
     payload: Optional[dict | list] = None,
     prefer: Optional[str] = None,
+    timeout: Optional[float] = None,
 ):
     key = os.environ.get("SUPABASE_KEY")
     if not key:
@@ -148,7 +149,7 @@ def _supabase_rest_request(
     delays = _READ_RETRY_DELAYS if method == "GET" else ()
     for attempt in range(len(delays) + 1):
         try:
-            raw = _send(request)
+            raw = _send(request, timeout)
             break
         except DatabaseUnavailable as exc:
             if attempt == len(delays) or not exc.retryable:
@@ -661,16 +662,21 @@ def get_communications(invoice_id: str) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 TRACE_RUNS_MAX_LIMIT = 50
+# Trace writes happen after a request's real work, inside the 60 s serverless
+# limit, so they get a short timeout: a slow database drops the trace, not the request.
+TRACE_WRITE_TIMEOUT_SECONDS = 3
 
 
 def insert_agent_run(row: dict) -> None:
-    _supabase_rest_request("POST", "agent_runs", payload=row, prefer="return=minimal")
+    _supabase_rest_request("POST", "agent_runs", payload=row, prefer="return=minimal",
+                           timeout=TRACE_WRITE_TIMEOUT_SECONDS)
 
 
 def insert_trace_steps(steps: list[dict]) -> None:
     """All of a run's steps in one request."""
     if steps:
-        _supabase_rest_request("POST", "agent_trace_steps", payload=steps, prefer="return=minimal")
+        _supabase_rest_request("POST", "agent_trace_steps", payload=steps, prefer="return=minimal",
+                               timeout=TRACE_WRITE_TIMEOUT_SECONDS)
 
 
 def list_agent_runs(invoice_id: str, limit: int = 20, before: Optional[str] = None) -> list[dict]:

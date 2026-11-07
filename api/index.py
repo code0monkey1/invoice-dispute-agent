@@ -344,6 +344,11 @@ def describe_decision(decision: str, message: str | None, pending_action: dict |
         payload["feedback"] = message
     if decision == "approve" and message and tool_name in EMAIL_DRAFT_TOOLS:
         proposed = generate_draft_preview(tool_name, pending_state, context, pending_action.get("args", {}))
+        if not isinstance(proposed, str) or not proposed:
+            # Can't rebuild the draft to compare with: record a plain approval
+            # rather than fail the request that is about to send the email.
+            payload["compared_with_draft"] = False
+            return payload
         if _normalized(proposed) != _normalized(message):
             payload.update(
                 decision="approved_with_edits",
