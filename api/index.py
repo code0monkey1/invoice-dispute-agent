@@ -674,6 +674,8 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
             f"  Client email: {current.get('client_email') or 'unknown'}",
             f"  Invoice total: ${amount:,.2f}; balance due: ${balance:,.2f}",
             f"  Days overdue: {current.get('days_overdue', 0) or 0}; status: {current.get('status', 'active')}",
+            # Level 3 looks up small-claims rules with it, and final notices name it.
+            f"  Jurisdiction: {current.get('jurisdiction') or 'not set'}",
             *([f"  Client promised to pay by: {current['follow_up_date']}"] if current.get("follow_up_date") else []),
             "",
             "All invoices for this user:",
