@@ -21,7 +21,7 @@ const auth = vi.hoisted(() => ({
   connectGmail: vi.fn(),
 }));
 
-vi.mock('../../contexts/AuthContext', () => ({
+vi.mock('../../contexts/auth', () => ({
   useAuth: () => ({
     user: { id: 'u1', name: 'Vonn Aden', email: 'v@example.com', picture: '', gmail_connected: auth.gmailConnected },
     isGuest: false,

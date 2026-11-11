@@ -14,6 +14,8 @@ import { formatPromiseDate } from './format'
 const DRAFT_TOOLS = ['draft_invoice_delivery_email', 'draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
 const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid', 'record_partial_payment']
 const INVOICE_DELIVERY_PROMPT = 'Please draft the first invoice delivery email for this invoice. The email should tell the client the invoice is attached, reference the invoice number and amount due, and ask them to review and pay it.'
+// Asks only for what the agent can see: invoice figures, a count of emails sent, and this chat.
+const SUMMARY_PROMPT = "Give me a summary of this invoice: client, amount and balance due, status, days overdue, escalation level, how many emails have been sent, what has happened so far in this chat, and what you'd suggest doing next."
 
 const NEXT_LEVEL_NAMES: Record<number, string> = { 1: 'Friendly', 2: 'Formal', 3: 'Legal' }
 const STATUS_LABELS: Record<string, string> = { active: 'Active', pending: 'Promised to pay', paid: 'Settled' }
@@ -104,8 +106,36 @@ export default function ChatPanel() {
     escalate()
   }
 
-  const [confirmingSettle, setConfirmingSettle] = useState(false)
+  // Which control opened the settle confirmation; one confirmation serves both.
+  const [confirmingSettle, setConfirmingSettle] = useState<'sidebar' | 'bar' | null>(null)
   const settled = agentState?.status === 'paid'
+  const draftWaiting = !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))
+  const showQuickActions = Boolean(agentState && !showFirstOpenActions && !settled)
+  const quickActionsBusy = loading || draftWaiting
+  const atHighestLevel = (agentState?.escalation_level ?? 0) >= 3
+
+  const settleConfirmation = (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
+      <p className="text-xs text-gray-700 mb-2">Mark as settled? The agent stops all work on this invoice and won't send anything else.</p>
+      <div className="flex gap-2">
+        <button
+          onClick={() => { setConfirmingSettle(null); settle() }}
+          disabled={loading}
+          className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-2"
+        >
+          Yes, settled
+        </button>
+        <button
+          onClick={() => setConfirmingSettle(null)}
+          className="flex-1 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold py-2"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  )
+
+  const quickActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-[#FF6B35]/50 hover:bg-orange-50 hover:text-[#FF6B35] disabled:opacity-50 disabled:pointer-events-none transition-colors'
 
   const handleCreateDeliveryDraft = () => {
     if (loading || interrupt) return
@@ -276,6 +306,39 @@ export default function ChatPanel() {
 
         {/* Input */}
         <div className="border-t border-gray-100 px-4 py-3 bg-white">
+          {showQuickActions && (
+            <div className="mb-2.5">
+              {confirmingSettle === 'bar' ? settleConfirmation : (
+                <div className="flex gap-2 overflow-x-auto pb-0.5" aria-label="Quick actions">
+                  <button
+                    onClick={() => sendMessage(SUMMARY_PROMPT)}
+                    disabled={quickActionsBusy}
+                    className={quickActionClass}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    Give me a summary
+                  </button>
+                  <button
+                    onClick={handleEscalate}
+                    disabled={quickActionsBusy || atHighestLevel}
+                    title={atHighestLevel ? 'Already at the highest level (Legal)' : undefined}
+                    className={quickActionClass}
+                  >
+                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                    Write next escalation email
+                  </button>
+                  <button
+                    onClick={() => setConfirmingSettle('bar')}
+                    disabled={quickActionsBusy}
+                    className={quickActionClass}
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    End dispute
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <div className="flex gap-2">
             <input
               ref={inputRef}
@@ -561,28 +624,11 @@ export default function ChatPanel() {
                     Escalate to {NEXT_LEVEL_NAMES[agentState.escalation_level + 1] ?? `Level ${agentState.escalation_level + 1}`}
                   </button>
                 )}
-                {confirmingSettle ? (
-                  <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3">
-                    <p className="text-xs text-gray-700 mb-2">Mark as settled? The agent stops all work on this invoice and won't send anything else.</p>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => { setConfirmingSettle(false); settle() }}
-                        disabled={loading}
-                        className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold py-2"
-                      >
-                        Yes, settled
-                      </button>
-                      <button
-                        onClick={() => setConfirmingSettle(false)}
-                        className="flex-1 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-xs font-bold py-2"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
+                {confirmingSettle === 'sidebar' ? (
+                  <div className="mt-2">{settleConfirmation}</div>
                 ) : (
                   <button
-                    onClick={() => setConfirmingSettle(true)}
+                    onClick={() => setConfirmingSettle('sidebar')}
                     disabled={loading}
                     className="mt-2 w-full inline-flex items-center justify-center gap-2 border border-emerald-200 bg-white hover:bg-emerald-50 disabled:opacity-50 text-emerald-700 text-xs font-bold rounded-xl py-2.5 transition-colors"
                   >

@@ -8,7 +8,7 @@ import EscalationBadge from './EscalationBadge'
 import { invoiceStatus } from './invoiceStatus'
 import { formatMoney } from './format'
 import { useInvoices } from '../hooks/useInvoices'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from '../contexts/auth'
 import { usePrefetchHistory } from '../hooks/usePrefetchHistory'
 import type { Invoice } from '../types'
 

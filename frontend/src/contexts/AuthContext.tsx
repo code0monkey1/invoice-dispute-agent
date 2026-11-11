@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { api } from '../api'
@@ -6,21 +6,7 @@ import type { User } from '../types'
 import { qk } from '../hooks/queries'
 import { clearCache } from '../queryClient'
 
-interface AuthContextType {
-  user: User | null
-  isGuest: boolean
-  loading: boolean
-  signIn: () => Promise<void>
-  connectGmail: () => Promise<void>
-  signOut: () => Promise<void>
-  enterAsGuest: (name: string) => void
-}
-
-const AuthContext = createContext<AuthContextType | null>(null)
-
-// Login CSRF protection: each Google redirect carries a random state that
-// this browser remembers, and the callback rejects any other state.
-export const OAUTH_STATE_KEY = 'invoicechaser_oauth_state'
+import { AuthContext, OAUTH_STATE_KEY } from './auth'
 
 function withOAuthState(url: string): string {
   const state = crypto.randomUUID()
@@ -96,15 +82,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth() {
-  const ctx = useContext(AuthContext)
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider')
-  return ctx
-}
-
-export function handleGoogleCallback(token: string, user: User) {
-  localStorage.setItem('invoicechaser_token', token)
-  localStorage.setItem('invoicechaser_user', JSON.stringify(user))
 }
