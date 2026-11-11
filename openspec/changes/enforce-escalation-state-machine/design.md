@@ -70,7 +70,7 @@ def escalate(invoice_id, from_level) -> int | None:
 def start_ladder(invoice_id) -> None:  # 0 -> 1 only, conditional on level = 0
 ```
 
-- `db.update_invoice` gains an `only_if_level: int | None` filter, next to `only_if_unpaid`. The caller confirms the change by checking the returned row's level.
+- A new `db.move_escalation_level(invoice_id, from_level, to_level)` does a conditional PATCH (`escalation_level=eq.<from>`, `status=neq.paid`) with `Prefer: return=representation`, following `mark_invoice_settled`. It returns True only for the call that changed the row. (Implementation note: `update_invoice` re-reads the row afterwards, so it can't tell "I moved it" from "someone else already did".)
 - `set_escalation_level()` is deleted, and every caller moves:
   - **Chat route.** The call that saves the level after a run is removed. If the run took the invoice from 0 to 1 (setup through `update_invoice_details`), it calls `start_ladder` instead.
   - **`record_resume_outcome`.** The call is removed. The state sync that follows reads the level from the database.
@@ -113,7 +113,7 @@ The freelancer's edited text is still sent as written. The check is on the tool'
 - **More clicks.** Escalation now takes an approval, and possibly a second card for the email. → This is intended. The escalation card and the draft card come in the same run, so it's two clicks with no extra typing.
 - **The model keeps reaching for a removed lower-level email** (for example a reminder at Legal) and loops on gate refusals. → The prompts list only the allowed tools, the refusal message names the email allowed at this level, and the L2/L3 golden cases cover it.
 - **Drafts waiting at deploy time.** A lower-level draft waiting in a checkpoint is refused at send (D5) instead of being sent. → This is acceptable and matches the spec. The freelancer is told to ask for a new draft.
-- **Conditional update not confirmed.** PostgREST PATCH returns no row count here. → Confirm by reading the returned row's level. Treat "not equal to `from_level+1`" as not applied.
+- **Conditional update not confirmed.** A plain PATCH returns no row count. → Ask for the patched rows (`return=representation`); an empty list means it didn't apply.
 - **Hidden frontend dependencies on auto-approve.** Today every gated tool except `escalate_dispute` is in `APPROVAL_TOOLS`, so removing auto-approve changes nothing else. → A Vitest test pins the generic card.
 
 ## Migration Plan

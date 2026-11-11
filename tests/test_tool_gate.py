@@ -239,3 +239,19 @@ def test_offered_emails_match_the_escalation_policy(level):
     offered = {t.name for t in tools_for_level(level)}
     for email in MAIL_LEVEL:
         assert (email in offered) is can_draft(email, level), f"{email} at level {level}"
+
+
+FULL_DETAILS = dict(client_name="Acme", client_email="ap@acme.example", invoice_amount=10.0,
+                    invoice_id="inv-1", days_overdue=3, jurisdiction="California")
+
+
+@pytest.mark.parametrize("level,expected", [(0, 1), (1, 1), (2, 2), (3, 3)])
+def test_saving_details_starts_the_ladder_but_never_resets_it(level, expected):
+    model = ScriptedModel()
+    model.replies = [tool_call("update_invoice_details", **FULL_DETAILS), AIMessage(content="Saved.")]
+    agent = build_agent(model, MemorySaver())
+    out = agent.invoke(
+        {"messages": [HumanMessage("save")], "escalation_level": level, "invoice_id": "inv-1"},
+        context=CTX, config={"configurable": {"thread_id": f"details-{level}"}},
+    )
+    assert out["escalation_level"] == expected

@@ -77,3 +77,29 @@ async def test_cannot_escalate_someone_elses_invoice(client, fake_db, monkeypatc
     _fake_agent(monkeypatch)
     r = await client.post("/api/invoices/someone-else__inv__SU5WLTk/escalate")
     assert r.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_escalating_a_new_invoice_starts_at_friendly_then_moves_one_step(client, fake_db, monkeypatch):
+    invoice = await _create_invoice(client, "INV-ESC-5")
+    _fake_agent(monkeypatch)
+    fake_db.invoices[invoice["id"]]["escalation_level"] = 0
+
+    r = await client.post(f"/api/invoices/{invoice['id']}/escalate")
+
+    assert r.status_code == 200, r.text
+    assert fake_db.invoices[invoice["id"]]["escalation_level"] == 2
+
+
+@pytest.mark.asyncio
+async def test_a_racing_escalation_is_refused_not_doubled(client, fake_db, monkeypatch):
+    invoice = await _create_invoice(client, "INV-ESC-6")
+    _fake_agent(monkeypatch)
+    from src.services import invoice_service
+    # Another request escalates between this one's read and its write.
+    monkeypatch.setattr(invoice_service, "escalate", lambda invoice_id, from_level: None)
+
+    r = await client.post(f"/api/invoices/{invoice['id']}/escalate")
+
+    assert r.status_code == 409
+    assert fake_db.invoices[invoice["id"]]["escalation_level"] == 1

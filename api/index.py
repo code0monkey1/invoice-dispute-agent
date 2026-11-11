@@ -67,7 +67,7 @@ from src.invoice_parser import (
     parsed_invoice_payload,
     validate_invoice_upload,
 )
-from src.services import invoice_service
+from src.services import escalation_policy, invoice_service
 from src.services.invoice_service import compute_balance, invoice_state_from_db
 from src.services.gmail_service import GmailService, SCOPES, SIGN_IN_SCOPES, GMAIL_SEND_SCOPE
 from src.services.resend_inbound import (
@@ -1665,8 +1665,11 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
         logger.exception("Agent invocation failed run_id=%s", context.trace_run_id or run_id_of(request))
         raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
 
-    # Persist escalation level changes from the agent response.
-    invoice_service.set_escalation_level(inv_id, response.get("escalation_level"))
+    # A chat run never moves the saved level: escalating needs the freelancer's
+    # approval (/escalate, or an approved escalate_dispute in /resume). The one
+    # exception is setup, which starts the ladder at Friendly (0 -> 1 only).
+    if int(response.get("escalation_level") or 0) >= 1:
+        invoice_service.start_ladder(inv_id)
 
     return {
         "messages": serialize_messages(response["messages"]),
@@ -1675,7 +1678,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
     }
 
 
-ESCALATION_LEVEL_NAMES = {1: "Friendly", 2: "Formal", 3: "Legal"}
+ESCALATION_LEVEL_NAMES = escalation_policy.LEVEL_NAMES
 
 
 @app.post("/api/invoices/{invoice_id}/escalate")
@@ -1691,13 +1694,17 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="This invoice is paid, so there's nothing to escalate.")
 
-    current = int(invoice.get("escalation_level") or 1)
-    if current >= 3:
+    current = int(invoice.get("escalation_level") or 0)
+    if current >= escalation_policy.LEGAL:
         raise HTTPException(status_code=400, detail="This invoice is already at the highest level (Legal).")
-    new_level = current + 1
+    if current < escalation_policy.FRIENDLY:
+        invoice_service.start_ladder(invoice_id)
+        current = escalation_policy.FRIENDLY
+    new_level = invoice_service.escalate(invoice_id, current)
+    if new_level is None:
+        raise HTTPException(status_code=409, detail="This invoice's level just changed. Refresh and try again.")
     level_name = ESCALATION_LEVEL_NAMES[new_level]
 
-    invoice_service.set_escalation_level(invoice_id, new_level)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
     persisted_state = sync_agent_state_from_invoice(invoice_id, config)
 
@@ -2085,7 +2092,6 @@ def record_resume_outcome(invoice_id, config, decision, approved_tool_name, appr
         agent.update_state(config, {"communication_history": history})
         response["communication_history"] = history
 
-    invoice_service.set_escalation_level(invoice_id, response.get("escalation_level"))
 
 
 def current_state(invoice_id: str, fallback: dict) -> dict:

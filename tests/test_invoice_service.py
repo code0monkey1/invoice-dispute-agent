@@ -93,27 +93,71 @@ def test_no_changes_means_no_write(fake_db):
     assert after == before
 
 
-# --- set_escalation_level ---------------------------------------------------
+# --- escalate / start_ladder ------------------------------------------------
+# The one writer of the saved level: one step up, and only from the level the
+# caller saw, so a race can never move it two steps.
 
-def test_escalation_moves_up(fake_db):
-    row = seed(fake_db)
-    assert invoice_service.set_escalation_level(row["id"], 2) is True
+@pytest.mark.parametrize("start,expected", [(1, 2), (2, 3)])
+def test_escalate_moves_up_one_step(fake_db, start, expected):
+    row = seed(fake_db, escalation_level=start)
+    assert invoice_service.escalate(row["id"], start) == expected
+    assert fake_db.invoices[row["id"]]["escalation_level"] == expected
+
+
+def test_escalate_refuses_a_stale_from_level(fake_db):
+    row = seed(fake_db, escalation_level=2)  # someone else already escalated
+    assert invoice_service.escalate(row["id"], 1) is None
     assert fake_db.invoices[row["id"]]["escalation_level"] == 2
 
 
-@pytest.mark.parametrize("level", [1, 0, -1, None])
-def test_escalation_never_moves_down_or_rewrites(fake_db, level):
-    row = seed(fake_db, escalation_level=2)
+def test_escalate_stops_at_legal(fake_db):
+    row = seed(fake_db, escalation_level=3)
     before = len(fake_db.requests)
-    assert invoice_service.set_escalation_level(row["id"], level) is False
-    assert fake_db.invoices[row["id"]]["escalation_level"] == 2
+    assert invoice_service.escalate(row["id"], 3) is None
+    assert fake_db.invoices[row["id"]]["escalation_level"] == 3
     assert not [r for r in fake_db.requests[before:] if r[0] == "PATCH"]
 
 
-def test_escalation_is_capped_at_legal(fake_db):
+def test_escalate_leaves_a_settled_invoice_alone(fake_db):
+    row = seed(fake_db, escalation_level=1, status="paid")
+    assert invoice_service.escalate(row["id"], 1) is None
+    assert fake_db.invoices[row["id"]]["escalation_level"] == 1
+
+
+def test_escalate_needs_the_ladder_started(fake_db):
+    row = seed(fake_db, escalation_level=0)
+    assert invoice_service.escalate(row["id"], 0) is None
+    assert fake_db.invoices[row["id"]]["escalation_level"] == 0
+
+
+def test_escalate_unknown_invoice(fake_db):
+    assert invoice_service.escalate("nope", 1) is None
+
+
+def test_start_ladder_moves_zero_to_friendly(fake_db):
+    row = seed(fake_db, escalation_level=0)
+    assert invoice_service.start_ladder(row["id"]) is True
+    assert fake_db.invoices[row["id"]]["escalation_level"] == 1
+
+
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_start_ladder_never_touches_a_started_invoice(fake_db, level):
+    row = seed(fake_db, escalation_level=level)
+    assert invoice_service.start_ladder(row["id"]) is False
+    assert fake_db.invoices[row["id"]]["escalation_level"] == level
+
+
+def test_conditional_level_move_reports_only_its_own_change(fake_db):
+    from src import db
     row = seed(fake_db, escalation_level=2)
-    invoice_service.set_escalation_level(row["id"], 9)
+    assert db.move_escalation_level(row["id"], 1, 2) is False  # level isn't 1 any more
+    assert fake_db.invoices[row["id"]]["escalation_level"] == 2
+    assert db.move_escalation_level(row["id"], 2, 3) is True
     assert fake_db.invoices[row["id"]]["escalation_level"] == 3
+
+
+def test_there_is_no_free_form_level_setter():
+    assert not hasattr(invoice_service, "set_escalation_level")
 
 
 # --- settle -------------------------------------------------------------------

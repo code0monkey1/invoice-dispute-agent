@@ -38,18 +38,24 @@ def update_invoice_details(
     runtime: ToolRuntime
 ) -> Command:
     """Save invoice details to state when the user provides them. Call this once you have all details."""
-    return Command(update={
+    level = int(runtime.state.get("escalation_level") or 0)
+    update = {
         "client_name": client_name,
         "client_email": client_email,
         "invoice_amount": invoice_amount,
         "invoice_id": invoice_id,
         "days_overdue": days_overdue,
         "jurisdiction": jurisdiction,
-        "escalation_level": 1,
-        "communication_history": [],
-        "messages": [ToolMessage(
-            f"Invoice details saved. Client: {client_name}, Amount: ${invoice_amount:.2f}, "
-            f"{days_overdue} days overdue in {jurisdiction}. Starting at escalation level 1 (Friendly).",
-            tool_call_id=runtime.tool_call_id
-        )]
-    })
+    }
+    if level < 1:
+        # Setup starts the ladder. Saving details later never resets it.
+        update.update(escalation_level=1, communication_history=[])
+        level_note = "Starting at escalation level 1 (Friendly)."
+    else:
+        level_note = f"Escalation level unchanged ({level})."
+    update["messages"] = [ToolMessage(
+        f"Invoice details saved. Client: {client_name}, Amount: ${invoice_amount:.2f}, "
+        f"{days_overdue} days overdue in {jurisdiction}. {level_note}",
+        tool_call_id=runtime.tool_call_id
+    )]
+    return Command(update=update)

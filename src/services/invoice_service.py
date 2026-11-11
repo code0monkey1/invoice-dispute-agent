@@ -19,6 +19,7 @@ from datetime import date
 from typing import Optional
 
 from src import db
+from src.services import escalation_policy
 
 logger = logging.getLogger("invoicechaser")
 
@@ -31,7 +32,6 @@ COMMITTABLE_BY_TOOL = {
     "record_partial_payment": ({"amount_paid", "status"}, {"active", "pending", "paid"}),
     "mark_invoice_pending": ({"status", "follow_up_date"}, {"pending"}),
 }
-MAX_ESCALATION_LEVEL = 3
 MAX_CLIENT_NAME_LENGTH = 200
 MAX_EMAIL_LENGTH = 254
 # One plain address: no spaces, commas, semicolons or angle brackets, so it
@@ -130,19 +130,25 @@ def apply_approved_outcome(invoice_id: str, response: dict, approved_tool: Optio
     return invoice_state_from_db(updated) if updated else None
 
 
-def set_escalation_level(invoice_id: str, new_level) -> bool:
-    """Raise the invoice's escalation level. Never lowers it. Returns True if it changed."""
-    if not isinstance(new_level, int) or isinstance(new_level, bool):
-        return False
-    invoice = db.get_invoice(invoice_id)
-    if not invoice:
-        return False
-    current = int(invoice.get("escalation_level") or 0)
-    target = min(MAX_ESCALATION_LEVEL, new_level)
-    if target <= current:
-        return False
-    db.update_invoice(invoice_id, escalation_level=target)
-    return True
+def escalate(invoice_id: str, from_level: int) -> Optional[int]:
+    """Move an invoice one step up the escalation ladder. The only way a level rises.
+
+    Applies only while the saved level is still *from_level* and the invoice
+    is unpaid, so two escalations racing from the same level move it once.
+    Returns the new level, or None if nothing changed.
+    """
+    from_level = int(from_level or 0)
+    if from_level < escalation_policy.FRIENDLY:
+        return None  # the ladder starts at setup (start_ladder), not by escalating
+    target = escalation_policy.next_level(from_level)
+    if target is None or not escalation_policy.is_valid_step(from_level, target):
+        return None
+    return target if db.move_escalation_level(invoice_id, from_level, target) else None
+
+
+def start_ladder(invoice_id: str) -> bool:
+    """Start the ladder at Friendly once the invoice is set up (0 -> 1 only)."""
+    return db.move_escalation_level(invoice_id, 0, escalation_policy.FRIENDLY, only_if_unpaid=False)
 
 
 def settle(invoice_id: str, user_id: Optional[str]) -> bool:

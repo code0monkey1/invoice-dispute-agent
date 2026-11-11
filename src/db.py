@@ -533,6 +533,25 @@ def mark_invoice_settled(invoice_id: str) -> bool:
     return bool(rows)
 
 
+def move_escalation_level(invoice_id: str, from_level: int, to_level: int, *, only_if_unpaid: bool = True) -> bool:
+    """Set the escalation level to *to_level* only while it is still *from_level*.
+
+    Returns True only for the call that changed it: the condition is part of
+    the update, so two requests escalating from the same level can't both win.
+    """
+    query = [("id", f"eq.{invoice_id}"), ("escalation_level", f"eq.{int(from_level)}")]
+    if only_if_unpaid:
+        query.append(("status", "neq.paid"))
+    rows = _supabase_rest_request(
+        "PATCH",
+        "invoices",
+        query=query,
+        payload={"escalation_level": int(to_level), "updated_at": _now()},
+        prefer="return=representation",
+    )
+    return bool(rows)
+
+
 def upload_invoice_file(
     bucket: str,
     path: str,

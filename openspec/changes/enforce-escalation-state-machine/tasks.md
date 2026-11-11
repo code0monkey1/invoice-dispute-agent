@@ -14,11 +14,11 @@ Write each group's tests first (TDD): see them fail, then implement until `pytes
 
 ## 3. Single writer of the saved level
 
-- [ ] 3.1 Add an `only_if_level` filter to `db.update_invoice` and the matching behaviour to the fake DB in `tests/fakes.py`; verify with a test that a mismatched level leaves the row unchanged
-- [ ] 3.2 Replace the `set_escalation_level` tests in `tests/test_invoice_service.py` with tests for `escalate(invoice_id, from_level)` (one-step rise, returns None on level mismatch, settled invoice, at Legal) and `start_ladder` (0→1 only); verify they fail
-- [ ] 3.3 Implement `invoice_service.escalate` and `start_ladder`, delete `set_escalation_level`; verify `pytest tests/test_invoice_service.py` passes
-- [ ] 3.4 Change `update_invoice_details` (`src/tools/escalation.py`) to set level 1 only when the state level is 0; verify with a test that saving details at Formal keeps Formal
-- [ ] 3.5 Update the chat route in `api/index.py`: drop the post-run level persist, call `start_ladder` when the run took the invoice from 0 to 1; switch `/escalate` to `escalate()` with 409 on None; verify `tests/test_escalate_invoice.py` (plus a new test: a chat run cannot change the saved level) passes
+- [x] 3.1 Add a conditional `db.move_escalation_level(invoice_id, from_level, to_level)` (the fake DB already filters PATCHes); verify with a test that a mismatched level leaves the row unchanged
+- [x] 3.2 Replace the `set_escalation_level` tests in `tests/test_invoice_service.py` with tests for `escalate(invoice_id, from_level)` (one-step rise, returns None on level mismatch, settled invoice, at Legal) and `start_ladder` (0→1 only); verify they fail
+- [x] 3.3 Implement `invoice_service.escalate` and `start_ladder`, delete `set_escalation_level`; verify `pytest tests/test_invoice_service.py` passes
+- [x] 3.4 Change `update_invoice_details` (`src/tools/escalation.py`) to set level 1 only when the state level is 0; verify with a test that saving details at Formal keeps Formal
+- [x] 3.5 Update the chat route in `api/index.py`: drop the post-run level persist, call `start_ladder` when the run took the invoice from 0 to 1; switch `/escalate` to `escalate()` with 409 on None; verify `tests/test_escalate_invoice.py` (plus a new test: a chat run cannot change the saved level) passes
 
 ## 4. Approval-gated escalation proposal
 
