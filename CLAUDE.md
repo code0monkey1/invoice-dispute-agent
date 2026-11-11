@@ -24,10 +24,12 @@ cd frontend && npm run lint      # ESLint
 ### Deployment
 Vercel serverless — `vercel.json` routes frontend to `frontend/dist`, backend to `api/index.py` (60s timeout).
 
+Conversation store: `DATABASE_URL` is Supabase's transaction pooler (6543), logged in as the `langgraph_checkpointer` role (never `postgres`). Create its tables with `python -m src.checkpoint_setup`, which also locks them down. Re-run it after upgrading `langgraph-checkpoint-postgres`: until then startup reports `migrations_behind` and falls back to memory. Ship code that reads `DATABASE_URL` before adding the variable to Vercel. `/api/health` → `checkpointer` shows which store is live; `status: "degraded"` means production is on memory, or a configured database failed.
+
 ## Architecture
 
 ### Agent Core (`src/`)
-- **`agent.py`** — LangGraph state machine with InMemorySaver checkpointer. Middleware dynamically filters available tools and system prompts based on escalation level.
+- **`agent.py`** — LangGraph state machine. Its checkpointer comes from `checkpointer.py`: a pooled `PostgresSaver` when `DATABASE_URL` works, `MemorySaver` otherwise (`checkpointer_status` says which and why). Middleware dynamically filters available tools and system prompts based on escalation level.
 - **`state.py`** — `FreelancerContext` and `AgentState` dataclasses defining agent state shape.
 - **`prompts.py`** — Prompt loading utilities.
 - **`middleware/`** — Three middleware layers:
@@ -73,4 +75,4 @@ Golden set in `evals/golden/level_{0..3}.yaml`. `harness.py` runs a case through
 - **Telegram Bot API** (push notifications)
 
 ## Environment
-Copy `.env.example` to `.env`. Required keys: `GROQ_API_KEY`, `TAVILY_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `SECRET_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`. Optional: `LANGSMITH_TRACING` + `LANGSMITH_API_KEY` + `LANGSMITH_AGENT_ID`/`LANGSMITH_AGENT_ENVIRONMENT` (or `LANGSMITH_PROJECT`, never both) (LangSmith alongside the built-in tracer; runs labelled by `langsmith_config`; tests and evals force it off), `EVAL_JUDGE_MODEL` (eval judge, default `openai/gpt-oss-20b`), `TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME` + `TELEGRAM_WEBHOOK_SECRET` (for per-user Telegram notifications), `GOOGLE_PUBSUB_TOPIC` (for Gmail push), `CORS_ALLOW_ORIGINS` (comma-separated origins for cross-origin dev).
+Copy `.env.example` to `.env`. Required keys: `GROQ_API_KEY`, `TAVILY_API_KEY`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `SECRET_KEY`, `SUPABASE_URL`, `SUPABASE_KEY`. Optional: `DATABASE_URL` (conversation store, see Deployment; leave empty locally, and tests force memory), `LANGSMITH_TRACING` + `LANGSMITH_API_KEY` + `LANGSMITH_AGENT_ID`/`LANGSMITH_AGENT_ENVIRONMENT` (or `LANGSMITH_PROJECT`, never both) (LangSmith alongside the built-in tracer; runs labelled by `langsmith_config`; tests and evals force it off), `EVAL_JUDGE_MODEL` (eval judge, default `openai/gpt-oss-20b`), `TELEGRAM_BOT_TOKEN` + `TELEGRAM_BOT_USERNAME` + `TELEGRAM_WEBHOOK_SECRET` (for per-user Telegram notifications), `GOOGLE_PUBSUB_TOPIC` (for Gmail push), `CORS_ALLOW_ORIGINS` (comma-separated origins for cross-origin dev).

@@ -18,6 +18,9 @@ from unittest.mock import patch
 # Required env vars must exist before importing the app.
 # Never send test runs to LangSmith, whatever .env says (load_dotenv does not override).
 os.environ["LANGSMITH_TRACING"] = "false"
+# Nor to a real conversation store: the agent keeps checkpoints in memory.
+# (tests/test_checkpointer_postgres.py opts in with TEST_DATABASE_URL.)
+os.environ["DATABASE_URL"] = ""
 os.environ.setdefault("GROQ_API_KEY", "test")
 os.environ.setdefault("TAVILY_API_KEY", "test")
 os.environ.setdefault("GOOGLE_CLIENT_ID", "test")

@@ -7,6 +7,7 @@ from langchain.chat_models import init_chat_model
 import os
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 
+from src.checkpointer import make_checkpointer
 from src.state import InvoiceDisputeState, FreelancerContext
 from src.middleware.dynamic_tools import dynamic_tool_middleware, enforce_tool_gate
 from src.middleware.dynamic_prompts import escalation_prompt
@@ -45,37 +46,9 @@ GROQ_MODEL = os.getenv("GROQ_MODEL") or "openai/gpt-oss-120b"
 
 model = init_chat_model(GROQ_MODEL, model_provider="groq")
 
-_checkpointer_error = None
-
-def _make_checkpointer():
-    global _checkpointer_error
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if DATABASE_URL:
-        try:
-            import psycopg
-            from urllib.parse import urlparse, unquote
-            from langgraph.checkpoint.postgres import PostgresSaver
-            p = urlparse(DATABASE_URL)
-            conn = psycopg.connect(
-                host=p.hostname,
-                port=p.port or 5432,
-                dbname=(p.path or "/postgres").lstrip("/"),
-                user=unquote(p.username or ""),
-                password=unquote(p.password or ""),
-                sslmode="require",
-            )
-            cp = PostgresSaver(conn)
-            cp.setup()
-            print("[agent] PostgresSaver initialized successfully")
-            return cp
-        except Exception as e:
-            import traceback
-            _checkpointer_error = f"{type(e).__name__}: {e}"
-            print(f"[agent] PostgresSaver failed: {_checkpointer_error}\n{traceback.format_exc()}")
-    from langgraph.checkpoint.memory import MemorySaver
-    return MemorySaver()
-
-checkpointer = _make_checkpointer()
+# Each invoice's conversation: Postgres when DATABASE_URL works, memory otherwise
+# (checkpointer_status says which, and why; /api/health reports it).
+checkpointer, checkpointer_status = make_checkpointer(os.getenv("DATABASE_URL"))
 
 
 # Which tools wait for the user's approval before they run. The eval's HITL
