@@ -181,6 +181,122 @@ describe('ChatPanel first-open invoice actions', () => {
 });
 
 
+describe('ChatPanel quick actions', () => {
+  const QUICK_ACTIONS = [/give me a summary/i, /write next escalation email/i, /end dispute/i];
+
+  // Past first open: the conversation has started.
+  beforeEach(() => {
+    mocks.hookState.messages = [
+      { type: 'HumanMessage', content: 'Has the client paid?' },
+      { type: 'AIMessage', content: 'Not yet.' },
+    ];
+  });
+
+  it('shows summary, next email and end dispute above the input once the chat has started', async () => {
+    renderChat();
+
+    for (const name of QUICK_ACTIONS) {
+      expect(await screen.findByRole('button', { name })).toBeEnabled();
+    }
+  });
+
+  it('is hidden on first open, where the first-open actions show instead', async () => {
+    mocks.hookState.messages = [];
+    renderChat();
+
+    await screen.findByRole('button', { name: /create invoice email draft/i });
+    for (const name of QUICK_ACTIONS) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it('is hidden once the invoice is settled', async () => {
+    mocks.hookState.agentState = { ...baseState, status: 'paid' };
+    renderChat();
+
+    await screen.findByText(/settled\. the agent has stopped/i);
+    for (const name of QUICK_ACTIONS) {
+      expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    }
+  });
+
+  it('asks the agent for an invoice summary in chat', async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    await user.click(await screen.findByRole('button', { name: /give me a summary/i }));
+
+    expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
+    expect(mocks.sendMessage.mock.calls[0][0]).toMatch(/summary/i);
+    expect(mocks.sendMessage.mock.calls[0][0]).toMatch(/invoice/i);
+    expect(mocks.escalate).not.toHaveBeenCalled();
+    expect(mocks.settle).not.toHaveBeenCalled();
+  });
+
+  it('writes the next escalation email by escalating, not by asking in chat', async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    await user.click(await screen.findByRole('button', { name: /write next escalation email/i }));
+
+    expect(mocks.escalate).toHaveBeenCalledTimes(1);
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('disables the next escalation email at Legal and says why', async () => {
+    mocks.hookState.agentState = { ...baseState, escalation_level: 3 };
+    renderChat();
+
+    const button = await screen.findByRole('button', { name: /write next escalation email/i });
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute('title', expect.stringMatching(/highest level/i));
+  });
+
+  it('ends the dispute only after confirming', async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    await user.click(await screen.findByRole('button', { name: /end dispute/i }));
+    expect(mocks.settle).not.toHaveBeenCalled();
+    await user.click(screen.getByRole('button', { name: /yes, settled/i }));
+    expect(mocks.settle).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves the dispute open when ending it is cancelled', async () => {
+    const user = userEvent.setup();
+    renderChat();
+
+    await user.click(await screen.findByRole('button', { name: /end dispute/i }));
+    await user.click(screen.getByRole('button', { name: /cancel/i }));
+
+    expect(mocks.settle).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: /end dispute/i })).toBeInTheDocument();
+  });
+
+  it('disables every quick action while the agent is working', async () => {
+    mocks.hookState.loading = true;
+    renderChat();
+
+    for (const name of QUICK_ACTIONS) {
+      expect(await screen.findByRole('button', { name })).toBeDisabled();
+    }
+  });
+
+  it('disables every quick action while a draft waits for approval', async () => {
+    mocks.hookState.interrupt = {
+      tool: 'draft_polite_reminder',
+      args: {},
+      description: 'Subject: Reminder\n\nJust a friendly reminder.',
+    };
+    renderChat();
+
+    for (const name of QUICK_ACTIONS) {
+      expect(await screen.findByRole('button', { name })).toBeDisabled();
+    }
+  });
+});
+
+
 describe('ChatPanel escalation', () => {
   it('escalates directly instead of asking the agent in chat', async () => {
     const user = userEvent.setup();
