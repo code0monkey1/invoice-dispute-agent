@@ -164,11 +164,13 @@ async def unexpected_error(request: Request, exc: Exception):
 @app.get("/api/health")
 def health():
     import sys, os
-    from src.agent import checkpointer, _checkpointer_error
-    cp_type = type(checkpointer).__name__
-    db_url_set = bool(os.getenv("DATABASE_URL"))
-    return {"status": "ok", "python": sys.version, "checkpointer": cp_type,
-            "database_url_set": db_url_set, "checkpointer_error": _checkpointer_error,
+    from src import agent as agent_module
+    store = agent_module.checkpointer_status
+    # Memory loses conversations on every restart: degraded in production, and
+    # anywhere a configured database failed (not just never configured).
+    degraded = store["store"] == "memory" and (
+        os.getenv("VERCEL_ENV") == "production" or store["reason"] != "not_configured")
+    return {"status": "degraded" if degraded else "ok", "python": sys.version, "checkpointer": store,
             "traces": tracer.stats(), "langsmith": langsmith_status()}
 
 

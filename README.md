@@ -301,7 +301,7 @@ When you approve, `/resume` reads the waiting draft **before** syncing invoice d
 
 ### State, memory and context
 
-- **Agent state** (`src/state.py`): client, amounts, days overdue, jurisdiction, escalation level and status, persisted per invoice thread (`invoice-{id}`) by the LangGraph checkpointer (Postgres when `DATABASE_URL` is set).
+- **Agent state** (`src/state.py`): client, amounts, days overdue, jurisdiction, escalation level and status, persisted per invoice thread (`invoice-{id}`) by the LangGraph checkpointer. With `DATABASE_URL` set, that's Postgres, so chats and waiting approvals survive restarts and are shared by every server instance. Without it, it's in-memory, and `/api/health` reports `degraded` in production.
 - **Source of truth:** the Supabase `invoices` table, written only through `src/services/invoice_service.py`. Only fields that have changed are written into the agent, so a waiting draft isn't wiped when you open an invoice.
 - **Promise to pay:** `status: "pending"` plus `follow_up_date` (YYYY-MM-DD), saved when you approve `mark_invoice_pending` and shown in the agent's context.
 - **Indexes:** `invoices (user_id, created_at DESC)` serves "this user's invoices, newest first", which runs on every dashboard load and chat message.
@@ -662,6 +662,17 @@ python -m evals.run          # live golden-set eval (needs GROQ_API_KEY), scorec
 ## Deploy to Vercel
 
 `vercel.json` builds the frontend and serves every route through `api/index.py`. In the Vercel project, set the same variables as `.env`, including `GROQ_MODEL`, `RESEND_API_KEY`, `RESEND_INBOUND_DOMAIN` and `RESEND_WEBHOOK_SECRET`. Then point the Resend webhook at `https://<your-app>/api/email/inbound`.
+
+**Conversation store.** Without it, each server instance forgets its chats when it restarts.
+
+1. Apply `supabase/schema.sql`. It creates the `langgraph_checkpointer` role without a password. Set one with a SCRAM verifier you generate locally: `ALTER ROLE langgraph_checkpointer PASSWORD 'SCRAM-SHA-256$...'`.
+2. Deploy the code first, then create the tables as that role:
+   `DATABASE_URL="postgresql://langgraph_checkpointer.<ref>:<password>@aws-1-<region>.pooler.supabase.com:6543/postgres" python -m src.checkpoint_setup`
+   It also locks the tables away from the public API, and fails if a migration left a broken index.
+3. Add the same URL to Vercel without putting it on the command line: `printf %s "$URL" | vercel env add DATABASE_URL --environment production --sensitive`. Then redeploy.
+4. Check `/api/health`: `checkpointer.store` should be `postgres` and `status` should be `ok`. If `reason` says `tables_missing` or `migrations_behind`, run step 2.
+
+Re-run step 2 after upgrading `langgraph-checkpoint-postgres`, since it may add migrations.
 
 ---
 

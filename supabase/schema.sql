@@ -164,3 +164,45 @@ BEGIN
         );
     END IF;
 END $$;
+
+-- ============================================================================
+-- Agent conversation store (LangGraph checkpoints)
+-- ============================================================================
+-- The app connects as this role (DATABASE_URL, transaction pooler 6543) instead
+-- of `postgres`: it can only reach the tables it creates, and those tables don't
+-- get Supabase's default anon/authenticated grants (which apply to tables that
+-- `postgres` creates). The timeouts stop a stuck client from holding locks.
+-- The password is never in this file. Set or rotate it out of band with a SCRAM
+-- verifier generated locally, then update DATABASE_URL in Vercel and redeploy:
+--   ALTER ROLE langgraph_checkpointer PASSWORD 'SCRAM-SHA-256$4096:...';
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'langgraph_checkpointer') THEN
+        CREATE ROLE langgraph_checkpointer WITH LOGIN;
+    END IF;
+END $$;
+GRANT USAGE, CREATE ON SCHEMA public TO langgraph_checkpointer;
+-- No per-role connection limit: Supavisor opens server connections up to its own
+-- pool size, and a lower role limit would reject them mid-request.
+ALTER ROLE langgraph_checkpointer CONNECTION LIMIT -1;
+-- Lets `postgres` (SQL editor, MCP, this file) manage the tables the role owns.
+GRANT langgraph_checkpointer TO postgres;
+ALTER ROLE langgraph_checkpointer SET statement_timeout = '15s';
+ALTER ROLE langgraph_checkpointer SET idle_in_transaction_session_timeout = '30s';
+
+-- The tables themselves are created by `python -m src.checkpoint_setup` (LangGraph
+-- owns their DDL and migrations), which also applies this lockdown as their owner.
+-- It is repeated here so re-running this file keeps them away from the public
+-- API like the trace tables: RLS on with no policies, and no anon/authenticated
+-- privileges. The owning role bypasses RLS, so the app is unaffected.
+DO $$
+DECLARE
+    t TEXT;
+BEGIN
+    FOREACH t IN ARRAY ARRAY['checkpoints', 'checkpoint_blobs', 'checkpoint_writes', 'checkpoint_migrations'] LOOP
+        IF EXISTS (SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = t) THEN
+            EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', t);
+            EXECUTE format('REVOKE ALL ON public.%I FROM anon, authenticated', t);
+        END IF;
+    END LOOP;
+END $$;
