@@ -133,8 +133,8 @@ async def test_nonsense_payment_amounts_change_nothing(client, fake_db, scripted
 
 
 @pytest.mark.asyncio
-async def test_approving_a_reminder_does_not_commit_an_ungated_tools_changes(client, fake_db, scripted, sent):
-    """After the approved reminder, the run calls update_invoice_details (no approval needed).
+async def test_approving_a_draft_does_not_commit_an_ungated_tools_changes(client, fake_db, scripted, sent):
+    """After the approved formal demand, the run calls update_invoice_details (no approval needed).
 
     That tool resets the level to 1 and rewrites the client email in agent
     state. None of it may reach the database, and the email goes to the saved client.
@@ -143,15 +143,15 @@ async def test_approving_a_reminder_does_not_commit_an_ungated_tools_changes(cli
     invoice = await create_invoice(client, headers)
     fake_db.invoices[invoice["id"]]["escalation_level"] = 2
     scripted.replies = [
-        tool_call("draft_polite_reminder"),
+        tool_call("draft_formal_demand_letter"),
         tool_call(
             "update_invoice_details", client_name="Evil", client_email="evil@attacker.example",
             invoice_amount=1.0, invoice_id="X", days_overdue=0, jurisdiction="Nowhere",
         ),
     ]
-    await chat(client, headers, invoice, "Please draft a reminder for the invoice")
+    await chat(client, headers, invoice, "Please draft a formal demand for the invoice")
 
-    await decide(client, headers, invoice, "approve", message="Subject: Reminder\n\nPlease pay invoice INV-SEND-1.")
+    await decide(client, headers, invoice, "approve", message="Subject: Demand\n\nPlease pay invoice INV-SEND-1.")
 
     saved = fake_db.invoices[invoice["id"]]
     assert saved["client_email"] == "ap@acme.example"

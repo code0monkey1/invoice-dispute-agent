@@ -10,12 +10,12 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langgraph.checkpoint.memory import MemorySaver
 
-from src.agent import build_agent
+from src.agent import ALL_TOOLS, build_agent
 from src.middleware.dynamic_tools import tools_for_level
 from src.state import FreelancerContext
 from tests.test_real_graph_payments import ScriptedModel, tool_call
 
-ALL_NAMES = {t.name for t in tools_for_level(3)}
+ALL_NAMES = {t.name for t in ALL_TOOLS}
 
 CTX = FreelancerContext(
     freelancer_name="Fay", freelancer_email="fay@example.com", business_name="Fay Studio",
@@ -60,30 +60,70 @@ def run(level: int, name: str):
     return agent, config, out
 
 
-def above_level(level: int) -> list[str]:
+def not_allowed(level: int) -> list[str]:
     allowed = {t.name for t in tools_for_level(level)}
     return sorted(ALL_NAMES - allowed)
 
 
-def test_tools_for_level_matches_progressive_unlocking():
-    assert "draft_final_notice" not in {t.name for t in tools_for_level(1)}
-    assert "draft_formal_demand_letter" in {t.name for t in tools_for_level(2)}
-    assert {t.name for t in tools_for_level(-1)} == {t.name for t in tools_for_level(0)}
-    assert {t.name for t in tools_for_level(9)} == ALL_NAMES
+NON_MAIL_TOOLS = {
+    "check_invoice_status", "update_invoice_details",
+    "mark_invoice_pending", "mark_invoice_paid", "record_partial_payment",
+}
 
 
-@pytest.mark.parametrize("level", [0, 1, 2])
-def test_every_above_level_tool_is_refused(level, no_network):
-    for name in above_level(level):
+def test_each_level_offers_only_its_own_escalation_email():
+    names = lambda level: {t.name for t in tools_for_level(level)}
+    assert names(0) == {"update_invoice_details", "check_invoice_status", "draft_invoice_delivery_email"}
+    assert names(1) == NON_MAIL_TOOLS | {"draft_invoice_delivery_email", "draft_polite_reminder", "escalate_dispute"}
+    assert names(2) == NON_MAIL_TOOLS | {"draft_invoice_delivery_email", "draft_formal_demand_letter", "escalate_dispute"}
+    assert names(3) == NON_MAIL_TOOLS | {
+        "draft_invoice_delivery_email", "draft_final_notice",
+        "lookup_small_claims_procedures", "generate_court_filing_guide",
+    }
+    assert names(-1) == names(0)
+    assert names(9) == names(3)
+
+
+@pytest.mark.parametrize("level,name", [
+    (2, "draft_polite_reminder"),
+    (3, "draft_polite_reminder"),
+    (3, "draft_formal_demand_letter"),
+    (1, "draft_final_notice"),
+    (0, "escalate_dispute"),
+    (3, "escalate_dispute"),
+])
+def test_wrong_level_emails_and_escalation_are_refused(level, name):
+    assert name in not_allowed(level)
+
+
+@pytest.mark.parametrize("level", [0, 1, 2, 3])
+def test_every_tool_not_allowed_at_the_level_is_refused(level, no_network):
+    for name in not_allowed(level):
         agent, config, out = run(level, name)
         refusals = [m for m in out["messages"] if isinstance(m, ToolMessage) and m.name == name]
         assert refusals, f"{name} at level {level}: no refusal recorded"
         assert refusals[0].status == "error"
         assert f"not available at escalation level {level}" in refusals[0].content
-        # No approval card for an above-level draft or payment change.
+        # No approval card for a wrong-level draft or payment change.
         assert "__interrupt__" not in out, f"{name} at level {level} reached HITL"
         assert not agent.get_state(config).tasks
     assert no_network == []
+
+
+def test_refusal_names_the_email_allowed_at_this_level():
+    _, _, out = run(3, "draft_polite_reminder")
+    [refusal] = [m for m in out["messages"] if isinstance(m, ToolMessage) and m.name == "draft_polite_reminder"]
+    assert "draft_final_notice" in refusal.content
+
+
+def test_repeated_current_level_email_still_needs_approval():
+    _, _, out = run(2, "draft_formal_demand_letter")
+    assert "__interrupt__" in out
+
+
+def test_delivery_email_is_allowed_at_legal():
+    _, _, out = run(3, "draft_invoice_delivery_email")
+    assert "__interrupt__" in out
 
 
 def test_refused_call_does_not_run_the_tool(no_network):
@@ -139,8 +179,10 @@ def run_untrusted(level, name):
     )
 
 
-@pytest.mark.parametrize("name", ["update_invoice_details", "escalate_dispute"])
-@pytest.mark.parametrize("level", [1, 2, 3])
+@pytest.mark.parametrize("level,name", [
+    (1, "update_invoice_details"), (2, "update_invoice_details"), (3, "update_invoice_details"),
+    (1, "escalate_dispute"), (2, "escalate_dispute"),  # not offered at all at Legal
+])
 def test_a_client_reply_cannot_change_state_without_approval(level, name):
     out = run_untrusted(level, name)
     [refusal] = [m for m in out["messages"] if isinstance(m, ToolMessage) and m.name == name]
@@ -189,3 +231,11 @@ def test_a_client_reply_is_not_offered_tools_it_could_never_use(level):
 def test_trusted_runs_are_still_offered_the_unapproved_tools():
     offered = offered_tools(CTX, 2)
     assert {"update_invoice_details", "escalate_dispute"} <= offered
+
+
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_offered_emails_match_the_escalation_policy(level):
+    from src.services.escalation_policy import MAIL_LEVEL, can_draft
+    offered = {t.name for t in tools_for_level(level)}
+    for email in MAIL_LEVEL:
+        assert (email in offered) is can_draft(email, level), f"{email} at level {level}"
