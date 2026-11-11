@@ -4,7 +4,9 @@ import remarkBreaks from 'remark-breaks'
 
 // Raw HTML is never parsed (no rehype-raw) and react-markdown's default
 // urlTransform strips unsafe schemes like javascript:, so model output
-// can't inject markup or script.
+// can't inject markup or script. Images are never loaded: model output
+// can be steered by client replies, and an auto-loaded image URL could
+// leak invoice data to a third party. Only the alt text is shown.
 const components: Components = {
   p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
   strong: ({ children }) => <strong className="font-semibold text-gray-900">{children}</strong>,
@@ -19,6 +21,7 @@ const components: Components = {
   blockquote: ({ children }) => (
     <blockquote className="border-l-2 border-orange-200 pl-3 my-2 text-gray-600">{children}</blockquote>
   ),
+  img: ({ alt }) => (alt ? <span className="italic text-gray-500">[{alt}]</span> : null),
   hr: () => <hr className="my-3 border-gray-100" />,
   a: ({ href, children }) => (
     <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#FF6B35] underline underline-offset-2 hover:text-[#e55a2b]">

