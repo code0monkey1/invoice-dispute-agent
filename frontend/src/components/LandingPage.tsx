@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from '../contexts/auth'
 import {
   Zap, Check, X, Pause, Play, RotateCcw, FileText, Search, PenLine, Send,
   Inbox, AlertTriangle, BadgeCheck, Mail, Scale, ListChecks,

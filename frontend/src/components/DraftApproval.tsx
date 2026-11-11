@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { Check, X, Pencil, FileText, Mail, CreditCard, Clock } from 'lucide-react'
 import type { Interrupt } from '../types'
 
@@ -120,11 +120,15 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
   const [rejectReason, setRejectReason] = useState('')
   const [showReject, setShowReject] = useState(false)
 
-  useEffect(() => {
+  // A new draft arrived: start over from it (adjusting state while rendering
+  // instead of in an effect, so there's no extra render with the stale draft).
+  const [shownDraft, setShownDraft] = useState(initialDraft)
+  if (shownDraft !== initialDraft) {
+    setShownDraft(initialDraft)
     setDraftContent(initialDraft)
     setEditing(false)
     setShowReject(false)
-  }, [initialDraft])
+  }
 
   const handleStartEdit = () => {
     setSubject(parsed.subject)

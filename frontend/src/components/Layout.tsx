@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { Zap, User } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
+import { useAuth } from '../contexts/auth'
 
 // The app shell uses the landing page's theme (the `lp` scope in index.css),
 // so moving from the landing page into the app feels like one product.

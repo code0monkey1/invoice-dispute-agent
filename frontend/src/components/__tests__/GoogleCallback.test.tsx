@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import GoogleCallback from '../../pages/GoogleCallback';
-import { OAUTH_STATE_KEY } from '../../contexts/AuthContext';
+import { OAUTH_STATE_KEY } from '../../contexts/auth';
 
 const googleCallback = vi.fn();
 

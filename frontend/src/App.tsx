@@ -5,7 +5,7 @@ import ChatPanel from './components/ChatPanel'
 import LandingPage from './components/LandingPage'
 import GoogleCallback from './pages/GoogleCallback'
 import { InvoiceGeneratorPage } from './components/invoice-generator/InvoiceGeneratorPage'
-import { useAuth } from './contexts/AuthContext'
+import { useAuth } from './contexts/auth'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
