@@ -1,5 +1,6 @@
 import { Bot, User, Wrench, Mail } from 'lucide-react'
 import type { Message } from '../types'
+import Markdown from './Markdown'
 
 function messageText(content: unknown): string {
   if (content == null) return ''
@@ -96,12 +97,12 @@ export default function MessageBubble({ message }: { message: Message }) {
           <Bot className="w-4 h-4 text-white" />
         </div>
       )}
-      <div className={`max-w-[75%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+      <div className={`max-w-[75%] min-w-0 rounded-2xl px-4 py-3 text-sm leading-relaxed ${
         isUser
           ? 'bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] text-white shadow-md shadow-orange-200/30 rounded-br-md'
           : 'bg-white text-gray-700 border border-gray-100 shadow-sm rounded-bl-md'
       }`}>
-        <p className="whitespace-pre-wrap">{content}</p>
+        {isAI ? <Markdown>{content}</Markdown> : <p className="whitespace-pre-wrap">{content}</p>}
       </div>
       {isUser && (
         <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-teal-200/40">
