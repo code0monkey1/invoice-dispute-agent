@@ -95,6 +95,18 @@ ON CONFLICT (id) DO NOTHING;
 -- Sender profile (used by the Invoice Generator module).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS sender_profile JSONB NOT NULL DEFAULT '{}'::jsonb;
 
+-- Only the backend reads or writes these tables, through the REST API with the
+-- service role key (which bypasses RLS). Keep them away from the public API:
+-- RLS on with no policies, so the anon/authenticated keys get no rows, and those
+-- roles' privileges revoked, so the tables aren't even discoverable (e.g. in the
+-- GraphQL schema at /graphql/v1). Supabase grants anon and authenticated full
+-- privileges on every table `postgres` creates in public, so both are needed.
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE invoices ENABLE ROW LEVEL SECURITY;
+ALTER TABLE communication_history ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON users, invoices, communication_history FROM anon, authenticated;
+REVOKE ALL ON SEQUENCE communication_history_id_seq FROM anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Agent traces (src/observability/tracer.py). One row per agent run (a chat
 -- message, an escalation, a resume after a human decision, a client reply),
