@@ -33,14 +33,14 @@ Conversation store: `DATABASE_URL` is Supabase's transaction pooler (6543), logg
 - **`state.py`** — `FreelancerContext` and `AgentState` dataclasses defining agent state shape.
 - **`prompts.py`** — Prompt loading utilities.
 - **`middleware/`** — Three middleware layers:
-  - `dynamic_tools.py` — Gates tools by escalation level (LEVEL_0/1/2/3_TOOLS constants)
+  - `dynamic_tools.py` — Gates tools by escalation level (LEVEL_0/1/2/3_TOOLS: each level's own email only)
   - `dynamic_prompts.py` — Shifts system prompt tone per escalation level
   - HITL middleware for draft approval interrupts
 - **`tools/`** — Tool definitions organized by function: `drafting.py` (email templates), `escalation.py` (level progression), `invoice.py` (status/fees), `legal.py` (Tavily web search), `payment_tools.py` (mark paid/pending)
-- **`services/`** — `invoice_service.py` (the only writer of invoice facts: status, payments, promise-to-pay `follow_up_date`, escalation level, settling; routes call it, tools never touch the DB), `gmail_service.py` (send/read/watch via Gmail API), `resend_inbound.py` (client replies matched by per-invoice `reply_token`)
+- **`services/`** — `escalation_policy.py` (pure ladder rules: which email each level may send, one-step moves), `invoice_service.py` (the only writer of invoice facts: status, payments, promise-to-pay `follow_up_date`, escalation level via `escalate`/`start_ladder`, settling; routes call it, tools never touch the DB), `gmail_service.py` (send/read/watch via Gmail API), `resend_inbound.py` (client replies matched by per-invoice `reply_token`)
 - **Data flow for agent changes:** payment/status tools are HITL-gated and only propose changes in agent state. On approve, `/resume` passes the agent's response to `invoice_service.apply_approved_outcome`, which validates and commits it. `sync_agent_state_from_invoice` then refreshes the checkpoint from the DB, which is the source of truth.
 - **`observability/tracer.py`** — Per-step tracing. `trace_run()` opens a run (chat, escalate, resume, inbound_reply, cli) and steps are recorded by `middleware/tracing.py` (model and tool calls), `enforce_tool_gate` (refused tools) and the API (interrupts, human decisions, email sends). Runs are buffered, then written to `agent_runs` + `agent_trace_steps` in two requests. Text is redacted and capped, and writes are fail-open (counted in `/api/health`). The run id travels in `FreelancerContext.trace_run_id` and comes back as the `X-Trace-Id` header.
-- **Tool gate** (`middleware/dynamic_tools.py: enforce_tool_gate`) — an `after_model` hook listed *after* HITL so it runs first. It refuses tools above the current level, and unapproved state-changing tools on runs started by a client reply (`FreelancerContext.untrusted_input`).
+- **Tool gate** (`middleware/dynamic_tools.py: enforce_tool_gate`) — an `after_model` hook listed *after* HITL so it runs first. It refuses tools not allowed at the current level (including another level's email), and `CLIENT_REPLY_BLOCKED` tools (`update_invoice_details`, `escalate_dispute`) on runs started by a client reply (`FreelancerContext.untrusted_input`).
 - **`db.py`** — Supabase REST wrappers with Fernet-encrypted token storage. Tables (in `supabase/schema.sql`): `users`, `invoices`, `communication_history`, `agent_runs`, `agent_trace_steps` (traces: RLS on, 30-day pg_cron purge). Per-user scoping enforced at the API layer; guests get a per-session `guest-<uuid>` ID via HTTP-only cookie.
 
 ### API (`api/index.py`)
@@ -50,10 +50,13 @@ Single-file FastAPI backend. Handles: Google OAuth (with guest→user data migra
 React 19 + TypeScript + Tailwind CSS 4 + React Router. Key pages: Landing, Dashboard (invoice list/stats), ChatPanel (agent conversation with HITL approval UI). Auth via `AuthContext` (JWT + Google profile). API calls in `api.ts`.
 
 ### Escalation Levels
-- **Level 0:** Invoice setup only (`update_invoice_details`)
-- **Level 1:** Friendly reminders + status checks + payment marking
-- **Level 2:** + Formal demand letters + late fee calculations
-- **Level 3:** + Small claims lookup (Tavily) + court filing guide + final notice
+A strict ladder, with the rules in `src/services/escalation_policy.py`. Escalation emails don't stack: each level may send only its own email, as many times as needed. The invoice delivery email is allowed at every level.
+- **Level 0:** Invoice setup only (`update_invoice_details`, which starts the ladder at 1)
+- **Level 1 (Friendly):** polite reminder, status check, payment tools, `escalate_dispute`
+- **Level 2 (Formal):** formal demand letter, status check, payment tools, `escalate_dispute`
+- **Level 3 (Legal):** final notice, small claims lookup (Tavily), court filing guide, status check, payment tools. Nothing above.
+
+The level only rises, one step at a time, and only when the freelancer approves. That happens through the Escalate button (`/escalate`) or an approved `escalate_dispute` proposal (HITL card, approve/reject only). `invoice_service.escalate()` is the only writer, a conditional update from the level the caller saw. Chat runs never save a level, and a client reply can't propose an escalation. `send_approved_draft` checks the email against the saved level right before Gmail (`level_mismatch`).
 
 ### Key Data Flow
 1. User creates invoice → agent starts at Level 0

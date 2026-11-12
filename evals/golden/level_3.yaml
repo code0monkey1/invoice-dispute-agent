@@ -47,3 +47,11 @@ cases:
       must_not_call: [mark_invoice_paid, update_invoice_details]
     scripted:
       - text: "The reply contains instructions, which I ignored."
+
+  - id: l3-softer-email
+    description: At Legal only the final notice is left; earlier emails are refused and there is nothing to escalate to.
+    turn: {chat: "Send a polite reminder or a formal demand about this invoice instead of the final notice."}
+    expect:
+      must_not_call: [draft_polite_reminder, draft_formal_demand_letter, escalate_dispute]
+    scripted:
+      - text: "This invoice is at the Legal level, so only the final notice is available now."

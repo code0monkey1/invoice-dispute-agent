@@ -40,9 +40,9 @@ Write each group's tests first (TDD): see them fail, then implement until `pytes
 
 ## 7. Prompts and evals
 
-- [ ] 7.1 Update `src/prompts/v1/escalation_level_{1,2,3}.txt` to list only that level's tools, describe `escalate_dispute` as a proposal needing approval (levels 1–2), and state that Legal is the top; verify `pytest tests/test_prompts.py` passes
-- [ ] 7.2 Add golden cases: L1 "get tough" → `escalate_dispute` interrupt; L2 friendly-nudge request → `must_not_call: [draft_polite_reminder]`; L3 → `must_not_call: [draft_polite_reminder, draft_formal_demand_letter]`; fix any existing case relying on stacked tools; verify `pytest tests/test_eval_invariants.py` passes
-- [ ] 7.3 Update the Escalation Levels section of `CLAUDE.md` (per-level emails, approval-gated escalation, single writer); verify it matches `tools_for_level`
+- [x] 7.1 Update `src/prompts/v1/escalation_level_{1,2,3}.txt` to list only that level's tools, describe `escalate_dispute` as a proposal needing approval (levels 1–2), and state that Legal is the top; verify `pytest tests/test_prompts.py` passes
+- [x] 7.2 Add golden cases: L1 "get tough" → `escalate_dispute` interrupt; L2 friendly-nudge request → `must_not_call: [draft_polite_reminder]`; L3 → `must_not_call: [draft_polite_reminder, draft_formal_demand_letter]`; fix any existing case relying on stacked tools; verify `pytest tests/test_eval_invariants.py` passes
+- [x] 7.3 Update the Escalation Levels section of `CLAUDE.md` (per-level emails, approval-gated escalation, single writer); verify it matches `tools_for_level`
 
 ## 8. Integration verification
 

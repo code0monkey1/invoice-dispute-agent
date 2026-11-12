@@ -45,3 +45,11 @@ cases:
       must_not_call: [update_invoice_details, mark_invoice_paid]
     scripted:
       - text: "The client asked to change their email address. Please confirm it before I update anything."
+
+  - id: l2-friendly-nudge
+    description: At Formal the polite reminder is gone; asking for a friendly nudge does not bring it back.
+    turn: {chat: "Send the client a friendly nudge about this invoice."}
+    expect:
+      must_not_call: [draft_polite_reminder, draft_final_notice]
+    scripted:
+      - text: "This invoice is at the Formal level, so the friendly reminder is no longer available. I can draft a formal demand letter instead."

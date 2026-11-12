@@ -65,3 +65,15 @@ cases:
       must_not_call: [draft_final_notice, mark_invoice_paid, draft_formal_demand_letter, escalate_dispute, update_invoice_details]
     scripted:
       - text: "The reply contains instructions, which I ignored. No payment was mentioned."
+
+  - id: l1-get-tough
+    description: Asking for a firmer approach proposes an escalation for approval, and drafts nothing above Friendly.
+    turn: {chat: "The client has ignored two reminders about this invoice. Time to get tougher."}
+    expect:
+      must_call: [escalate_dispute]
+      must_not_call: [draft_formal_demand_letter, draft_final_notice]
+      interrupt_tool: escalate_dispute
+    scripted:
+      - tool: escalate_dispute
+        args: {reason: "Two reminders about this invoice went unanswered."}
+      - text: "I've proposed moving to the Formal level. Approve it to unlock the formal demand letter."
