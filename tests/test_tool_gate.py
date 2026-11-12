@@ -28,7 +28,7 @@ VALID_ARGS = {
     "check_invoice_status": {},
     "draft_invoice_delivery_email": {"subject": "Invoice", "body": "Please find it attached."},
     "draft_polite_reminder": {},
-    "escalate_dispute": {},
+    "escalate_dispute": {"reason": "No reply to two reminders."},
     "draft_formal_demand_letter": {},
     "lookup_small_claims_procedures": {"jurisdiction": "California"},
     "generate_court_filing_guide": {"jurisdiction": "California"},
@@ -195,9 +195,10 @@ def test_a_client_reply_can_still_propose_approval_gated_changes():
     assert "__interrupt__" in out  # the freelancer decides
 
 
-def test_trusted_runs_keep_the_unapproved_tools():
+def test_a_trusted_escalation_is_only_a_proposal_until_approved():
     _, _, out = run(1, "escalate_dispute")
-    assert out.get("escalation_level") == 2
+    assert "__interrupt__" in out
+    assert out.get("escalation_level") == 1
 
 
 class RecordingModel(ScriptedModel):

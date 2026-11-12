@@ -22,11 +22,11 @@ Write each group's tests first (TDD): see them fail, then implement until `pytes
 
 ## 4. Approval-gated escalation proposal
 
-- [ ] 4.1 Add real-graph tests (pattern of `tests/test_real_graph_payments.py`): a scripted `escalate_dispute` call raises an interrupt; reject leaves DB and state at Friendly and a formal draft is still refused; approve sets DB to Formal and a following formal draft is offered; two escalations in one run need two approvals; approval racing the `/escalate` button leaves the level at Formal; verify they fail
-- [ ] 4.2 Give `escalate_dispute` a `reason: str` argument, set `APPROVAL_REQUIRED["escalate_dispute"] = {"allowed_decisions": ["approve", "reject"]}` in `src/agent.py`
-- [ ] 4.3 In `/resume` (`_resume_run`), on an approved `escalate_dispute` call `invoice_service.escalate(invoice_id, pending level)` before `agent.invoke`, record a trace step, and remove the level persist from `record_resume_outcome` (DB sync wins); verify the 4.1 tests pass
-- [ ] 4.4 Add an `escalate_dispute` branch to `generate_draft_preview` / `extract_interrupt` returning the from→to levels and reason; verify with a test on the interrupt payload
-- [ ] 4.5 Verify the existing client-reply tests still pass: `escalate_dispute` is refused on untrusted runs (`pytest tests/test_tool_gate.py -k client_reply`)
+- [x] 4.1 Add real-graph tests (pattern of `tests/test_real_graph_payments.py`): a scripted `escalate_dispute` call raises an interrupt; reject leaves DB and state at Friendly and a formal draft is still refused; approve sets DB to Formal and a following formal draft is offered; two escalations in one run need two approvals; approval racing the `/escalate` button leaves the level at Formal; verify they fail
+- [x] 4.2 Give `escalate_dispute` a `reason: str` argument, set `APPROVAL_REQUIRED["escalate_dispute"] = {"allowed_decisions": ["approve", "reject"]}` in `src/agent.py`
+- [x] 4.3 In `/resume` (`_resume_run`), on an approved `escalate_dispute` call `invoice_service.escalate(invoice_id, pending level)` before `agent.invoke`, record a trace step, and remove the level persist from `record_resume_outcome` (DB sync wins); verify the 4.1 tests pass
+- [x] 4.4 Add an `escalate_dispute` branch to `generate_draft_preview` / `extract_interrupt` returning the from→to levels and reason; verify with a test on the interrupt payload
+- [x] 4.5 Verify the existing client-reply tests still pass: `escalate_dispute` is refused on untrusted runs (`pytest tests/test_tool_gate.py -k client_reply`)
 
 ## 5. Level check at send time
 

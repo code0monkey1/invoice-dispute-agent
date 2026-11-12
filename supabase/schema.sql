@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS agent_trace_steps (
     id            BIGSERIAL PRIMARY KEY,
     run_id        TEXT NOT NULL REFERENCES agent_runs(id) ON DELETE CASCADE,
     seq           INTEGER NOT NULL,
-    type          TEXT NOT NULL,              -- model_call | tool_call | gate_blocked | interrupt | human_decision | email_send
+    type          TEXT NOT NULL,              -- model_call | tool_call | gate_blocked | interrupt | human_decision | email_send | escalation
     name          TEXT,
     payload       JSONB NOT NULL DEFAULT '{}'::jsonb,
     latency_ms    INTEGER,

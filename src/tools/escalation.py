@@ -2,26 +2,31 @@ from langchain.tools import tool, ToolRuntime
 from langgraph.types import Command
 from langchain_core.messages import ToolMessage
 
+from src.services.escalation_policy import LEVEL_NAMES, next_level
+
 
 @tool
-def escalate_dispute(runtime: ToolRuntime) -> Command:
-    """Escalate the invoice dispute to the next level. Level 1=friendly, 2=formal, 3=legal."""
-    current = runtime.state.get("escalation_level", 1)
-    if current >= 3:
+def escalate_dispute(reason: str, runtime: ToolRuntime) -> Command:
+    """Propose moving the dispute up one level (1=Friendly, 2=Formal, 3=Legal).
+
+    The freelancer must approve it before anything changes. Give a short reason
+    they can judge it by, e.g. how many reminders went unanswered."""
+    # Runs only after the freelancer approved; /resume has already saved the
+    # new level, so this just moves the rest of the run to it.
+    current = int(runtime.state.get("escalation_level") or 1)
+    target = next_level(current)
+    if target is None:
         return Command(update={
             "messages": [ToolMessage(
                 "Already at maximum escalation level (3 - Legal). Cannot escalate further.",
                 tool_call_id=runtime.tool_call_id
             )]
         })
-    new_level = current + 1
-    level_names = {1: "Friendly", 2: "Formal", 3: "Legal"}
     return Command(update={
-        "escalation_level": new_level,
+        "escalation_level": target,
         "messages": [ToolMessage(
-            f"Dispute escalated from level {current} ({level_names[current]}) "
-            f"to level {new_level} ({level_names[new_level]}). "
-            f"New tools and communication tone are now available.",
+            f"The freelancer approved escalating from level {current} ({LEVEL_NAMES[current]}) "
+            f"to level {target} ({LEVEL_NAMES[target]}). The {LEVEL_NAMES[target]} email is now available.",
             tool_call_id=runtime.tool_call_id
         )]
     })

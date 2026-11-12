@@ -522,6 +522,15 @@ def generate_draft_preview(
         days_overdue = state.get("days_overdue", 0)
         jurisdiction = state.get("jurisdiction", "")
 
+        if tool_name == "escalate_dispute":
+            current = int(state.get("escalation_level") or 1)
+            target = escalation_policy.next_level(current)
+            if target is None:
+                return "This invoice is already at the highest level (Legal)."
+            reason = str(action_args.get("reason") or "").strip()
+            text = (f"Move this invoice from {escalation_policy.LEVEL_NAMES[current]} "
+                    f"to {escalation_policy.LEVEL_NAMES[target]}.")
+            return f"{text}\n\nReason: {reason}" if reason else text
         if tool_name == "draft_invoice_delivery_email":
             subject = str(action_args.get("subject") or f"Invoice #{invoice_id} from {context.business_name}").strip()
             body = str(action_args.get("body") or "").strip()
@@ -1999,6 +2008,17 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
         approved_tool_name = pending_action["name"]
         approved_args = pending_action.get("args", {}) or {}
         logger.info("[RESUME] approving tool=%s run_id=%s", approved_tool_name, run.id)
+        if approved_tool_name == "escalate_dispute":
+            # Save the approved step before the run continues: a draft it
+            # produces next must already see the new level, and writing state
+            # after that would empty its approval card.
+            from_level = int(pending_state.get("escalation_level") or 1)
+            new_level = invoice_service.escalate(invoice_id, from_level)
+            run.add("escalation", approved_tool_name, {
+                "from_level": from_level,
+                "to_level": new_level,
+                "applied": new_level is not None,
+            })
         if approved_tool_name in EMAIL_DRAFT_TOOLS:
             try:
                 email_status, email_result, approved_subject, approved_draft_text = send_approved_draft(
@@ -2074,14 +2094,16 @@ def record_resume_outcome(invoice_id, config, decision, approved_tool_name, appr
         if persisted_state:
             # Only write fields that differ: update_state() empties any new
             # draft the resumed run is waiting on.
-            changes = {k: v for k, v in persisted_state.items() if response.get(k) != v}
+            changes = {k: v for k, v in persisted_state.items() if not _same_value(response.get(k), v)}
             if changes:
                 agent.update_state(config, changes)
                 response.update(changes)
 
     # Log the approved action into agent state. The outbound email itself was
     # recorded in the database by send_approved_draft as soon as it was sent.
-    if decision == "approve" and approved_tool_name:
+    # An approved escalation isn't an email, and its run usually ends on a new
+    # approval card (the next level's draft) that update_state() would empty.
+    if decision == "approve" and approved_tool_name and approved_tool_name != "escalate_dispute":
         entry = {
             "type": EMAIL_LOG_LABELS.get(approved_tool_name, approved_tool_name),
             "content": approved_subject or "Email approved",

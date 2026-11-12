@@ -60,7 +60,8 @@ APPROVAL_REQUIRED = {
     "draft_final_notice": True,
     "update_invoice_details": False,
     "check_invoice_status": False,
-    "escalate_dispute": False,
+    # A proposal: the freelancer approves or rejects it; there's nothing to edit.
+    "escalate_dispute": {"allowed_decisions": ["approve", "reject"]},
     "lookup_small_claims_procedures": False,
     "generate_court_filing_guide": False,
     "mark_invoice_pending": True,
