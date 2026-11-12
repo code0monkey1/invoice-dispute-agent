@@ -80,7 +80,7 @@ async def test_cannot_escalate_someone_elses_invoice(client, fake_db, monkeypatc
 
 
 @pytest.mark.asyncio
-async def test_escalating_a_new_invoice_starts_at_friendly_then_moves_one_step(client, fake_db, monkeypatch):
+async def test_escalating_a_new_invoice_counts_it_as_friendly_and_moves_to_formal(client, fake_db, monkeypatch):
     invoice = await _create_invoice(client, "INV-ESC-5")
     _fake_agent(monkeypatch)
     fake_db.invoices[invoice["id"]]["escalation_level"] = 0

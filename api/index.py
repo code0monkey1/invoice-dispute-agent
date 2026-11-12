@@ -1677,7 +1677,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
     # A chat run never moves the saved level: escalating needs the freelancer's
     # approval (/escalate, or an approved escalate_dispute in /resume). The one
     # exception is setup, which starts the ladder at Friendly (0 -> 1 only).
-    if int(response.get("escalation_level") or 0) >= 1:
+    if not int(invoice.get("escalation_level") or 0) and int(response.get("escalation_level") or 0) >= 1:
         invoice_service.start_ladder(inv_id)
 
     return {
@@ -1744,8 +1744,8 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
         return {"messages": messages, "interrupt": None, "state": persisted_state}
 
     state = extract_state(response)
-    # The level set above is authoritative even if the model's run reports less.
-    state["escalation_level"] = max(new_level, int(state.get("escalation_level") or 0))
+    # The level saved above is authoritative, whatever the model's run reports.
+    state["escalation_level"] = new_level
     return {
         "messages": serialize_messages(response["messages"]),
         "interrupt": extract_interrupt(response, context),
@@ -1890,7 +1890,10 @@ def send_approved_draft(
     invoice_data = get_invoice(invoice_id) or {}
     # Last check before Gmail: an escalation email only goes out at its own
     # level, whatever was approved (the level may have moved since it was drafted).
-    if invoice_data and not escalation_policy.can_draft(tool_name, saved_level(invoice_data)):
+    # Without the row the level is unknown, so an escalation email is refused.
+    if escalation_policy.MAIL_LEVEL.get(tool_name) and not (
+        invoice_data and escalation_policy.can_draft(tool_name, saved_level(invoice_data))
+    ):
         return "level_mismatch", None, None, None
     state = {**agent_state, **invoice_state_from_db(invoice_data)} if invoice_data else agent_state
     client_email = invoice_data.get("client_email") or agent_state.get("client_email", "")

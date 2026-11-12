@@ -281,3 +281,16 @@ async def test_the_delivery_email_is_sent_at_legal(client, fake_db, fake_agent, 
     body = (await approve(client, invoice, headers)).json()
 
     assert body["email_status"] == "sent" and len(sent) == 1
+
+
+def test_an_escalation_email_is_refused_when_the_invoice_cannot_be_read(monkeypatch):
+    # Without the row the saved level is unknown, so the check fails closed.
+    import api.index as api
+    from src.state import FreelancerContext
+
+    monkeypatch.setattr(api, "get_invoice", lambda _id: None)
+    status, *_ = api.send_approved_draft(
+        "INV-GONE", {"id": "user-1"}, FreelancerContext(), "draft_polite_reminder",
+        {}, {"client_email": "client@example.com"}, edited_draft="Subject: Hi\n\nPlease pay.",
+    )
+    assert status == "level_mismatch"

@@ -46,6 +46,6 @@ Write each group's tests first (TDD): see them fail, then implement until `pytes
 
 ## 8. Integration verification
 
-- [ ] 8.1 Run the full suites (`pytest`, `cd frontend && npx vitest run`) and verify they are green
+- [x] 8.1 Run the full suites (`pytest`, `cd frontend && npx vitest run`) and verify they are green
 - [ ] 8.2 Run the live eval (`python -m evals.run`) and verify `evals/results/latest.md` shows no new failures
 - [ ] 8.3 Manual check with `uvicorn` and the dev frontend: at Friendly ask the agent to "get tough", approve the escalation card, approve the formal letter; reject a second proposal and confirm the level stays Formal

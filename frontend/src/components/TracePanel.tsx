@@ -123,7 +123,7 @@ function describeStep(step: TraceStep): StepView {
     }
     case 'escalation': {
       const from = LEVEL_NAMES[Number(p.from_level)] ?? String(p.from_level ?? '?')
-      const to = LEVEL_NAMES[Number(p.from_level) + 1] ?? '?'
+      const to = LEVEL_NAMES[Number(p.to_level ?? Number(p.from_level) + 1)] ?? '?'
       return p.applied
         ? { icon: TrendingUp, tone: 'text-orange-600 bg-orange-50', title: `Escalated ${from} → ${to}`, meta }
         : { icon: TrendingUp, tone: 'text-gray-600 bg-gray-100', title: `Escalation from ${from} not applied (level already changed)`, meta }
