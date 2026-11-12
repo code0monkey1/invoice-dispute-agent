@@ -127,3 +127,28 @@ def test_paying_the_rest_settles_a_pending_invoice():
     )
     command = record_partial_payment.func(amount_paid=1000.0, payment_date="2026-10-20", runtime=runtime)
     assert command.update["status"] == "paid"
+
+
+@pytest.mark.asyncio
+async def test_the_agent_sees_the_jurisdiction_in_its_context(client, fake_db, fake_agent):
+    """Level 3 must look up small-claims rules "using the jurisdiction in the invoice
+    details", and final notices name it. Without it the agent asks the user for it."""
+    import api.index as api_index
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)  # jurisdiction: California
+
+    summary = api_index.build_user_invoice_context(invoice["id"], "user-1")
+
+    assert "Jurisdiction: California" in summary
+
+
+@pytest.mark.asyncio
+async def test_a_missing_jurisdiction_is_shown_as_not_set(client, fake_db, fake_agent):
+    import api.index as api_index
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)
+    fake_db.invoices[invoice["id"]]["jurisdiction"] = None
+
+    summary = api_index.build_user_invoice_context(invoice["id"], "user-1")
+
+    assert "Jurisdiction: not set" in summary
