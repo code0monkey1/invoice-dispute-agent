@@ -22,6 +22,11 @@ function invoice(overrides: Partial<Invoice> = {}): Invoice {
 }
 
 describe('invoiceStatus', () => {
+  it('names a waiting escalation proposal as one, not as a draft', () => {
+    const s = invoiceStatus(invoice({ awaiting_approval: true, pending_action: 'escalate_dispute' }));
+    expect(s).toEqual({ kind: 'you', label: 'Escalation to approve' });
+  });
+
   it('puts a waiting draft first, named by what it is', () => {
     const s = invoiceStatus(invoice({ awaiting_approval: true, pending_action: 'draft_formal_demand_letter' }));
     expect(s.kind).toBe('you');

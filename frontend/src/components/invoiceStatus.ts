@@ -19,6 +19,7 @@ const DRAFT_LABELS: Record<string, string> = {
   mark_invoice_paid: 'Payment update to confirm',
   record_partial_payment: 'Payment update to confirm',
   mark_invoice_pending: 'Status change to confirm',
+  escalate_dispute: 'Escalation to approve',
 }
 
 function promiseStatus(invoice: Invoice, today: Date): InvoiceStatus {
