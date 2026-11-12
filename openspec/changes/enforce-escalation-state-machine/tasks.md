@@ -30,8 +30,8 @@ Write each group's tests first (TDD): see them fail, then implement until `pytes
 
 ## 5. Level check at send time
 
-- [ ] 5.1 Add tests to `tests/test_approve_sends_email.py`: a pending polite reminder approved after the invoice moved to Formal is not sent (outbox empty, status `level_mismatch`, decision turned into a reject, no "email sent" history entry); a formal demand at Formal is sent; delivery email at Legal is sent; verify they fail
-- [ ] 5.2 Implement the `can_draft` check in `send_approved_draft`, the reject conversion in `_resume_run`, and a `level_mismatch` entry in `EMAIL_STATUS_NOTES`; verify the 5.1 tests pass
+- [x] 5.1 Add tests to `tests/test_approve_sends_email.py`: a pending polite reminder approved after the invoice moved to Formal is not sent (outbox empty, status `level_mismatch`, decision turned into a reject, no "email sent" history entry); a formal demand at Formal is sent; delivery email at Legal is sent; verify they fail
+- [x] 5.2 Implement the `can_draft` check in `send_approved_draft`, the reject conversion in `_resume_run`, and a `level_mismatch` entry in `EMAIL_STATUS_NOTES`; verify the 5.1 tests pass
 
 ## 6. Frontend approval cards
 

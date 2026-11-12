@@ -221,3 +221,63 @@ async def test_opening_the_invoice_before_approving_still_sends(client, fake_db,
     r = await approve(client, invoice, headers)
     assert r.json()["email_status"] == "sent"
     assert len(sent) == 1
+
+
+# --- level check at send time --------------------------------------------------
+# The last check before Gmail: an escalation email goes out only at its own
+# level, whatever was approved. The delivery email is allowed at every level.
+
+@pytest.mark.asyncio
+async def test_a_stale_reminder_is_not_sent_after_the_invoice_moved_up(client, fake_db, fake_agent, sent):
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)
+    fake_agent.ask_for_approval("draft_polite_reminder")
+    fake_db.invoices[invoice["id"]]["escalation_level"] = 2  # escalated while the card waited
+
+    r = await approve(client, invoice, headers)
+
+    assert r.status_code == 200, r.text
+    assert sent == []
+    body = r.json()
+    assert body["email_sent"] is False
+    assert body["email_status"] == "level_mismatch"
+    assert "Formal" in body["email_note"]
+    decision = fake_agent.resumed_with["decisions"][0]
+    assert decision["type"] == "reject" and "Formal" in decision["message"]
+    assert not [c for c in fake_db.communications if c.get("direction") == "outbound"]
+    assert not fake_agent.state.get("communication_history")
+
+
+@pytest.mark.asyncio
+async def test_a_stale_reminder_is_refused_in_demo_mode_too(client, fake_db, fake_agent, sent):
+    invoice = await create_invoice(client)  # guest
+    fake_agent.ask_for_approval("draft_polite_reminder")
+    fake_db.invoices[invoice["id"]]["escalation_level"] = 3
+
+    body = (await approve(client, invoice)).json()
+
+    assert body["email_status"] == "level_mismatch"
+
+
+@pytest.mark.asyncio
+async def test_a_formal_demand_at_formal_is_sent(client, fake_db, fake_agent, sent):
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)
+    fake_db.invoices[invoice["id"]]["escalation_level"] = 2
+    fake_agent.ask_for_approval("draft_formal_demand_letter")
+
+    body = (await approve(client, invoice, headers)).json()
+
+    assert body["email_status"] == "sent" and len(sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_the_delivery_email_is_sent_at_legal(client, fake_db, fake_agent, sent):
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)
+    fake_db.invoices[invoice["id"]]["escalation_level"] = 3
+    fake_agent.ask_for_approval("draft_invoice_delivery_email")
+
+    body = (await approve(client, invoice, headers)).json()
+
+    assert body["email_status"] == "sent" and len(sent) == 1

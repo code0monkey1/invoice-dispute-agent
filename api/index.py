@@ -1781,6 +1781,7 @@ EMAIL_STATUS_NOTES = {
     "gmail_not_connected": "Gmail isn't connected, so nothing was sent. Connect Gmail from your dashboard to send from your own address.",
     "failed": "Gmail couldn't send this email, so nothing was sent. Try approving it again in a moment.",
     "already_sent": "This email was already sent, so it wasn't sent again.",
+    "level_mismatch": "This draft no longer fits the invoice's escalation level, so nothing was sent.",
 }
 EMAIL_SENT_STATUSES = {"sent", "already_sent"}
 EMAIL_LOG_LABELS = {
@@ -1887,6 +1888,10 @@ def send_approved_draft(
     on the invoice after the draft was written still reach the right address.
     """
     invoice_data = get_invoice(invoice_id) or {}
+    # Last check before Gmail: an escalation email only goes out at its own
+    # level, whatever was approved (the level may have moved since it was drafted).
+    if invoice_data and not escalation_policy.can_draft(tool_name, saved_level(invoice_data)):
+        return "level_mismatch", None, None, None
     state = {**agent_state, **invoice_state_from_db(invoice_data)} if invoice_data else agent_state
     client_email = invoice_data.get("client_email") or agent_state.get("client_email", "")
     draft = edited_draft or generate_draft_preview(tool_name, state, context, tool_args)
@@ -2034,7 +2039,20 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
                 "gmail_thread_id": email_result.get("threadId") if isinstance(email_result, dict) else None,
             })
 
-    if req.decision == "approve":
+    decision = req.decision
+    level_note = ""
+    if email_status == "level_mismatch":
+        # Nothing was sent: tell the agent the draft was turned down, so it
+        # neither logs it as sent nor carries on as if it went out.
+        current = escalation_policy.LEVEL_NAMES.get(saved_level(get_invoice(invoice_id) or {}), "its current level")
+        email_label = EMAIL_LOG_LABELS.get(approved_tool_name, approved_tool_name)
+        level_note = f"The invoice is now at the {current} level. Ask for a new {current} email."
+        decision = "reject"
+        decisions = [{"type": "reject", "message": (
+            f"Not sent: the invoice is now at the {current} level, so this {email_label} no longer fits. "
+            f"Draft a new email at the {current} level if the freelancer asks for one."
+        )}]
+    elif req.decision == "approve":
         decisions = [{"type": "approve"}]
     elif req.decision == "reject":
         decisions = [{"type": "reject", "message": req.message or "Please revise."}]
@@ -2068,7 +2086,7 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
         raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
 
     try:
-        record_resume_outcome(invoice_id, config, req.decision, approved_tool_name, approved_subject, response)
+        record_resume_outcome(invoice_id, config, decision, approved_tool_name, approved_subject, response)
     except Exception:
         if not email_went_out:
             raise
@@ -2080,7 +2098,7 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
         "interrupt": extract_interrupt(response, context),
         "state": extract_state(response),
     }
-    return with_email_status(result, approved_tool_name, email_status, email_result)
+    return with_email_status(result, approved_tool_name, email_status, email_result, extra_note=level_note)
 
 
 def record_resume_outcome(invoice_id, config, decision, approved_tool_name, approved_subject, response) -> None:
@@ -2114,6 +2132,11 @@ def record_resume_outcome(invoice_id, config, decision, approved_tool_name, appr
         agent.update_state(config, {"communication_history": history})
         response["communication_history"] = history
 
+
+
+def saved_level(invoice: dict) -> int:
+    """The invoice's saved escalation level; an invoice not yet set up counts as Friendly."""
+    return max(escalation_policy.FRIENDLY, int(invoice.get("escalation_level") or 0))
 
 
 def current_state(invoice_id: str, fallback: dict) -> dict:
