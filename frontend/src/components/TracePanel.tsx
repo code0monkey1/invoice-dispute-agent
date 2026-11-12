@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useInfiniteQuery } from '@tanstack/react-query'
 import {
-  AlertTriangle, ChevronDown, ChevronRight, Cpu, Mail, PauseCircle, RefreshCw, ShieldAlert, UserCheck, Wrench,
+  AlertTriangle, ChevronDown, ChevronRight, Cpu, Mail, PauseCircle, RefreshCw, ShieldAlert, TrendingUp, UserCheck, Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { tracesQuery } from '../hooks/queries'
@@ -35,7 +35,10 @@ const EMAIL_LABELS: Record<string, string> = {
   demo: 'Not sent (demo)',
   gmail_not_connected: 'Not sent (Gmail not connected)',
   failed: 'Email not sent (Gmail error)',
+  level_mismatch: 'Not sent (draft no longer fits the level)',
 }
+
+const LEVEL_NAMES: Record<number, string> = { 1: 'Friendly', 2: 'Formal', 3: 'Legal' }
 
 function formatLatency(ms: number | null | undefined): string | null {
   if (ms == null) return null
@@ -117,6 +120,13 @@ function describeStep(step: TraceStep): StepView {
         detail: p.subject ? String(p.subject) : undefined,
         meta,
       }
+    }
+    case 'escalation': {
+      const from = LEVEL_NAMES[Number(p.from_level)] ?? String(p.from_level ?? '?')
+      const to = LEVEL_NAMES[Number(p.from_level) + 1] ?? '?'
+      return p.applied
+        ? { icon: TrendingUp, tone: 'text-orange-600 bg-orange-50', title: `Escalated ${from} → ${to}`, meta }
+        : { icon: TrendingUp, tone: 'text-gray-600 bg-gray-100', title: `Escalation from ${from} not applied (level already changed)`, meta }
     }
     default:
       return { icon: Cpu, tone: 'text-gray-600 bg-gray-100', title: `${step.type} ${step.name ?? ''}`.trim(), meta }

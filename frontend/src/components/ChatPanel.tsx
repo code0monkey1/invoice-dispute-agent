@@ -11,8 +11,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { qk, senderQuery } from '../hooks/queries'
 import { formatPromiseDate } from './format'
 
-const DRAFT_TOOLS = ['draft_invoice_delivery_email', 'draft_polite_reminder', 'draft_formal_demand_letter', 'draft_final_notice']
-const APPROVAL_TOOLS = [...DRAFT_TOOLS, 'mark_invoice_pending', 'mark_invoice_paid', 'record_partial_payment']
 const INVOICE_DELIVERY_PROMPT = 'Please draft the first invoice delivery email for this invoice. The email should tell the client the invoice is attached, reference the invoice number and amount due, and ask them to review and pay it.'
 // Asks only for what the agent can see: invoice figures, a count of emails sent, and this chat.
 const SUMMARY_PROMPT = "Give me a summary of this invoice: client, amount and balance due, status, days overdue, escalation level, how many emails have been sent, what has happened so far in this chat, and what you'd suggest doing next."
@@ -82,13 +80,6 @@ export default function ChatPanel() {
     !hasOutboundCommunication
   )
 
-  // Auto-approve non-draft interrupts silently (e.g. mark_invoice_pending)
-  useEffect(() => {
-    if (interrupt && !APPROVAL_TOOLS.includes(interrupt.tool) && !loading) {
-      approve()
-    }
-  }, [approve, interrupt, loading])
-
   const handleSend = () => {
     if (!input.trim() || loading) return
     sendMessage(input.trim())
@@ -109,7 +100,7 @@ export default function ChatPanel() {
   // Which control opened the settle confirmation; one confirmation serves both.
   const [confirmingSettle, setConfirmingSettle] = useState<'sidebar' | 'bar' | null>(null)
   const settled = agentState?.status === 'paid'
-  const draftWaiting = !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))
+  const draftWaiting = !!interrupt
   const showQuickActions = Boolean(agentState && !showFirstOpenActions && !settled)
   const quickActionsBusy = loading || draftWaiting
   const atHighestLevel = (agentState?.escalation_level ?? 0) >= 3
@@ -187,7 +178,7 @@ export default function ChatPanel() {
             >
               <Icon className="w-3.5 h-3.5" aria-hidden />
               {label}
-              {id === 'chat' && view !== 'chat' && interrupt && APPROVAL_TOOLS.includes(interrupt.tool) && (
+              {id === 'chat' && view !== 'chat' && interrupt && (
                 <span className="rounded-full bg-amber-100 text-amber-700 px-1.5 text-[10px]">1 waiting</span>
               )}
             </button>
@@ -252,7 +243,7 @@ export default function ChatPanel() {
             .map((msg, i) => (
               <MessageBubble key={i} message={msg} />
             ))}
-          {interrupt && APPROVAL_TOOLS.includes(interrupt.tool) && (
+          {interrupt && (
             <DraftApproval
               interrupt={interrupt}
               onApprove={approve}
@@ -345,13 +336,13 @@ export default function ChatPanel() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder={interrupt && APPROVAL_TOOLS.includes(interrupt.tool) ? 'Approve or reject the draft above...' : chatFocused ? 'Ask about this invoice or your other invoices...' : 'Type your message...'}
-              disabled={loading || !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))}
+              placeholder={interrupt ? 'Approve or reject the draft above...' : chatFocused ? 'Ask about this invoice or your other invoices...' : 'Type your message...'}
+              disabled={loading || !!interrupt}
               className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35]/50 disabled:opacity-50 transition-all"
             />
             <button
               onClick={handleSend}
-              disabled={loading || !input.trim() || !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))}
+              disabled={loading || !input.trim() || !!interrupt}
               className="btn-gradient disabled:opacity-50 text-white rounded-xl px-4 py-2.5 transition-all shadow-md shadow-orange-200/40"
             >
               <Send className="w-4 h-4" />

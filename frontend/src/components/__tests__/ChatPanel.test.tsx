@@ -386,3 +386,52 @@ describe('ChatPanel trace tab', () => {
     expect(screen.getByRole('tab', { name: /chat/i })).toHaveTextContent(/1 waiting/i);
   });
 });
+
+
+describe('ChatPanel approval requests are never approved silently', () => {
+  it('shows an escalation proposal as its own card and waits for the freelancer', async () => {
+    const user = userEvent.setup();
+    mocks.hookState.interrupt = {
+      tool: 'escalate_dispute',
+      args: { reason: 'Three reminders, no reply.' },
+      description: 'Move this invoice from Friendly to Formal.\n\nReason: Three reminders, no reply.',
+    };
+    renderChat();
+
+    expect(await screen.findByText(/move this invoice from friendly to formal/i)).toBeInTheDocument();
+    expect(screen.getByText(/three reminders, no reply/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /edit draft/i })).not.toBeInTheDocument();
+    expect(mocks.approve).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: /approve escalation/i }));
+    expect(mocks.approve).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the freelancer turn an escalation proposal down', async () => {
+    const user = userEvent.setup();
+    mocks.hookState.interrupt = {
+      tool: 'escalate_dispute',
+      args: { reason: 'No reply.' },
+      description: 'Move this invoice from Friendly to Formal.\n\nReason: No reply.',
+    };
+    renderChat();
+
+    await user.click(await screen.findByRole('button', { name: /not now/i }));
+    expect(mocks.reject).toHaveBeenCalledTimes(1);
+    expect(mocks.approve).not.toHaveBeenCalled();
+  });
+
+  it('shows a generic card for an approval request it does not recognise', async () => {
+    mocks.hookState.interrupt = {
+      tool: 'some_future_tool',
+      args: {},
+      description: 'Do a new thing.',
+    };
+    renderChat();
+
+    expect(await screen.findByText(/do a new thing/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^approve$/i })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(mocks.approve).not.toHaveBeenCalled();
+  });
+});

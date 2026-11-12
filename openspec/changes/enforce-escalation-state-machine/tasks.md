@@ -35,8 +35,8 @@ Write each group's tests first (TDD): see them fail, then implement until `pytes
 
 ## 6. Frontend approval cards
 
-- [ ] 6.1 Add Vitest tests in `frontend/src/components/__tests__/ChatPanel.test.tsx`: an `escalate_dispute` interrupt shows an escalation card (from→to, reason, Approve/Reject, no Edit) and calls no API until clicked; an unknown tool interrupt shows a generic card and is not auto-approved; verify they fail
-- [ ] 6.2 Remove the auto-approve `useEffect` in `ChatPanel.tsx`, add `escalate_dispute` to `APPROVAL_TOOLS`, add the escalation card and generic fallback in `DraftApproval.tsx`; verify `cd frontend && npx vitest run`, `npm run lint` and `npm run build` pass
+- [x] 6.1 Add Vitest tests in `frontend/src/components/__tests__/ChatPanel.test.tsx`: an `escalate_dispute` interrupt shows an escalation card (from→to, reason, Approve/Reject, no Edit) and calls no API until clicked; an unknown tool interrupt shows a generic card and is not auto-approved; verify they fail
+- [x] 6.2 Remove the auto-approve `useEffect` in `ChatPanel.tsx`, add `escalate_dispute` to `APPROVAL_TOOLS`, add the escalation card and generic fallback in `DraftApproval.tsx`; verify `cd frontend && npx vitest run`, `npm run lint` and `npm run build` pass
 
 ## 7. Prompts and evals
 

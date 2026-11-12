@@ -73,8 +73,8 @@ export interface ChatResponse {
   state: AgentState;
   email_sent?: boolean;
   email_id?: string;
-  /** Why an approved email was or wasn't sent: sent, demo, gmail_not_connected or failed. */
-  email_status?: 'sent' | 'demo' | 'gmail_not_connected' | 'failed';
+  /** Why an approved email was or wasn't sent. */
+  email_status?: 'sent' | 'already_sent' | 'demo' | 'gmail_not_connected' | 'failed' | 'level_mismatch';
   email_note?: string;
   communications?: SupabaseCommEntry[];
 }
@@ -172,7 +172,7 @@ export interface GenerateInvoiceRequest {
 
 // Agent traces (GET /api/invoices/{id}/traces). Text in payloads is redacted server-side.
 export type TraceStepType =
-  | 'model_call' | 'tool_call' | 'gate_blocked' | 'interrupt' | 'human_decision' | 'email_send'
+  | 'model_call' | 'tool_call' | 'gate_blocked' | 'interrupt' | 'human_decision' | 'email_send' | 'escalation'
 
 export interface TraceStep {
   seq: number

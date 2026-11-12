@@ -1,8 +1,42 @@
 import { useState, useMemo } from 'react'
-import { Check, X, Pencil, FileText, Mail, CreditCard, Clock } from 'lucide-react'
+import { Check, X, Pencil, FileText, Mail, CreditCard, Clock, TrendingUp, ShieldQuestion } from 'lucide-react'
 import type { Interrupt } from '../types'
 
-const PAYMENT_TOOLS: Record<string, { label: string; description: string; icon: React.ReactNode; color: string }> = {
+// Email drafts get the editable email card below; every other approval
+// request gets a confirm card. Nothing is ever approved without a click.
+const EMAIL_DRAFT_TOOLS = new Set([
+  'draft_invoice_delivery_email',
+  'draft_polite_reminder',
+  'draft_formal_demand_letter',
+  'draft_final_notice',
+])
+
+interface ActionCard {
+  label: string
+  /** Fixed explanation; when absent the agent's preview text is shown instead. */
+  description?: string
+  icon: React.ReactNode
+  color: string
+  approveLabel?: string
+  rejectLabel?: string
+}
+
+const GENERIC_ACTION: ActionCard = {
+  label: 'Approve this action?',
+  icon: <ShieldQuestion className="w-4 h-4 text-white" />,
+  color: 'from-slate-500 to-gray-600',
+  approveLabel: 'Approve',
+  rejectLabel: 'Reject',
+}
+
+const ACTION_TOOLS: Record<string, ActionCard> = {
+  escalate_dispute: {
+    label: 'Escalation proposed',
+    icon: <TrendingUp className="w-4 h-4 text-white" />,
+    color: 'from-orange-400 to-rose-500',
+    approveLabel: 'Approve escalation',
+    rejectLabel: 'Not now',
+  },
   mark_invoice_paid: {
     label: 'Mark Invoice as Paid',
     description: 'This will mark the invoice as fully paid and close the dispute.',
@@ -106,7 +140,7 @@ function reassemble(parts: { subject: string; body: string; senderName: string; 
 }
 
 export default function DraftApproval({ interrupt, onApprove, onReject, loading }: Props) {
-  const paymentAction = PAYMENT_TOOLS[interrupt.tool]
+  const paymentAction = EMAIL_DRAFT_TOOLS.has(interrupt.tool) ? null : (ACTION_TOOLS[interrupt.tool] ?? GENERIC_ACTION)
   const initialDraft = interrupt.description || JSON.stringify(interrupt.args, null, 2)
   const [draftContent, setDraftContent] = useState(initialDraft)
   const parsed = useMemo(() => parseDraft(draftContent), [draftContent])
@@ -162,7 +196,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
             </div>
           </div>
           <div className="px-5 py-4">
-            <p className="text-sm text-gray-600">{paymentAction.description}</p>
+            <p className="text-sm text-gray-600 whitespace-pre-line">{paymentAction.description ?? interrupt.description}</p>
             {interrupt.args?.follow_up_date != null && (
               <p className="text-xs text-gray-400 mt-1">Follow-up: {String(interrupt.args.follow_up_date)}</p>
             )}
@@ -179,14 +213,14 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
               disabled={loading}
               className="flex-1 inline-flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-green-500 disabled:opacity-50 text-white text-sm font-bold rounded-xl py-3 transition-all shadow-md shadow-emerald-200/40"
             >
-              <Check className="w-4 h-4" strokeWidth={3} /> Confirm
+              <Check className="w-4 h-4" strokeWidth={3} /> {paymentAction.approveLabel ?? 'Confirm'}
             </button>
             <button
               onClick={() => onReject('Not now')}
               disabled={loading}
               className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-rose-50 disabled:opacity-50 text-rose-500 text-sm font-bold rounded-xl py-3 border-2 border-rose-200 transition-all"
             >
-              <X className="w-4 h-4" strokeWidth={3} /> Dismiss
+              <X className="w-4 h-4" strokeWidth={3} /> {paymentAction.rejectLabel ?? 'Dismiss'}
             </button>
           </div>
         </div>
