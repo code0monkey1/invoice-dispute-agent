@@ -156,3 +156,36 @@ def test_a_client_reply_can_still_propose_approval_gated_changes():
 def test_trusted_runs_keep_the_unapproved_tools():
     _, _, out = run(1, "escalate_dispute")
     assert out.get("escalation_level") == 2
+
+
+class RecordingModel(ScriptedModel):
+    """Remembers the tool names it was offered on each model call."""
+    offered: list = []
+
+    def bind_tools(self, tools, **kwargs):
+        self.offered.append({getattr(t, "name", None) or t.get("name") for t in tools})
+        return self
+
+
+def offered_tools(context, level=2):
+    model = RecordingModel()
+    model.offered, model.replies = [], [AIMessage(content="Noted.")]
+    build_agent(model, MemorySaver()).invoke(
+        {"messages": [HumanMessage("[INCOMING CLIENT REPLY] ...")], "escalation_level": level, "invoice_id": "inv-1"},
+        context=context, config={"configurable": {"thread_id": f"offered-{id(context)}-{level}"}},
+    )
+    return model.offered[-1]
+
+
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_a_client_reply_is_not_offered_tools_it_could_never_use(level):
+    """The gate refuses them anyway, but offering them invited the attempt:
+    the live eval saw the model try update_invoice_details on a reply."""
+    offered = offered_tools(UNTRUSTED, level)
+    assert "update_invoice_details" not in offered and "escalate_dispute" not in offered
+    assert "mark_invoice_paid" in offered, "approval-gated tools stay available"
+
+
+def test_trusted_runs_are_still_offered_the_unapproved_tools():
+    offered = offered_tools(CTX, 2)
+    assert {"update_invoice_details", "escalate_dispute"} <= offered
