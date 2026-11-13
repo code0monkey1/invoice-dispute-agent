@@ -152,3 +152,16 @@ async def test_a_missing_jurisdiction_is_shown_as_not_set(client, fake_db, fake_
     summary = api_index.build_user_invoice_context(invoice["id"], "user-1")
 
     assert "Jurisdiction: not set" in summary
+
+
+@pytest.mark.asyncio
+async def test_the_agent_knows_todays_date(client, fake_db, fake_agent):
+    """Without it, drafts and filing guides fall back to a date placeholder."""
+    from datetime import date
+    import api.index as api_index
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)
+
+    summary = api_index.build_user_invoice_context(invoice["id"], "user-1")
+
+    assert f"Today's date: {date.today().isoformat()}" in summary

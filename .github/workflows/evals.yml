@@ -31,9 +31,11 @@ jobs:
     # Fork PRs can't read secrets (pull_request, not pull_request_target, on purpose).
     if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      # Optional: a second Groq key for the judge, so it has its own rate limit.
+      EVAL_JUDGE_GROQ_API_KEY: ${{ secrets.EVAL_JUDGE_GROQ_API_KEY }}
       GROQ_MODEL: ${{ vars.GROQ_MODEL }}
       EVAL_JUDGE_MODEL: ${{ vars.EVAL_JUDGE_MODEL }}
     steps:
@@ -48,7 +50,10 @@ jobs:
         id: eval
         run: |
           set +e
-          python -m evals.run --out-dir eval-out --baseline evals/results/baseline.json
+          # Groq's free tier allows 8,000 tokens/min per model per key, and one agent
+          # turn uses ~4-6k. Pacing keeps the run under it, so throttling (retried as
+          # "provider busy") doesn't show up as wrong answers.
+          python -m evals.run --pace 20 --out-dir eval-out --baseline evals/results/baseline.json
           echo "code=$?" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4

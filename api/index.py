@@ -668,6 +668,8 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
         amount = float(current.get("invoice_amount", 0) or 0)
         balance = compute_balance(amount, float(current.get("amount_paid", 0) or 0))
         header = [
+            # So drafts and filing guides use real dates instead of a placeholder.
+            f"Today's date: {datetime.now(timezone.utc).date().isoformat()}",
             "Current invoice (use these exact details in any email you draft):",
             f"  Invoice number: {parse_public_invoice_id(current['id'])}",
             f"  Client name: {current.get('client_name') or 'unknown'}",
