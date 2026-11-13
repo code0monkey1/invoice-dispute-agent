@@ -68,7 +68,8 @@ def collect(invoice_id: str, agent) -> Sources:
         tools = [{"name": t.get('name'), "args": t.get('args', {})}
                  for t in getattr(message, 'tool_calls', [])]
         if text or tools:
-            messages.append({'id': getattr(message, 'id', None), 'role': role, 'text': text, 'proposed_tools': tools})
+            participant = 'assistant' if role == 'ai' else 'client_reply' if text.startswith('[INCOMING CLIENT REPLY]') else 'freelancer'
+            messages.append({'id': getattr(message, 'id', None), 'role': role, 'participant': participant, 'text': text, 'proposed_tools': tools})
     communications = [
         {key: row.get(key) for key in ('id', 'type', 'subject', 'content', 'direction', 'timestamp')}
         for row in db.get_summary_communications(invoice_id)

@@ -104,4 +104,44 @@ describe('invoice opening summaries', () => {
     await act(async () => old(summary))
     expect(result.current.summary).toBe('B summary')
   })
+
+  it('keeps a new summary when an older history request completes afterward', async () => {
+    const client = createTestQueryClient()
+    client.setQueryData(qk.history('A'), { ...history, summary: null, summary_metadata: { ...summary, source_version: null, generated_at: null, status: 'pending', is_stale: true } })
+    let oldHistory!: (v: ChatResponse) => void
+    api.getHistory.mockImplementation(() => new Promise(r => { oldHistory = r }))
+    let finishSummary!: (v: typeof summary) => void
+    api.refreshSummary.mockImplementation(() => new Promise(r => { finishSummary = r }))
+    const { result } = renderHook(() => useChat('A'), { wrapper: withQueryClient(client) })
+    await waitFor(() => expect(api.refreshSummary).toHaveBeenCalledTimes(1))
+    let pending!: Promise<unknown>
+    act(() => { pending = client.refetchQueries({ queryKey: qk.history('A') }) })
+    await act(async () => finishSummary(summary))
+    await waitFor(() => expect(result.current.summary).toBe(summary.summary))
+    await act(async () => {
+      oldHistory({ ...history, summary: null, summary_metadata: { ...summary, source_version: null, generated_at: null, status: 'pending', is_stale: true } })
+      await pending
+      await new Promise(resolve => setTimeout(resolve, 20))
+    })
+    expect(result.current.summary).toBe(summary.summary)
+    expect(result.current.summaryMetadata?.source_version).toBe('source-1')
+  })
+
+  it('preserves cached successful text on resolved unavailable POST and GET responses', async () => {
+    const client = createTestQueryClient()
+    client.setQueryData(qk.history('A'), { ...history, summary: summary.summary, summary_metadata: summary })
+    const unavailable = { ...summary, summary: null, source_version: null, generated_at: null, status: 'unavailable', is_stale: true }
+    api.refreshSummary.mockResolvedValue(unavailable)
+    const { result } = renderHook(() => useChat('A'), { wrapper: withQueryClient(client) })
+    await waitFor(() => expect(result.current.summaryMetadata?.status).toBe('unavailable'))
+    expect(result.current.summary).toBe(summary.summary)
+    expect(result.current.summaryMetadata?.source_version).toBe('source-1')
+    api.getHistory.mockResolvedValue({ ...history, summary: null, summary_metadata: unavailable })
+    await act(async () => { await result.current.refreshHistory() })
+    expect(result.current.summary).toBe(summary.summary)
+    expect(result.current.summaryMetadata?.generated_at).toBe(summary.generated_at)
+    expect(result.current.summaryMetadata?.status).toBe('unavailable')
+    expect(result.current.summaryMetadata?.is_stale).toBe(true)
+  })
+
 })

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import type { ChatResponse, ConversationSummary } from '../types'
-import { qk } from './queries'
+import { mergeHistorySummary, qk } from './queries'
 
 /** A visit is distinct from history fetches: polling or new messages never post. */
 export function useConversationSummary(invoiceId: string, historyReady: boolean) {
@@ -19,9 +19,9 @@ export function useConversationSummary(invoiceId: string, historyReady: boolean)
     let active = true
     void current.request.then(({ summary, ...metadata }) => {
       if (!active || visit.current !== current) return
-      qc.setQueryData<ChatResponse>(qk.history(invoiceId), prev => prev ? {
+      qc.setQueryData<ChatResponse>(qk.history(invoiceId), prev => prev ? mergeHistorySummary(prev, {
         ...prev, summary, summary_metadata: metadata,
-      } : prev)
+      }) : prev)
     }).catch(() => {
       // The saved summary and chat still work. A later opening can retry.
     })

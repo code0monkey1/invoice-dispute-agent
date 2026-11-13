@@ -172,7 +172,7 @@ def test_changed_source_discards_old_chunk_progress(setup, monkeypatch):
     graph.get_state.return_value.values['messages'] = [HumanMessage(content='REPLACED ' + 'y' * 300, id='h1')]
     s.refresh('inv', graph)
     assert calls[-1]['earlier_summary'] == ''
-    assert 'REPLACED' in calls[-1]['communications']
+    assert calls[-1]['chunk'] == 1
 
 
 def test_model_receives_tool_free_untrusted_prompt(monkeypatch):
@@ -207,3 +207,13 @@ def test_summary_collects_communications_beyond_first_database_page(setup):
     source = s.collect('inv', graph)
     assert 'Reply 1004' in source.communications
     assert 'Reply 0' in source.communications
+
+
+def test_sources_distinguish_freelancer_chat_from_client_reply(setup):
+    s, db, graph, calls = setup
+    graph.get_state.return_value.values['messages'].append(HumanMessage(content='[INCOMING CLIENT REPLY]\n<client_reply>We dispute the amount.</client_reply>', id='reply'))
+    s.refresh('inv', graph)
+    import json
+    messages = json.loads(calls[0]['communications'])['chat_in_order']
+    assert messages[0]['participant'] == 'freelancer'
+    assert messages[-1]['participant'] == 'client_reply'

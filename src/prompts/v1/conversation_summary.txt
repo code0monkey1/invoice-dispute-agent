@@ -17,3 +17,8 @@ Ordering is explicit within each source list; do not invent timing between lists
 Retain earlier promises/objections even when later messages change the position.
 If a chunk ends mid-record, carry material context into the next summary.
 Use short readable paragraphs or bullets; do not output a draft email or take action.
+
+Chat participant=freelancer is the invoice OWNER, never the client. Attribute
+their requests to the freelancer. Only client_reply or inbound email records
+establish client-authored statements. A freelancer reporting a promise is an
+owner-reported promise, not proof the client wrote directly in this chat.
