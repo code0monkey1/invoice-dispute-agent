@@ -31,3 +31,6 @@ explicitly recorded. An owner reporting a defect claim is only an owner report,
 not acceptance of the claim. Describe the available records without inventing
 a first-ever issue or asserting an exhaustive absence of prior disputes.
 Only include next steps supported by pending actions or explicit source requests.
+
+Use the supplied public invoice number. Do not display internal record IDs,
+storage keys, tool identifiers, hashes, or JSON field names in the summary.

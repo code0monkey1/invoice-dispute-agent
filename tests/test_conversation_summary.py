@@ -218,3 +218,10 @@ def test_sources_distinguish_freelancer_chat_from_client_reply(setup):
     messages = json.loads(calls[0]['communications'])['chat_in_order']
     assert messages[0]['participant'] == 'freelancer'
     assert messages[-1]['participant'] == 'client_reply'
+
+
+def test_summary_uses_public_invoice_number_not_storage_key(setup):
+    s, db, graph, calls = setup
+    key = 'guest-test__inv__SU5WLTE'
+    db.invoices[key] = {**db.invoices.pop('inv'), 'id': key}
+    assert s.collect(key, graph).invoice['id'] == 'INV-1'

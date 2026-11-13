@@ -86,7 +86,7 @@ def collect(invoice_id: str, agent) -> Sources:
     ]
     return Sources(
         version=hashlib.sha256(transcript.encode()).hexdigest(), communications=transcript,
-        invoice={key: invoice.get(key) for key in FACT_FIELDS}, pending_approval=pending,
+        invoice={**{key: invoice.get(key) for key in FACT_FIELDS}, 'id': db.parse_public_invoice_id(invoice_id)}, pending_approval=pending,
         empty=not messages and not communications,
     )
 
