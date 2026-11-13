@@ -17,9 +17,10 @@ export function useConversationSummary(invoiceId: string, historyReady: boolean)
     // attaches a live callback; the first setup's cleanup suppresses its callback.
     current.request ??= api.refreshSummary(invoiceId)
     let active = true
-    void current.request.then(({ summary, ...metadata }) => {
+    void current.request.then(({ summary, source_version, generated_at, status, is_stale }) => {
+      const metadata = { source_version, generated_at, status, is_stale }
       if (!active || visit.current !== current) return
-      qc.setQueryData<ChatResponse>(qk.history(invoiceId), prev => prev ? mergeHistorySummary(prev, {
+      qc.setQueryData<ChatResponse>(qk.conversation(invoiceId), prev => prev ? mergeHistorySummary(prev, {
         ...prev, summary, summary_metadata: metadata,
       }) : prev)
     }).catch(() => {

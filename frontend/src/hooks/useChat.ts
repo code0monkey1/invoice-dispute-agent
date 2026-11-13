@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import type { Message, Interrupt, AgentState, ChatResponse, Invoice } from '../types'
-import { historyPlaceholder, historyQuery, HISTORY_POLL_MS, qk } from './queries'
+import { conversationQuery, historyPlaceholder, historyQuery, HISTORY_POLL_MS, qk } from './queries'
 import { useSettleInvoice } from './useSettleInvoice'
 import { useConversationSummary } from './useConversationSummary'
 
@@ -23,14 +23,28 @@ export function useChat(invoiceId: string) {
   const [lastEmailSent, setLastEmailSent] = useState<{ sent: boolean; id?: string; status?: string; note?: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [visitMessages, setVisitMessages] = useState<{ id: string; messages: Message[] }>({ id: invoiceId, messages: [] })
+  const [historyVisit, setHistoryVisit] = useState<{ id: string; visible: boolean }>({ id: invoiceId, visible: false })
+  // A different invoice starts a new visit; returning later must not opt in
+  // to prior history or show a previous visit's current-session messages.
+  if (visitMessages.id !== invoiceId) {
+    setVisitMessages({ id: invoiceId, messages: [] })
+    setHistoryVisit({ id: invoiceId, visible: false })
+  }
+  const fullHistoryVisible = historyVisit.id === invoiceId && historyVisit.visible
+
   const threadId = `invoice-${invoiceId}`
 
   // Write an agent response into the cached history, so a revisit or a reload
   // shows it without asking the server again.
   const writeResponse = useCallback((res: ChatResponse) => {
-    const rest: ChatResponse = { messages: res.messages, interrupt: res.interrupt, state: res.state }
+    setVisitMessages(prev => prev.id === invoiceId ? { id: invoiceId, messages: [...prev.messages, ...res.messages] } : prev)
+    qc.setQueryData<ChatResponse>(qk.history(invoiceId), prev => prev ? {
+      ...prev, ...res, messages: [...prev.messages, ...res.messages],
+    } : prev)
+    const rest: ChatResponse = { messages: [], interrupt: res.interrupt, state: res.state, has_history: true }
     if (res.communications) rest.communications = res.communications
-    qc.setQueryData<ChatResponse>(qk.history(invoiceId), (prev) => ({
+    qc.setQueryData<ChatResponse>(qk.conversation(invoiceId), (prev) => ({
       ...prev,
       ...rest,
       messages: mergeMessages(prev?.messages ?? [], rest.messages),
@@ -43,7 +57,7 @@ export function useChat(invoiceId: string) {
     mutationFn: ({ call }: ChatAction) => call(),
     onMutate: async ({ optimistic }: ChatAction) => {
       // A poll landing mid-request must not overwrite the reply.
-      await qc.cancelQueries({ queryKey: qk.history(invoiceId) })
+      await Promise.all([qc.cancelQueries({ queryKey: qk.conversation(invoiceId) }), qc.cancelQueries({ queryKey: qk.history(invoiceId) })])
       if (optimistic) setPending(optimistic)
     },
     onSuccess: writeResponse,
@@ -52,13 +66,14 @@ export function useChat(invoiceId: string) {
       void qc.invalidateQueries({ queryKey: qk.invoices })
       // Every chat, escalation or decision is a new agent run.
       void qc.invalidateQueries({ queryKey: qk.traces(invoiceId) })
+      void qc.invalidateQueries({ queryKey: qk.history(invoiceId) })
     },
   })
   const settleMutation = useSettleInvoice()
   const busy = action.isPending || settleMutation.isPending
 
   const history = useQuery({
-    ...historyQuery(invoiceId),
+    ...conversationQuery(invoiceId),
     enabled: Boolean(invoiceId),
     // Until history arrives, show what the dashboard already knows.
     placeholderData: () => {
@@ -70,12 +85,20 @@ export function useChat(invoiceId: string) {
     refetchIntervalInBackground: false,
   })
 
+  const fullHistory = useQuery({
+    ...historyQuery(invoiceId),
+    enabled: Boolean(invoiceId && fullHistoryVisible),
+    refetchInterval: fullHistoryVisible && !busy ? HISTORY_POLL_MS : false,
+    refetchIntervalInBackground: false,
+  })
+
   useConversationSummary(invoiceId, !history.isPlaceholderData && history.data !== undefined)
 
   const data = history.data
-  const serverMessages = data?.messages ?? []
+  const serverMessages = fullHistoryVisible ? fullHistory.data?.messages ?? []
+    : visitMessages.id === invoiceId ? visitMessages.messages : []
   const messages = pending ? [...serverMessages, pending] : serverMessages
-  const historyLoaded = !history.isPlaceholderData && (data !== undefined || history.isError)
+  const historyLoaded = !history.isPlaceholderData && data !== undefined
 
   const showError = useCallback((err: unknown, fallback: string) => {
     setError(err instanceof Error ? err.message : fallback)
@@ -128,6 +151,7 @@ export function useChat(invoiceId: string) {
         setTimeout(() => setLastEmailSent(null), res.email_sent ? 8000 : 20000)
       }
       // Sending adds to the communication log.
+      void qc.invalidateQueries({ queryKey: qk.conversation(invoiceId) })
       void qc.invalidateQueries({ queryKey: qk.history(invoiceId) })
     } catch (err) {
       console.error('Approve error:', err)
@@ -146,7 +170,8 @@ export function useChat(invoiceId: string) {
   }, [run, invoiceId, showError])
 
   const initMessages = useCallback((msgs: Message[], inter: Interrupt | null, state: AgentState) => {
-    qc.setQueryData<ChatResponse>(qk.history(invoiceId), (prev) => ({ ...prev, messages: msgs, interrupt: inter, state }))
+    setVisitMessages({ id: invoiceId, messages: msgs })
+    qc.setQueryData<ChatResponse>(qk.conversation(invoiceId), (prev) => ({ ...prev, messages: [], interrupt: inter, state }))
     void qc.invalidateQueries({ queryKey: qk.invoices })
   }, [qc, invoiceId])
 
@@ -160,9 +185,17 @@ export function useChat(invoiceId: string) {
     summaryMetadata: data?.summary_metadata ?? null,
     interrupt: data?.interrupt ?? null,
     agentState: data?.state ?? null,
-    communications: data?.communications ?? [],
+    communications: fullHistoryVisible ? fullHistory.data?.communications ?? [] : [],
     loading: busy,
     historyLoaded,
+    hasHistory: data?.has_history ?? false,
+    hasOutbound: data?.has_outbound ?? false,
+    fullHistoryVisible,
+    fullHistoryLoading: fullHistoryVisible && fullHistory.isPending,
+    fullHistoryError: fullHistoryVisible && fullHistory.isError,
+    viewHistory: () => setHistoryVisit({ id: invoiceId, visible: true }),
+    hideHistory: () => setHistoryVisit({ id: invoiceId, visible: false }),
+    retryHistory: () => fullHistory.refetch(),
     lastEmailSent,
     error,
     sendMessage,

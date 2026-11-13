@@ -9,7 +9,7 @@ import { invoiceStatus } from './invoiceStatus'
 import { formatMoney } from './format'
 import { useInvoices } from '../hooks/useInvoices'
 import { useAuth } from '../contexts/auth'
-import { usePrefetchHistory } from '../hooks/usePrefetchHistory'
+import { usePrefetchConversation } from '../hooks/usePrefetchConversation'
 import type { Invoice } from '../types'
 
 const primaryButton =
@@ -21,7 +21,7 @@ const secondaryButton =
 
 function ApprovalQueue({ invoices }: { invoices: Invoice[] }) {
   const waiting = invoices.filter((inv) => invoiceStatus(inv).kind === 'you')
-  const prefetch = usePrefetchHistory()
+  const prefetch = usePrefetchConversation()
 
   return (
     <section aria-labelledby="queue-title">

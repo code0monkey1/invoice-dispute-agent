@@ -12,6 +12,8 @@ InvoiceChaser has an on-demand summary prompt but no persisted cumulative summar
 - Summarize all retained conversation and communications, distinguish drafts from sent emails and unverified senders, preserve pending approvals, and bound model calls.
 - Test, review, merge to `main`, and verify Vercel production deployment.
 
+- Show the locally cached summary first; retrieve full conversation history only when the owner chooses View conversation history. Summary responses provide compact invoice/approval metadata; active chat can request delta-only responses.
+
 ## Capabilities
 
 ### New Capabilities

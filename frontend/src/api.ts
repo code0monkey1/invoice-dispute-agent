@@ -111,6 +111,13 @@ export const api = {
   getHistory: (invoiceId: string) =>
     request<import('./types').ChatResponse>(`/api/invoices/${invoiceId}/history`),
 
+  getConversation: async (invoiceId: string): Promise<import('./types').ChatResponse> => {
+    const { summary, state, interrupt, has_history, has_outbound, ...metadata } =
+      await request<import('./types').ConversationSummary>(`/api/invoices/${invoiceId}/summary`);
+    return { messages: [], communications: [], state, interrupt, has_history, has_outbound,
+      summary, summary_metadata: metadata };
+  },
+
   refreshSummary: (invoiceId: string) =>
     request<import('./types').ConversationSummary>(`/api/invoices/${invoiceId}/summary`, { method: 'POST' }),
 
@@ -170,7 +177,7 @@ export const api = {
   },
 
   chat: (thread_id: string, message: string) =>
-    request<import('./types').ChatResponse>('/api/chat', {
+    request<import('./types').ChatResponse>('/api/chat?include_history=false', {
       method: 'POST',
       body: JSON.stringify({ thread_id, message }),
     }),
@@ -181,7 +188,7 @@ export const api = {
     }),
 
   escalate: (invoice_id: string) =>
-    request<import('./types').ChatResponse>(`/api/invoices/${invoice_id}/escalate`, {
+    request<import('./types').ChatResponse>(`/api/invoices/${invoice_id}/escalate?include_history=false`, {
       method: 'POST',
     }),
 
@@ -192,7 +199,7 @@ export const api = {
     edited_action?: Record<string, unknown>
   ) =>
     request<import('./types').ChatResponse>(
-      `/api/invoices/${invoice_id}/resume`,
+      `/api/invoices/${invoice_id}/resume?include_history=false`,
       {
         method: 'POST',
         body: JSON.stringify({ decision, message, edited_action }),

@@ -7,6 +7,7 @@ export const qk = {
   me: ['me'] as const,
   invoices: ['invoices'] as const,
   invoice: (id: string) => ['invoice', id] as const,
+  conversation: (id: string) => ['invoice', id, 'conversation'] as const,
   history: (id: string) => ['invoice', id, 'history'] as const,
   sender: (id: string) => ['invoice', id, 'sender'] as const,
   senderProfile: ['senderProfile'] as const,
@@ -42,6 +43,15 @@ export function mergeHistorySummary(previous: ChatResponse | undefined, incoming
     },
   }
 }
+
+export const conversationQuery = (invoiceId: string) =>
+  queryOptions({
+    queryKey: qk.conversation(invoiceId),
+    queryFn: () => api.getConversation(invoiceId),
+    structuralSharing: (previous, incoming) => replaceEqualDeep(previous,
+      mergeHistorySummary(previous as ChatResponse | undefined, incoming as ChatResponse)),
+    staleTime: 10_000,
+  })
 
 export const historyQuery = (invoiceId: string) =>
   queryOptions({

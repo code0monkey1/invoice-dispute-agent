@@ -1,7 +1,7 @@
 # Saved invoice conversation summaries
 
-Opening an invoice requests `POST /api/invoices/{invoice_id}/summary` once after
-its real history loads. The backend compares all retained chat/email content to
+Opening an invoice requests `POST /api/invoices/{invoice_id}/summary` once when its compact summary/current invoice data loads. Full conversation
+history is not fetched on opening. The backend compares all retained chat/email content to
 the last successful summary's fingerprint. Unchanged communications reuse the
 stored summary without calling AI. Invoice-only edits (for example changing an
 amount) do not trigger generation; current invoice facts are used the next time
@@ -46,9 +46,15 @@ transcripts, and invoice IDs in the body are rejected. A current result is 200:
 `GET` on that path returns saved data and freshness and **never** invokes AI.
 `GET /api/invoices/{invoice_id}/history` includes the same text as `summary`
 and the four metadata fields as `summary_metadata`. A missing/unavailable
-summary never hides chat messages or waiting approvals. The frontend preserves
-these fields in its cache and exposes them from `useChat`; summaries are not
-appended as chat messages.
+summary never hides chat messages or waiting approvals. The frontend preserves these fields in the persistent React Query cache and
+shows the saved summary immediately on reopening. The summary endpoints also
+return compact `state`, `interrupt`, `has_history`, and `has_outbound` metadata
+without prior message or email bodies. Full history is fetched only after
+**View conversation history** is selected; **Hide conversation history** stops
+its polling. Hover/focus prefetch only compact summaries, never full history.
+The active chat uses `include_history=false` on chat/escalate/resume requests to
+return only the current exchange. Default API responses remain compatible with
+existing clients. Summaries are not appended as chat messages.
 
 Statuses:
 

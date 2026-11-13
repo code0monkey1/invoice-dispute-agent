@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ChatResponse } from '../../types'
 import { createTestQueryClient, withQueryClient } from '../../test/queryClient'
 import { useChat } from '../useChat'
-import { historyQuery, HISTORY_POLL_MS, qk } from '../queries'
+import { conversationQuery, HISTORY_POLL_MS, qk } from '../queries'
 
-const api = vi.hoisted(() => ({ getHistory: vi.fn(), refreshSummary: vi.fn(), chat: vi.fn(), getInvoices: vi.fn() }))
+const api = vi.hoisted(() => ({ getConversation: vi.fn(), refreshSummary: vi.fn(), chat: vi.fn(), getInvoices: vi.fn() }))
 vi.mock('../../api', () => ({ api }))
 
 const history = {
@@ -18,7 +18,7 @@ const summary = { invoice_id: 'A', summary: 'Payment was promised tomorrow.', so
 
 beforeEach(() => {
   Object.values(api).forEach(f => f.mockReset())
-  api.getHistory.mockResolvedValue(history)
+  api.getConversation.mockResolvedValue({ ...history, messages: [] })
   api.refreshSummary.mockResolvedValue(summary)
   api.chat.mockResolvedValue({ ...history, messages: [...history.messages, { type: 'AIMessage', content: 'Noted' }] })
   api.getInvoices.mockResolvedValue([])
@@ -28,22 +28,22 @@ afterEach(() => vi.useRealTimers())
 describe('invoice opening summaries', () => {
   it('requests once after real history loads and exposes saved text without a chat message', async () => {
     let loaded!: (h: ChatResponse) => void
-    api.getHistory.mockImplementation(() => new Promise(r => { loaded = r }))
+    api.getConversation.mockImplementation(() => new Promise(r => { loaded = r }))
     const client = createTestQueryClient()
     const { result, rerender } = renderHook(() => useChat('A'), { wrapper: withQueryClient(client) })
     expect(api.refreshSummary).not.toHaveBeenCalled()
-    await act(async () => loaded(history))
+    await act(async () => loaded({ ...history, messages: [] }))
     await waitFor(() => expect(result.current.summary).toBe(summary.summary))
-    expect(result.current.messages).toEqual(history.messages)
+    expect(result.current.messages).toEqual([])
     rerender()
     expect(api.refreshSummary).toHaveBeenCalledTimes(1)
     expect(api.refreshSummary).toHaveBeenCalledWith('A')
-    expect(client.getQueryData<ChatResponse>(qk.history('A'))?.summary).toBe(summary.summary)
+    expect(client.getQueryData<ChatResponse>(qk.conversation('A'))?.summary).toBe(summary.summary)
   })
 
   it('does not double-post in StrictMode', async () => {
     const client = createTestQueryClient()
-    client.setQueryData(qk.history('A'), history)
+    client.setQueryData(qk.conversation('A'), history)
     function Wrapper({ children }: { children: ReactNode }) {
       return <StrictMode><QueryClientProvider client={client}>{children}</QueryClientProvider></StrictMode>
     }
@@ -55,11 +55,11 @@ describe('invoice opening summaries', () => {
   it('does not refresh on prefetch, polling, manual history refresh or chat', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     const client = createTestQueryClient()
-    await client.prefetchQuery(historyQuery('A'))
+    await client.prefetchQuery(conversationQuery('A'))
     expect(api.refreshSummary).not.toHaveBeenCalled()
     const { result } = renderHook(() => useChat('A'), { wrapper: withQueryClient(client) })
     await waitFor(() => expect(result.current.summary).toBe(summary.summary))
-    api.getHistory.mockResolvedValue({ ...history, summary: summary.summary, summary_metadata: { ...summary, is_stale: true, status: 'pending' } })
+    api.getConversation.mockResolvedValue({ ...history, summary: summary.summary, summary_metadata: { ...summary, is_stale: true, status: 'pending' } })
     await act(async () => { await vi.advanceTimersByTimeAsync(HISTORY_POLL_MS + 50) })
     await act(async () => { await result.current.refreshHistory() })
     await act(async () => { await result.current.sendMessage('Another invoice update') })
@@ -84,7 +84,7 @@ describe('invoice opening summaries', () => {
 
   it('keeps saved summary and chat usable when opening refresh fails', async () => {
     const client = createTestQueryClient()
-    client.setQueryData(qk.history('A'), { ...history, summary: 'Earlier saved summary' })
+    client.setQueryData(qk.conversation('A'), { ...history, summary: 'Earlier saved summary' })
     api.refreshSummary.mockRejectedValue(new Error('unavailable'))
     const { result } = renderHook(() => useChat('A'), { wrapper: withQueryClient(client) })
     await waitFor(() => expect(api.refreshSummary).toHaveBeenCalledTimes(1))
@@ -107,15 +107,15 @@ describe('invoice opening summaries', () => {
 
   it('keeps a new summary when an older history request completes afterward', async () => {
     const client = createTestQueryClient()
-    client.setQueryData(qk.history('A'), { ...history, summary: null, summary_metadata: { ...summary, source_version: null, generated_at: null, status: 'pending', is_stale: true } })
+    client.setQueryData(qk.conversation('A'), { ...history, summary: null, summary_metadata: { ...summary, source_version: null, generated_at: null, status: 'pending', is_stale: true } })
     let oldHistory!: (v: ChatResponse) => void
-    api.getHistory.mockImplementation(() => new Promise(r => { oldHistory = r }))
+    api.getConversation.mockImplementation(() => new Promise(r => { oldHistory = r }))
     let finishSummary!: (v: typeof summary) => void
     api.refreshSummary.mockImplementation(() => new Promise(r => { finishSummary = r }))
     const { result } = renderHook(() => useChat('A'), { wrapper: withQueryClient(client) })
     await waitFor(() => expect(api.refreshSummary).toHaveBeenCalledTimes(1))
     let pending!: Promise<unknown>
-    act(() => { pending = client.refetchQueries({ queryKey: qk.history('A') }) })
+    act(() => { pending = client.refetchQueries({ queryKey: qk.conversation('A') }) })
     await act(async () => finishSummary(summary))
     await waitFor(() => expect(result.current.summary).toBe(summary.summary))
     await act(async () => {
@@ -129,14 +129,14 @@ describe('invoice opening summaries', () => {
 
   it('preserves cached successful text on resolved unavailable POST and GET responses', async () => {
     const client = createTestQueryClient()
-    client.setQueryData(qk.history('A'), { ...history, summary: summary.summary, summary_metadata: summary })
+    client.setQueryData(qk.conversation('A'), { ...history, summary: summary.summary, summary_metadata: summary })
     const unavailable = { ...summary, summary: null, source_version: null, generated_at: null, status: 'unavailable', is_stale: true }
     api.refreshSummary.mockResolvedValue(unavailable)
     const { result } = renderHook(() => useChat('A'), { wrapper: withQueryClient(client) })
     await waitFor(() => expect(result.current.summaryMetadata?.status).toBe('unavailable'))
     expect(result.current.summary).toBe(summary.summary)
     expect(result.current.summaryMetadata?.source_version).toBe('source-1')
-    api.getHistory.mockResolvedValue({ ...history, summary: null, summary_metadata: unavailable })
+    api.getConversation.mockResolvedValue({ ...history, summary: null, summary_metadata: unavailable })
     await act(async () => { await result.current.refreshHistory() })
     expect(result.current.summary).toBe(summary.summary)
     expect(result.current.summaryMetadata?.generated_at).toBe(summary.generated_at)
@@ -144,4 +144,36 @@ describe('invoice opening summaries', () => {
     expect(result.current.summaryMetadata?.is_stale).toBe(true)
   })
 
+})
+
+it('loads full history only after an explicit request, even when an invoice opens from cache', async () => {
+  const client = createTestQueryClient()
+  client.setQueryData(qk.conversation('A'), { ...history, messages: [], summary: summary.summary, summary_metadata: summary, has_history: true })
+  const getHistory = vi.fn().mockResolvedValue(history)
+  Object.assign(api, { getHistory })
+  const { result } = renderHook(() => useChat('A'), { wrapper: withQueryClient(client) })
+  await waitFor(() => expect(result.current.summary).toBe(summary.summary))
+  expect(getHistory).not.toHaveBeenCalled()
+  expect(result.current.messages).toEqual([])
+  await act(async () => result.current.viewHistory())
+  await waitFor(() => expect(result.current.messages).toEqual(history.messages))
+  expect(getHistory).toHaveBeenCalledTimes(1)
+  expect(getHistory).toHaveBeenCalledWith('A')
+  await act(async () => result.current.hideHistory())
+  expect(result.current.messages).toEqual([])
+  expect(result.current.summary).toBe(summary.summary)
+})
+
+it('hides previous-visit chat and history again when navigating back to an invoice', async () => {
+  const client = createTestQueryClient()
+  Object.assign(api, { getHistory: vi.fn().mockResolvedValue(history) })
+  const { result, rerender } = renderHook(({ id }) => useChat(id), { initialProps: { id: 'A' }, wrapper: withQueryClient(client) })
+  await waitFor(() => expect(result.current.historyLoaded).toBe(true))
+  await act(async () => { await result.current.sendMessage('invoice message') })
+  expect(result.current.messages.length).toBeGreaterThan(0)
+  await act(async () => result.current.viewHistory())
+  rerender({ id: 'B' })
+  rerender({ id: 'A' })
+  expect(result.current.fullHistoryVisible).toBe(false)
+  expect(result.current.messages).toEqual([])
 })

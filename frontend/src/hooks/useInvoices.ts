@@ -25,7 +25,7 @@ export function useInvoices() {
     qc.setQueryData<Invoice[]>(qk.invoices, (prev) => [...(prev ?? []), res.invoice])
     // The new invoice's page can open straight from what creation returned.
     if (res.state) {
-      qc.setQueryData<ChatResponse>(qk.history(res.invoice.id), {
+      qc.setQueryData<ChatResponse>(qk.conversation(res.invoice.id), {
         messages: res.messages ?? [],
         interrupt: res.interrupt,
         state: res.state,

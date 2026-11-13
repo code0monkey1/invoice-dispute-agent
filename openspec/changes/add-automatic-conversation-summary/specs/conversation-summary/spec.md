@@ -111,3 +111,20 @@ The summarizer SHALL treat all conversation text as untrusted data and SHALL hav
 #### Scenario: Pending approval and injected instructions
 - **WHEN** refresh runs with an approval pending and a reply containing instructions to send email or reveal other invoices
 - **THEN** the approval remains actionable and no email or cross-invoice action occurs
+
+### Requirement: Summary first and conversation history on demand
+Opening an invoice SHALL display its locally cached summary and retrieve only summary/compact invoice and approval data initially. The UI SHALL NOT request full conversation history on opening, hover, focus, or prefetch. Full history SHALL be retrieved only when the owner selects View conversation history. Active chat SHALL support delta responses without exposing earlier history implicitly.
+
+#### Scenario: Opening with cached summary
+- **WHEN** an invoice is opened with a locally cached summary
+- **THEN** that summary appears immediately while the server checks its communication version
+- **AND** unchanged communications cause no LLM call and no full history request
+
+#### Scenario: Explicit history request
+- **WHEN** the owner selects View conversation history
+- **THEN** the complete retained chat and communications are retrieved and displayed
+- **AND** loading or failure can be retried without invoking the summary model
+
+#### Scenario: New chat while history is hidden
+- **WHEN** the owner sends a message without requesting prior history
+- **THEN** the current exchange and approvals are shown without retrieving or displaying earlier conversation history

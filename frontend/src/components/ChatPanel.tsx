@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { ArrowLeft, Send, ArrowUpCircle, FileText, Shield, MessageSquare, ChevronUp, Pencil, Check, X, MailCheck, MailX, User, AlertCircle, Activity } from 'lucide-react'
 import MessageBubble from './MessageBubble'
+import Markdown from './Markdown'
 import DraftApproval from './DraftApproval'
 import EscalationBadge from './EscalationBadge'
 import TracePanel from './TracePanel'
@@ -43,6 +44,16 @@ export default function ChatPanel() {
     interrupt,
     agentState,
     communications,
+    summary,
+    summaryMetadata,
+    hasHistory,
+    hasOutbound,
+    fullHistoryVisible,
+    fullHistoryLoading,
+    fullHistoryError,
+    viewHistory,
+    hideHistory,
+    retryHistory,
     loading,
     lastEmailSent,
     historyLoaded,
@@ -72,14 +83,15 @@ export default function ChatPanel() {
   }, [messages, interrupt])
 
   const displayInvoiceId = agentState?.invoice_id || invoiceId
-  const hasOutboundCommunication = communications.some(entry => entry.direction === 'outbound')
+  const hasOutboundCommunication = hasOutbound || communications.some(entry => entry.direction === 'outbound')
+  const hasSavedConversation = hasHistory || messages.length > 0 || hasOutboundCommunication
   const showFirstOpenActions = Boolean(
     agentState?.invoice_id &&
     historyLoaded &&
     agentState.status !== 'paid' &&
     !interrupt &&
     messages.length === 0 &&
-    !hasOutboundCommunication
+    !hasSavedConversation
   )
 
   // Auto-approve non-draft interrupts silently (e.g. mark_invoice_pending)
@@ -202,7 +214,26 @@ export default function ChatPanel() {
         <div role="tabpanel" id="panel-chat" aria-labelledby="tab-chat" className="flex-1 flex flex-col min-h-0">
         {/* Messages */}
         <div className="flex-1 overflow-y-auto py-4 space-y-1 bg-gradient-to-b from-orange-50/20 to-white">
-          {messages.length === 0 && !loading && !showFirstOpenActions && (
+          <section aria-labelledby="conversation-summary-title" className="mx-5 mb-5 pb-4 border-b border-gray-100">
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+              <h3 id="conversation-summary-title" className="text-sm font-semibold text-gray-800">Conversation summary</h3>
+              <button type="button" onClick={fullHistoryVisible ? hideHistory : viewHistory}
+                aria-expanded={Boolean(fullHistoryVisible)} aria-controls="conversation-history"
+                disabled={!hasSavedConversation}
+                className="text-xs font-semibold text-[#FF6B35] hover:text-[#e55a2b] underline underline-offset-4 disabled:text-gray-400 disabled:no-underline focus-visible:outline-2 focus-visible:outline-offset-4">
+                {fullHistoryVisible ? 'Hide conversation history' : 'View conversation history'}
+              </button>
+            </div>
+            {summary ? <div className="text-sm leading-relaxed text-gray-600 max-w-[75ch]"><Markdown>{summary}</Markdown></div> : (
+              <p className="text-sm text-gray-500">{hasSavedConversation ? 'Your saved summary will appear here. You can also view the full conversation history.' : 'Your summary will appear here after the conversation begins.'}</p>
+            )}
+            {summary && summaryMetadata?.is_stale && <p className="text-xs text-gray-400 mt-3">New updates will be included when you next open this invoice.</p>}
+          </section>
+          {fullHistoryLoading && <p role="status" className="mx-5 text-sm text-gray-500">Loading conversation history…</p>}
+          {fullHistoryError && <div role="alert" className="mx-5 text-sm text-gray-600">
+            Could not load conversation history. <button type="button" onClick={() => void retryHistory()} className="underline text-[#FF6B35]">Retry history</button>
+          </div>}
+          {messages.length === 0 && !loading && !showFirstOpenActions && !hasSavedConversation && (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <div className="w-14 h-14 bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-orange-200/40">
                 <ArrowUpCircle className="w-7 h-7 text-white" />
@@ -247,11 +278,22 @@ export default function ChatPanel() {
               </div>
             </div>
           )}
+          <div id="conversation-history">
           {messages
             .filter(msg => msg.type !== 'ToolMessage' && !(msg.type === 'AIMessage' && !msg.content && msg.tool_calls?.length))
             .map((msg, i) => (
               <MessageBubble key={i} message={msg} />
             ))}
+          {fullHistoryVisible && communications.length > 0 && (
+            <section aria-label="Email and communication history" className="mx-5 mt-5 mb-4 space-y-3">
+              <h3 className="text-sm font-semibold text-gray-700">Email and communication history</h3>
+              {communications.map(entry => <details key={entry.id} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                <summary className="cursor-pointer text-gray-700">{entry.subject || entry.type} <span className="text-xs text-gray-400">{entry.timestamp}</span></summary>
+                <p className="whitespace-pre-wrap break-words mt-3 text-gray-600">{entry.content}</p>
+              </details>)}
+            </section>
+          )}
+          </div>
           {interrupt && APPROVAL_TOOLS.includes(interrupt.tool) && (
             <DraftApproval
               interrupt={interrupt}

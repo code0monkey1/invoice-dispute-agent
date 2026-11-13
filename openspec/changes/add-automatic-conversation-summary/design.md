@@ -54,3 +54,7 @@ Use a dedicated versioned system prompt with the configured Groq provider, expli
 4. Review, pass CI, merge main and deploy the merged SHA to the linked Vercel production project. Verify alias, deployment status, SHA and persistent checkpoint health.
 5. Verify production POST/GET/history, reuse after unchanged reopen, refresh after new communication and no generation before reopening. Existing invoices populate lazily when opened; no eager AI backfill.
 6. Roll back application code if needed; leave the additive private table/data in place. No source-write triggers or scheduler require rollback.
+
+## User refinement: summary first, full history on demand
+
+The initial and polled request reads the summary with compact invoice/approval metadata, not full messages or communication bodies. Cache this data in React Query for instant reopen. The once-per-opening POST checks persisted sources and only generates for changed communications. Full GET history stays disabled until View conversation history is selected; no hover/focus history prefetch. Current-session chat uses delta-only mutation responses and separate session messages. After history is explicitly requested it can be polled while visible. No source writes trigger generation. Show the saved summary using the existing Markdown renderer, and a clear View conversation history / Hide conversation history control with loading/retry feedback.

@@ -13,8 +13,10 @@ export function useSettleInvoice() {
       await Promise.all([
         qc.cancelQueries({ queryKey: qk.invoices }),
         qc.cancelQueries({ queryKey: qk.history(id) }),
+        qc.cancelQueries({ queryKey: qk.conversation(id) }),
       ])
       const previousList = qc.getQueryData<Invoice[]>(qk.invoices)
+      const previousConversation = qc.getQueryData<ChatResponse>(qk.conversation(id))
       const previousHistory = qc.getQueryData<ChatResponse>(qk.history(id))
       qc.setQueryData<Invoice[]>(qk.invoices, (list) =>
         list?.map((inv) => (inv.id === id ? { ...inv, status: 'paid', awaiting_approval: false, pending_action: null } : inv)),
@@ -22,11 +24,13 @@ export function useSettleInvoice() {
       qc.setQueryData<ChatResponse>(qk.history(id), (h) =>
         h ? { ...h, interrupt: null, state: { ...h.state, status: 'paid' } } : h,
       )
-      return { previousList, previousHistory }
+      qc.setQueryData<ChatResponse>(qk.conversation(id), h => h ? { ...h, interrupt: null, state: { ...h.state, status: 'paid' } } : h)
+      return { previousList, previousHistory, previousConversation }
     },
     onError: (_err, id, context) => {
       qc.setQueryData(qk.invoices, context?.previousList)
       qc.setQueryData(qk.history(id), context?.previousHistory)
+      qc.setQueryData(qk.conversation(id), context?.previousConversation)
     },
     onSuccess: (res, id) => {
       qc.setQueryData<Invoice[]>(qk.invoices, (list) =>
@@ -36,6 +40,7 @@ export function useSettleInvoice() {
     onSettled: (_data, _err, id) => {
       void qc.invalidateQueries({ queryKey: qk.invoices })
       void qc.invalidateQueries({ queryKey: qk.history(id) })
+      void qc.invalidateQueries({ queryKey: qk.conversation(id) })
     },
   })
 }

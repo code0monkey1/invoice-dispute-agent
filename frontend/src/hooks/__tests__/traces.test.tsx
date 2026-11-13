@@ -7,7 +7,7 @@ import { useChat } from '../useChat'
 import { shouldPersistQuery } from '../../queryClient'
 
 const api = vi.hoisted(() => ({
-  getHistory: vi.fn(),
+  getConversation: vi.fn(),
   refreshSummary: vi.fn().mockResolvedValue({ summary: null, status: 'empty', is_stale: false }),
   chat: vi.fn(),
   resume: vi.fn(),
@@ -22,7 +22,7 @@ const response = { messages: [], interrupt: null, state: { escalation_level: 1, 
 
 describe('trace cache', () => {
   it('marks the trace stale after every agent action, so an open Trace tab refetches', async () => {
-    api.getHistory.mockResolvedValue(response)
+    api.getConversation.mockResolvedValue(response)
     api.chat.mockResolvedValue(response)
     api.resume.mockResolvedValue(response)
     const client = createTestQueryClient()
@@ -40,10 +40,10 @@ describe('trace cache', () => {
   it('never saves traces to the device, but still saves invoices and chats', () => {
     const client = new QueryClient()
     client.setQueryData(qk.traces(ID), { pages: [], pageParams: [] })
-    client.setQueryData(qk.history(ID), response)
+    client.setQueryData(qk.conversation(ID), response)
     const byKey = (key: readonly unknown[]) =>
       client.getQueryCache().find({ queryKey: key, exact: true }) as Query
     expect(shouldPersistQuery(byKey(qk.traces(ID)))).toBe(false)
-    expect(shouldPersistQuery(byKey(qk.history(ID)))).toBe(true)
+    expect(shouldPersistQuery(byKey(qk.conversation(ID)))).toBe(true)
   })
 })

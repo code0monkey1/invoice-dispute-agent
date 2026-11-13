@@ -774,3 +774,14 @@ def get_summary_communications(invoice_id: str) -> list[dict]:
         rows.extend(page)
         if len(page) < page_size:
             return rows
+
+
+def communication_flags(invoice_id: str) -> dict:
+    """Existence-only reads for the summary-first page; never retrieve bodies."""
+    def exists(direction=None):
+        query = [("invoice_id", f"eq.{invoice_id}"), ("select", "id"), ("limit", "1")]
+        if direction:
+            query.append(("direction", f"eq.{direction}"))
+        return bool(_supabase_rest_request("GET", "communication_history", query=query, timeout=SUMMARY_STORE_TIMEOUT_SECONDS))
+    outbound = exists('outbound')
+    return {'has_history': outbound or exists(), 'has_outbound': outbound}

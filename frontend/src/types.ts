@@ -75,11 +75,17 @@ export interface SummaryMetadata {
 }
 
 export interface ConversationSummary extends SummaryMetadata {
+  state: AgentState;
+  interrupt: Interrupt | null;
+  has_history: boolean;
+  has_outbound: boolean;
   invoice_id: string;
   summary: string | null;
 }
 
 export interface ChatResponse {
+  has_history?: boolean;
+  has_outbound?: boolean;
   summary?: string | null;
   summary_metadata?: SummaryMetadata;
   messages: Message[];
