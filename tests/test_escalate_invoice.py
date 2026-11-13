@@ -103,3 +103,21 @@ async def test_a_racing_escalation_is_refused_not_doubled(client, fake_db, monke
 
     assert r.status_code == 409
     assert fake_db.invoices[invoice["id"]]["escalation_level"] == 1
+
+
+@pytest.mark.asyncio
+async def test_a_racing_escalation_from_level_0_is_refused_not_doubled(client, fake_db, monkeypatch):
+    invoice = await _create_invoice(client, "INV-ESC-7")
+    _fake_agent(monkeypatch)
+    fake_db.invoices[invoice["id"]]["escalation_level"] = 0
+    from src.services import invoice_service
+    # Another request started the ladder (and escalated) between this one's read and its write.
+    def other_request_won(invoice_id):
+        fake_db.invoices[invoice_id]["escalation_level"] = 2
+        return False
+    monkeypatch.setattr(invoice_service, "start_ladder", other_request_won)
+
+    r = await client.post(f"/api/invoices/{invoice['id']}/escalate")
+
+    assert r.status_code == 409
+    assert fake_db.invoices[invoice["id"]]["escalation_level"] == 2
