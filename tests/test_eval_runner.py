@@ -226,6 +226,7 @@ def test_summary_eval_rejects_bad_or_missing_judgment_even_if_positive():
     ('failure','false','skipped',1),  # failed classifier cannot skip evals
     ('cancelled','true','skipped',1),
     ('success','false','skipped',0),  # genuinely unrelated changes need no model call
+    ('success','','skipped',1),  # missing output cannot disable the gate
 ])
 def test_required_ci_eval_gates_fail_closed(classification, relevant, evaluation, expected):
     import os

@@ -50,7 +50,7 @@ jobs:
               f.write(f"summary={str(dispatch or any(p in summary_files for p in changed)).lower()}\n")
           PY
 
-  golden-set:
+  agent-evaluation:
     needs: changes
     # Fork PRs can't read secrets (pull_request, not pull_request_target, on purpose).
     if: needs.changes.outputs.agent == 'true' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
@@ -102,7 +102,7 @@ jobs:
           fi
           exit 1
 
-  summary-golden-set:
+  summary-evaluation:
     needs: changes
     if: needs.changes.outputs.summary == 'true' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
@@ -131,4 +131,52 @@ jobs:
         run: |
           if [ -f summary-eval-out/summary-latest.md ]; then
             cat summary-eval-out/summary-latest.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  golden-set:
+    if: always()
+    needs: [changes, agent-evaluation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce the chasing-agent evaluation
+        env:
+          CLASSIFICATION: ${{ needs.changes.result }}
+          RELEVANT: ${{ needs.changes.outputs.agent }}
+          EVALUATION: ${{ needs.agent-evaluation.result }}
+        run: |
+          if [ "$CLASSIFICATION" != "success" ]; then
+            echo "::error::Cannot establish which eval is required. Classification must succeed."
+            exit 1
+          fi
+          case "$RELEVANT" in
+            true|false) ;;
+            *) echo "::error::Missing or invalid eval classification."; exit 1 ;;
+          esac
+          if [ "$RELEVANT" = "true" ] && [ "$EVALUATION" != "success" ]; then
+            echo "::error::Relevant agent changes require a successful trusted evaluation."
+            exit 1
+          fi
+
+  summary-golden-set:
+    if: always()
+    needs: [changes, summary-evaluation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce the 85 percent summary quality gate
+        env:
+          CLASSIFICATION: ${{ needs.changes.result }}
+          RELEVANT: ${{ needs.changes.outputs.summary }}
+          EVALUATION: ${{ needs.summary-evaluation.result }}
+        run: |
+          if [ "$CLASSIFICATION" != "success" ]; then
+            echo "::error::Cannot establish whether summary eval is required. Classification must succeed."
+            exit 1
+          fi
+          case "$RELEVANT" in
+            true|false) ;;
+            *) echo "::error::Missing or invalid eval classification."; exit 1 ;;
+          esac
+          if [ "$RELEVANT" = "true" ] && [ "$EVALUATION" != "success" ]; then
+            echo "::error::Summary changes require a completed trusted evaluation with at least 85% positive cases. Fork code never receives provider secrets; evaluate it on a trusted maintainer branch before merging."
+            exit 1
           fi
