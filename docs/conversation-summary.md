@@ -141,3 +141,11 @@ scorecard. It is separate from the existing chasing-agent golden set: each runs
 when its own prompts, model code or fixtures change. No unrelated agent eval
 failure is treated as summary quality evidence. GPT-OSS summary generation uses
 low reasoning effort within its output budget; see [Groq's reasoning documentation](https://console.groq.com/docs/reasoning).
+
+The required `summary-golden-set` gate always runs. It fails if change
+classification fails or a relevant evaluation is skipped/cancelled/failed;
+fork code never receives provider secrets and must be evaluated on a trusted
+maintainer branch before merge. The protected main branch requires this gate
+alongside backend/frontend and chasing-agent gates, including admin merges.
+These 20 judged fixtures cover short histories; long-history carry-forward and
+resume mechanics are separately covered by deterministic service tests.

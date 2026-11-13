@@ -217,3 +217,26 @@ def test_summary_eval_rejects_bad_or_missing_judgment_even_if_positive():
     assert judge_passes({'positive': True, 'grounding': 5, 'coverage': 4, 'attribution': 5, 'safety': 5})
     assert not judge_passes({'positive': True, 'grounding': 2, 'coverage': 5, 'attribution': 5, 'safety': 5})
     assert not judge_passes({'positive': True})
+
+
+@pytest.mark.parametrize('classification,relevant,evaluation,expected', [
+    ('success','true','success',0),
+    ('success','true','failure',1),
+    ('success','true','skipped',1),  # fork PR must not bypass the quality gate
+    ('failure','false','skipped',1),  # failed classifier cannot skip evals
+    ('cancelled','true','skipped',1),
+    ('success','false','skipped',0),  # genuinely unrelated changes need no model call
+])
+def test_required_ci_eval_gates_fail_closed(classification, relevant, evaluation, expected):
+    import os
+    import subprocess
+    from pathlib import Path
+    import yaml
+    workflow=yaml.safe_load((Path(__file__).parents[1]/'.github/workflows/evals.yml').read_text())
+    for gate in ['golden-set','summary-golden-set']:
+        job=workflow['jobs'][gate]
+        assert job['if'] == 'always()'
+        run=job['steps'][0]['run']
+        result=subprocess.run(['bash','-e'],input=run,text=True,capture_output=True,
+            env=dict(os.environ,CLASSIFICATION=classification,RELEVANT=relevant,EVALUATION=evaluation))
+        assert result.returncode == expected, result.stdout
