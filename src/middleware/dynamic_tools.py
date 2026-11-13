@@ -68,11 +68,11 @@ def dynamic_tool_middleware(
     """Dynamically provide tools based on the current escalation level in state.
 
     A run started by a client's reply isn't offered the tools the gate would
-    refuse it (UNAPPROVED_STATE_TOOLS): offering them invited the attempt.
+    refuse it (CLIENT_REPLY_BLOCKED): offering them invited the attempt.
     """
     tools = tools_for_level(request.state.get("escalation_level", 0))
     if getattr(request.runtime.context, "untrusted_input", False):
-        tools = [t for t in tools if t.name not in UNAPPROVED_STATE_TOOLS]
+        tools = [t for t in tools if t.name not in CLIENT_REPLY_BLOCKED]
     request = request.override(tools=tools)
     return handler(request)
 
