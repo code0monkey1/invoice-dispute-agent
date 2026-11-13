@@ -45,3 +45,11 @@ def test_escalation_is_described_as_a_proposal(level):
 
 def test_legal_says_it_is_the_top():
     assert "highest level" in _prompt_text(3)
+
+
+@pytest.mark.parametrize("level", [1, 2, 3])
+def test_tools_line_does_not_advertise_editing_invoice_details(level):
+    # Naming it nudged the model to edit the invoice when a client reply asked
+    # for a new address (the gate refuses it, but it shouldn't be attempted).
+    tools_line = next(line for line in _prompt_text(level).splitlines() if line.startswith("Your tools:"))
+    assert "update_invoice_details" not in tools_line
