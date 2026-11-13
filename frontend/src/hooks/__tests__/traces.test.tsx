@@ -8,6 +8,7 @@ import { shouldPersistQuery } from '../../queryClient'
 
 const api = vi.hoisted(() => ({
   getHistory: vi.fn(),
+  refreshSummary: vi.fn().mockResolvedValue({ summary: null, status: 'empty', is_stale: false }),
   chat: vi.fn(),
   resume: vi.fn(),
   escalate: vi.fn(),

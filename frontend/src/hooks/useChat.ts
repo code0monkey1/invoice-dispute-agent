@@ -4,6 +4,7 @@ import { api } from '../api'
 import type { Message, Interrupt, AgentState, ChatResponse, Invoice } from '../types'
 import { historyPlaceholder, historyQuery, HISTORY_POLL_MS, qk } from './queries'
 import { useSettleInvoice } from './useSettleInvoice'
+import { useConversationSummary } from './useConversationSummary'
 
 function mergeMessages(current: Message[], incoming?: Message[]) {
   if (!incoming) return current
@@ -68,6 +69,8 @@ export function useChat(invoiceId: string) {
     refetchInterval: busy ? false : HISTORY_POLL_MS,
     refetchIntervalInBackground: false,
   })
+
+  useConversationSummary(invoiceId, !history.isPlaceholderData && history.data !== undefined)
 
   const data = history.data
   const serverMessages = data?.messages ?? []
@@ -153,6 +156,8 @@ export function useChat(invoiceId: string) {
 
   return {
     messages,
+    summary: data?.summary ?? null,
+    summaryMetadata: data?.summary_metadata ?? null,
     interrupt: data?.interrupt ?? null,
     agentState: data?.state ?? null,
     communications: data?.communications ?? [],

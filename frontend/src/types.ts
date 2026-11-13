@@ -67,7 +67,21 @@ export interface AgentState {
   communication_history: CommunicationEntry[];
 }
 
+export interface SummaryMetadata {
+  source_version: string | null;
+  generated_at: string | null;
+  status: 'empty' | 'pending' | 'refreshing' | 'current' | 'failed' | 'unavailable';
+  is_stale: boolean;
+}
+
+export interface ConversationSummary extends SummaryMetadata {
+  invoice_id: string;
+  summary: string | null;
+}
+
 export interface ChatResponse {
+  summary?: string | null;
+  summary_metadata?: SummaryMetadata;
   messages: Message[];
   interrupt: Interrupt | null;
   state: AgentState;

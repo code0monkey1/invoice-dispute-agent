@@ -218,3 +218,86 @@ BEGIN
         END IF;
     END LOOP;
 END $$;
+
+-- Conversation summaries (generated only when an invoice is opened).
+-- Additive migration: this entire block is safe to apply again.
+CREATE TABLE IF NOT EXISTS invoice_conversation_summaries (
+    invoice_id      TEXT PRIMARY KEY REFERENCES invoices(id) ON DELETE CASCADE,
+    summary         TEXT,
+    source_version  TEXT,
+    generated_at    TIMESTAMPTZ,
+    status          TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN ('pending', 'refreshing', 'current', 'failed')),
+    target_version  TEXT,
+    lease_token     UUID,
+    lease_until     TIMESTAMPTZ,
+    retry_after     TIMESTAMPTZ,
+    progress        JSONB NOT NULL DEFAULT '{}'::jsonb,
+    error_code      TEXT
+);
+ALTER TABLE invoice_conversation_summaries ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON invoice_conversation_summaries FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON invoice_conversation_summaries TO service_role;
+
+-- Service-only invoker functions: no elevated search path or database role.
+CREATE OR REPLACE FUNCTION claim_invoice_summary(p_invoice_id TEXT, p_version TEXT, p_token UUID)
+RETURNS SETOF invoice_conversation_summaries
+LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+    INSERT INTO invoice_conversation_summaries(invoice_id)
+    VALUES (p_invoice_id) ON CONFLICT (invoice_id) DO NOTHING;
+    RETURN QUERY
+    UPDATE invoice_conversation_summaries s
+       SET status = 'refreshing', lease_token = p_token,
+           lease_until = clock_timestamp() + interval '50 seconds',
+           progress = CASE WHEN s.target_version = p_version THEN s.progress ELSE '{}'::jsonb END,
+           target_version = p_version, error_code = NULL, retry_after = NULL
+     WHERE s.invoice_id = p_invoice_id
+       AND s.source_version IS DISTINCT FROM p_version
+       AND (s.lease_until IS NULL OR s.lease_until <= clock_timestamp())
+       AND (s.retry_after IS NULL OR s.retry_after <= clock_timestamp())
+    RETURNING s.*;
+END $$;
+
+CREATE OR REPLACE FUNCTION publish_invoice_summary(p_invoice_id TEXT, p_token UUID, p_version TEXT, p_summary TEXT)
+RETURNS BOOLEAN LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+    UPDATE invoice_conversation_summaries
+       SET summary = p_summary, source_version = p_version,
+           generated_at = clock_timestamp(), status = 'current',
+           lease_token = NULL, lease_until = NULL, retry_after = NULL,
+           progress = '{}'::jsonb, error_code = NULL
+     WHERE invoice_id = p_invoice_id AND lease_token = p_token
+       AND target_version = p_version AND lease_until > clock_timestamp();
+    RETURN FOUND;
+END $$;
+
+CREATE OR REPLACE FUNCTION progress_invoice_summary(p_invoice_id TEXT, p_token UUID, p_version TEXT, p_progress JSONB)
+RETURNS BOOLEAN LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+    UPDATE invoice_conversation_summaries SET progress = p_progress
+     WHERE invoice_id = p_invoice_id AND lease_token = p_token
+       AND target_version = p_version AND lease_until > clock_timestamp();
+    RETURN FOUND;
+END $$;
+
+CREATE OR REPLACE FUNCTION release_invoice_summary(p_invoice_id TEXT, p_token UUID, p_error TEXT)
+RETURNS BOOLEAN LANGUAGE plpgsql SET search_path = public, pg_temp AS $$
+BEGIN
+    UPDATE invoice_conversation_summaries
+       SET status = CASE WHEN p_error IS NULL THEN 'pending' ELSE 'failed' END,
+           error_code = p_error, lease_token = NULL, lease_until = NULL,
+           retry_after = CASE WHEN p_error IS NULL THEN NULL ELSE clock_timestamp() + interval '30 seconds' END
+     WHERE invoice_id = p_invoice_id AND lease_token = p_token
+       AND lease_until > clock_timestamp();
+    RETURN FOUND;
+END $$;
+
+REVOKE ALL ON FUNCTION claim_invoice_summary(TEXT,TEXT,UUID) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION publish_invoice_summary(TEXT,UUID,TEXT,TEXT) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION progress_invoice_summary(TEXT,UUID,TEXT,JSONB) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION release_invoice_summary(TEXT,UUID,TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION claim_invoice_summary(TEXT,TEXT,UUID) TO service_role;
+GRANT EXECUTE ON FUNCTION publish_invoice_summary(TEXT,UUID,TEXT,TEXT) TO service_role;
+GRANT EXECUTE ON FUNCTION progress_invoice_summary(TEXT,UUID,TEXT,JSONB) TO service_role;
+GRANT EXECUTE ON FUNCTION release_invoice_summary(TEXT,UUID,TEXT) TO service_role;

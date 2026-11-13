@@ -12,7 +12,7 @@ load_dotenv()
 import secrets
 import hashlib
 import hmac
-from fastapi import FastAPI, File, Form, Request, Response, UploadFile
+from fastapi import Body, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
@@ -67,7 +67,7 @@ from src.invoice_parser import (
     parsed_invoice_payload,
     validate_invoice_upload,
 )
-from src.services import invoice_service
+from src.services import conversation_summary, invoice_service
 from src.services.invoice_service import compute_balance, invoice_state_from_db
 from src.services.gmail_service import GmailService, SCOPES, SIGN_IN_SCOPES, GMAIL_SEND_SCOPE
 from src.services.resend_inbound import (
@@ -251,6 +251,7 @@ class UpdateSenderRequest(BaseModel):
 
 RATE_LIMITS: dict[str, list[float]] = {}
 CHAT_LIMIT_PER_MINUTE = 20
+SUMMARY_LIMIT_PER_MINUTE = 10
 PARSE_LIMIT_PER_MINUTE = 8
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 INVOICE_FILE_BUCKET = os.getenv("SUPABASE_INVOICE_FILE_BUCKET", "invoice-files")
@@ -1213,6 +1214,38 @@ def patch_sender_profile_route(
     return update_user_sender_profile(user_id, merged)
 
 
+class SummaryRefreshRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+
+@app.get("/api/invoices/{invoice_id}/summary")
+def get_conversation_summary(invoice_id: str, request: Request, authorization: str | None = Header(None)):
+    authorize_invoice_access(invoice_id, request, authorization)
+    return conversation_summary.read(invoice_id, agent)
+
+
+@app.post("/api/invoices/{invoice_id}/summary")
+def refresh_conversation_summary(
+    invoice_id: str, request: Request, response: Response,
+    payload: SummaryRefreshRequest | None = Body(None),
+    authorization: str | None = Header(None),
+):
+    """Explicit invoice opening only; history reads and source writes never generate."""
+    authorize_invoice_access(invoice_id, request, authorization)
+    enforce_rate_limit(_client_key(request, authorization), "summary", SUMMARY_LIMIT_PER_MINUTE)
+    result = conversation_summary.refresh(invoice_id, agent)
+    if result["status"] not in ("current", "empty"):
+        response.status_code = 202
+    return result
+
+
+def history_summary_fields(invoice_id: str) -> dict:
+    result = conversation_summary.read(invoice_id, agent)
+    return {"summary": result["summary"], "summary_metadata": {
+        key: result[key] for key in ("source_version", "generated_at", "status", "is_stale")
+    }}
+
+
 @app.get("/api/invoices/{invoice_id}/history")
 def get_invoice_history(
     invoice_id: str,
@@ -1236,10 +1269,10 @@ def get_invoice_history(
     try:
         snapshot = agent.get_state(config)
     except Exception:
-        return {"messages": [], "interrupt": None, "state": persisted_state}
+        return {"messages": [], "interrupt": None, "state": persisted_state, **history_summary_fields(invoice_id)}
 
     if not snapshot or not snapshot.values:
-        return {"messages": [], "interrupt": None, "state": persisted_state}
+        return {"messages": [], "interrupt": None, "state": persisted_state, **history_summary_fields(invoice_id)}
 
     state = snapshot.values
     messages = serialize_messages(state.get("messages", []))
@@ -1268,6 +1301,7 @@ def get_invoice_history(
         "interrupt": interrupt_data,
         "state": extract_state(state),
         "communications": get_communications(invoice_id),
+        **history_summary_fields(invoice_id),
     }
 
 

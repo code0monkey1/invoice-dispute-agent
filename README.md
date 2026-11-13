@@ -679,3 +679,10 @@ Re-run step 2 after upgrading `langgraph-checkpoint-postgres`, since it may add 
 ## License
 
 MIT
+
+### Saved conversation summaries
+
+Opening an invoice refreshes its saved AI summary **once, only if chat or email
+communications changed** since the last summary. Polling and incoming messages
+do not trigger generation. Summaries live in a separate per-invoice table and
+are returned with history. See [the summary API and operations guide](docs/conversation-summary.md).

@@ -9,6 +9,7 @@ import { useChat } from '../useChat'
 const api = vi.hoisted(() => ({
   getInvoices: vi.fn(),
   getHistory: vi.fn(),
+  refreshSummary: vi.fn(),
   settle: vi.fn(),
   chat: vi.fn(),
   resume: vi.fn(),
@@ -46,6 +47,7 @@ const never = () => new Promise<never>(() => {})
 
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset())
+  api.refreshSummary.mockResolvedValue({ invoice_id: ID, summary: null, source_version: null, generated_at: null, status: 'empty', is_stale: false })
   idb.del.mockReset().mockResolvedValue(undefined)
 })
 

@@ -111,6 +111,12 @@ export const api = {
   getHistory: (invoiceId: string) =>
     request<import('./types').ChatResponse>(`/api/invoices/${invoiceId}/history`),
 
+  refreshSummary: (invoiceId: string) =>
+    request<import('./types').ConversationSummary>(`/api/invoices/${invoiceId}/summary`, { method: 'POST' }),
+
+  getSummary: (invoiceId: string) =>
+    request<import('./types').ConversationSummary>(`/api/invoices/${invoiceId}/summary`),
+
   updateDetails: (invoiceId: string, data: { client_name?: string; client_email?: string }) =>
     request<{ state: import('./types').AgentState }>(`/api/invoices/${invoiceId}/details`, {
       method: 'PATCH',
