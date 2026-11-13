@@ -198,3 +198,42 @@ def test_a_case_hit_by_provider_rate_limits_is_retried_then_graded(monkeypatch):
     results = asyncio.run(runner._run_all([case], 1, lambda c: None, None, 0, retries=2, retry_wait=0))
     assert len(calls) == 3 and len(results) == 1  # first try + 2 retries, graded once
     assert "429" in (results[0].error or "")  # still failing after the retries: reported, not hidden
+
+
+def test_the_judge_uses_its_own_groq_key_only_when_one_is_set(monkeypatch):
+    from evals.run import judge_key_kwargs
+    monkeypatch.delenv("EVAL_JUDGE_GROQ_API_KEY", raising=False)
+    assert judge_key_kwargs() == {}
+    monkeypatch.setenv("EVAL_JUDGE_GROQ_API_KEY", "")
+    assert judge_key_kwargs() == {}, "an empty CI secret means unset"
+    monkeypatch.setenv("EVAL_JUDGE_GROQ_API_KEY", "gsk_judge")
+    assert judge_key_kwargs() == {"api_key": "gsk_judge"}
+
+
+def test_a_rate_limited_client_reply_is_reported_so_it_is_retried(monkeypatch):
+    """handle_client_reply logs and swallows agent errors (a webhook must not fail),
+    so a Groq 429 used to look like "the agent didn't call the tool"."""
+    import asyncio
+    from langchain_core.language_models.fake_chat_models import FakeListChatModel
+    import api.index as api_index
+    from evals.cases import load_cases
+    from evals.harness import EvalHarness
+    from evals.run import _provider_busy
+
+    class RateLimited(FakeListChatModel):
+        def bind_tools(self, tools, **kwargs):
+            return self
+
+        def _call(self, *args, **kwargs):
+            raise RuntimeError("Error code: 429 - {'error': {'code': 'rate_limit_exceeded'}}")
+
+    monkeypatch.setattr(api_index.time, "sleep", lambda s: None)  # skip the API's own backoff
+    case = next(c for c in load_cases(level=3) if c.id == "l3-client-pays")
+
+    async def run():
+        async with EvalHarness() as harness:
+            return await harness.run_case(case, RateLimited(responses=["x"]))
+
+    result = asyncio.run(run())
+    assert result.error and "429" in result.error
+    assert _provider_busy(result.error)

@@ -141,6 +141,11 @@ class EvalHarness:
                 self.db.invoices[invoice_id], case.invoice["client_email"],
                 case.turn.get("subject", "Re: Invoice"), case.turn["client_reply"],
             )
+            # The webhook path logs and swallows agent errors, but the trace keeps them.
+            # Surface them, so a rate-limited reply is retried, not graded as a wrong answer.
+            failed = [r for r in self.db.agent_runs if r.get("kind") == "inbound_reply" and r.get("error")]
+            if failed:
+                raise RuntimeError(f"client reply failed: {failed[-1]['error'][:200]}")
             r = await client.get(f"/api/invoices/{invoice_id}/history", headers=headers)
             body = r.json()
 

@@ -38,6 +38,13 @@ MAX_JUDGE_DROP = 0.5
 RATE_METRICS = (("tool_accuracy", "tool accuracy"), ("hitl_rate", "approval rule"), ("rule_rate", "tone rules"))
 
 
+def judge_key_kwargs() -> dict:
+    """The judge may use its own Groq key (EVAL_JUDGE_GROQ_API_KEY), so the agent and
+    the judge don't share one rate limit. Unset or empty: the judge uses GROQ_API_KEY."""
+    key = os.getenv("EVAL_JUDGE_GROQ_API_KEY")
+    return {"api_key": key} if key else {}
+
+
 def judge_model_name(requested: str | None) -> str:
     """--judge-model, else EVAL_JUDGE_MODEL, else the default. Empty values count as unset."""
     return requested or os.getenv("EVAL_JUDGE_MODEL") or DEFAULT_JUDGE_MODEL
@@ -229,7 +236,7 @@ def main(argv: list[str] | None = None, *, model_factory: Callable[[Any], Any] |
         if judge_factory is None:
             from langchain.chat_models import init_chat_model
             judge_name = judge_model_name(args.judge_model)
-            judge = init_chat_model(judge_name, model_provider="groq", temperature=0)
+            judge = init_chat_model(judge_name, model_provider="groq", temperature=0, **judge_key_kwargs())
         else:
             judge = judge_factory()
 
