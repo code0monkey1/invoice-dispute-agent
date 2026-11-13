@@ -21,12 +21,14 @@
 - [x] 4.1 Write failing hook tests then request summary once per invoice opening after real history loads, with StrictMode/visit protection. Verify unchanged reopen relies on backend reuse, switching invoices refreshes the correct id, polling/prefetch/focus/chat mutations do not regenerate, and summary fields survive cache updates and failed requests.
 - [x] 4.2 Add API/types and expose saved summary through useChat without inserting a chat message. Verify frontend tests, lint and build and document no generation while an invoice remains open.
 
-- [ ] 4.3 Return compact invoice/approval metadata with summary responses, never prior chat/email bodies. Add optional delta-only chat/escalate/resume responses and verify old content is excluded while approvals and guest authorization remain correct.
-- [ ] 4.4 Make summary cache the initial page data, fetch full history only through an explicit View conversation history control, remove history prefetch/polling until requested, and display the saved summary. Verify cache reuse, explicit history loading/error/retry, current-session chat, navigation, and summary-only polling with API/hook/component tests; run the full suites/lint/build.
+- [x] 4.3 Return compact invoice/approval metadata with summary responses, never prior chat/email bodies. Add optional delta-only chat/escalate/resume responses and verify old content is excluded while approvals and guest authorization remain correct.
+- [x] 4.4 Make summary cache the initial page data, fetch full history only through an explicit View conversation history control, remove history prefetch/polling until requested, and display the saved summary. Verify cache reuse, explicit history loading/error/retry, current-session chat, navigation, and summary-only polling with API/hook/component tests; run the full suites/lint/build.
+
+- [x] 4.5 Add a synthetic summary golden set and independent different-family Groq LLM judge, enforce at least 85% positive cases, run the live eval and save auditable outputs. Verify judge-family rejection, missing/error judgments fail closed, and CI runs summary quality separately from unrelated chasing-agent cases.
 
 ## 5. Verification and release
 
-- [ ] 5.1 Run the full backend suite, real Postgres summary/checkpoint integration tests, frontend suite, lint and build; verify all pass and record existing warnings separately.
+- [x] 5.1 Run the full backend suite, real Postgres summary/checkpoint integration tests, frontend suite, lint and build; verify all pass and record existing warnings separately.
 - [ ] 5.2 Review the complete diff and get one fresh whole-branch review; address significant findings with regression tests and validate OpenSpec strictly. Verify no unrelated edits or eager-generation wiring remain.
 - [ ] 5.3 Deploy preview and verify owned test invoice POST/GET/history agreement, cumulative content, unchanged reopen reuse, changed communication refresh on next opening, pending approval preservation and recoverable failure; record URL and results.
 - [ ] 5.4 Open/update the focused PR, pass CI, merge main and push; verify the tested commits are on origin/main and record PR URL/merge SHA.

@@ -41,6 +41,13 @@ class FakeDB:
         if table in self.down_tables:
             from src.db import DatabaseUnavailable
             raise DatabaseUnavailable(f"{table} is down (simulated)")
+        if table == 'rpc/invoice_communication_overviews':
+            results = []
+            for invoice_id in payload['p_invoice_ids']:
+                rows = sorted([r for r in self.communications if r['invoice_id'] == invoice_id], key=lambda r: (r.get('timestamp',''), r['id']))
+                if rows:
+                    results.append({'invoice_id':invoice_id,'communication_count':len(rows), 'outbound_count':sum(r['direction']=='outbound' for r in rows), 'last_communication_direction':rows[-1]['direction']})
+            return results
         if table == "invoice_conversation_summaries":
             return self._filter(list(self.summaries.values()), params)
         if table.startswith("rpc/") and "invoice_summary" in table:

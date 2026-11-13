@@ -198,3 +198,22 @@ def test_a_case_hit_by_provider_rate_limits_is_retried_then_graded(monkeypatch):
     results = asyncio.run(runner._run_all([case], 1, lambda c: None, None, 0, retries=2, retry_wait=0))
     assert len(calls) == 3 and len(results) == 1  # first try + 2 retries, graded once
     assert "429" in (results[0].error or "")  # still failing after the retries: reported, not hidden
+
+
+def test_summary_eval_enforces_85_percent_and_distinct_model_families():
+    from evals.summary import summarize_results, validate_models
+    import pytest
+    assert summarize_results([{'passed': True}] * 17 + [{'passed': False}] * 3)['passed']
+    assert not summarize_results([{'passed': True}] * 16 + [{'passed': False}] * 4)['passed']
+    assert not summarize_results([])['passed']
+    assert not summarize_results([{'passed': True}] * 17, expected_count=20)['passed']
+    validate_models('openai/gpt-oss-20b', 'qwen/qwen3.8-27b')
+    with pytest.raises(ValueError):
+        validate_models('openai/gpt-oss-120b', 'openai/gpt-oss-20b')
+
+
+def test_summary_eval_rejects_bad_or_missing_judgment_even_if_positive():
+    from evals.summary import judge_passes
+    assert judge_passes({'positive': True, 'grounding': 5, 'coverage': 4, 'attribution': 5, 'safety': 5})
+    assert not judge_passes({'positive': True, 'grounding': 2, 'coverage': 5, 'attribution': 5, 'safety': 5})
+    assert not judge_passes({'positive': True})

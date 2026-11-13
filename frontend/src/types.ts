@@ -1,4 +1,7 @@
 export interface Invoice {
+  communication_count?: number;
+  outbound_count?: number;
+  last_communication_direction?: string | null;
   id: string;
   invoice_id: string;
   client_name: string;

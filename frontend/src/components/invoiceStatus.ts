@@ -38,8 +38,9 @@ export function invoiceStatus(invoice: Invoice, today: Date = new Date()): Invoi
 
   const history = invoice.communication_history ?? []
   const last = history[history.length - 1]
-  if (last?.direction === 'inbound') return { kind: 'client', label: 'Client replied' }
+  const lastDirection = invoice.last_communication_direction ?? last?.direction
+  if (lastDirection === 'inbound') return { kind: 'client', label: 'Client replied' }
   if (invoice.status === 'pending') return promiseStatus(invoice, today)
-  if (last?.direction === 'outbound') return { kind: 'agent', label: 'Waiting for the client' }
+  if (lastDirection === 'outbound') return { kind: 'agent', label: 'Waiting for the client' }
   return { kind: 'agent', label: 'Agent is preparing the first email' }
 }

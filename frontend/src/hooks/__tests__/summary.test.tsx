@@ -177,3 +177,45 @@ it('hides previous-visit chat and history again when navigating back to an invoi
   expect(result.current.fullHistoryVisible).toBe(false)
   expect(result.current.messages).toEqual([])
 })
+
+it('keeps a late chat result on its original invoice after navigation', async () => {
+  const client = createTestQueryClient()
+  let finish!: (v: ChatResponse) => void
+  api.chat.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  const { result, rerender } = renderHook(({ id }) => useChat(id), { initialProps: { id: 'A' }, wrapper: withQueryClient(client) })
+  await waitFor(() => expect(result.current.historyLoaded).toBe(true))
+  act(() => { void result.current.sendMessage('For invoice A only') })
+  await waitFor(() => expect(api.chat).toHaveBeenCalled())
+  rerender({ id: 'B' })
+  await waitFor(() => expect(api.getConversation).toHaveBeenCalledWith('B'))
+  await act(async () => finish({ ...history, messages: [{ type:'AIMessage', content:'Answer for invoice A' }] }))
+  expect(result.current.messages).toEqual([])
+  expect(client.getQueryData<ChatResponse>(qk.conversation('B'))?.has_history).not.toBe(true)
+})
+
+it('never displays an earlier visits optimistic or late messages after A to B to A', async () => {
+  let finish!: (v: ChatResponse) => void
+  api.chat.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+  const { result, rerender } = renderHook(({ id }) => useChat(id), { initialProps: { id:'A' }, wrapper: withQueryClient() })
+  await waitFor(() => expect(result.current.historyLoaded).toBe(true))
+  act(() => { void result.current.sendMessage('Old visit message') })
+  await waitFor(() => expect(api.chat).toHaveBeenCalled())
+  rerender({ id:'B' })
+  expect(result.current.messages).toEqual([])
+  rerender({ id:'A' })
+  expect(result.current.messages).toEqual([])
+  await act(async () => finish({ ...history, messages:[{type:'HumanMessage',content:'Old visit message'},{type:'AIMessage',content:'Late old visit answer'}] }))
+  expect(result.current.messages).toEqual([])
+})
+
+it('keeps current exchanges visible when explicitly requested history fails', async () => {
+  Object.assign(api, { getHistory:vi.fn().mockRejectedValue(new Error('history unavailable')) })
+  const { result } = renderHook(() => useChat('A'), { wrapper:withQueryClient() })
+  await waitFor(() => expect(result.current.historyLoaded).toBe(true))
+  await act(async () => { await result.current.sendMessage('invoice update') })
+  await act(async () => result.current.viewHistory())
+  await waitFor(() => expect(result.current.fullHistoryError).toBe(true))
+  expect(result.current.messages.at(-1)?.content).toBe('Noted')
+  await act(async () => { await result.current.sendMessage('another invoice update') })
+  expect(result.current.messages.at(-1)?.content).toBe('Noted')
+})

@@ -301,3 +301,15 @@ GRANT EXECUTE ON FUNCTION claim_invoice_summary(TEXT,TEXT,UUID) TO service_role;
 GRANT EXECUTE ON FUNCTION publish_invoice_summary(TEXT,UUID,TEXT,TEXT) TO service_role;
 GRANT EXECUTE ON FUNCTION progress_invoice_summary(TEXT,UUID,TEXT,JSONB) TO service_role;
 GRANT EXECUTE ON FUNCTION release_invoice_summary(TEXT,UUID,TEXT) TO service_role;
+
+-- Dashboard metadata only: full subjects/bodies are fetched on explicit history.
+CREATE OR REPLACE FUNCTION invoice_communication_overviews(p_invoice_ids TEXT[])
+RETURNS TABLE(invoice_id TEXT, communication_count BIGINT, outbound_count BIGINT, last_communication_direction TEXT)
+LANGUAGE sql STABLE SET search_path = public, pg_temp AS $$
+    SELECT c.invoice_id, count(*), count(*) FILTER (WHERE c.direction = 'outbound'),
+           (array_agg(c.direction ORDER BY c.timestamp DESC, c.id DESC))[1]
+      FROM communication_history c WHERE c.invoice_id = ANY(p_invoice_ids)
+     GROUP BY c.invoice_id;
+$$;
+REVOKE ALL ON FUNCTION invoice_communication_overviews(TEXT[]) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION invoice_communication_overviews(TEXT[]) TO service_role;

@@ -181,3 +181,60 @@ async def test_summary_posts_have_their_own_rate_limit(client, fake_db, scripted
     assert (await client.post(f"/api/invoices/{inv['id']}/summary", headers=headers)).status_code == 429
     assert (await client.get(f"/api/invoices/{inv['id']}/summary", headers=headers)).status_code == 200
     assert summarizer.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_summary_response_is_compact_but_keeps_pending_action(client, fake_db, scripted, summarizer):
+    headers = signed_in(fake_db)
+    inv = await create_invoice(client, headers)
+    scripted.replies = [tool_call('draft_polite_reminder')]
+    await client.post('/api/chat', headers=headers, json={'thread_id': f"invoice-{inv['id']}", 'message': 'Draft a polite reminder for this invoice'})
+    result = (await client.get(f"/api/invoices/{inv['id']}/summary", headers=headers)).json()
+    assert result['state']['client_name'] == 'Acme Corp'
+    assert result['interrupt']['tool'] == 'draft_polite_reminder'
+    assert result['has_history'] is True
+    assert 'messages' not in result and 'communications' not in result
+    assert result['state'].get('communication_history', []) == []
+    assert summarizer.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_delta_chat_response_excludes_earlier_conversation(client, fake_db, scripted, summarizer):
+    headers = signed_in(fake_db)
+    inv = await create_invoice(client, headers)
+    scripted.replies = [AIMessage(content='New answer only')]
+    result = await client.post('/api/chat?include_history=false', headers=headers, json={'thread_id': f"invoice-{inv['id']}", 'message': 'Any new update on this invoice?'})
+    assert result.status_code == 200
+    contents = [m['content'] for m in result.json()['messages']]
+    assert contents == ['Any new update on this invoice?', 'New answer only']
+    assert summarizer.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_delta_escalation_and_resume_do_not_include_prior_messages(client, fake_db, scripted, summarizer, sent):
+    headers = signed_in(fake_db)
+    inv = await create_invoice(client, headers)
+    scripted.replies = [tool_call('draft_formal_demand_letter')]
+    escalated = await client.post(f"/api/invoices/{inv['id']}/escalate?include_history=false", headers=headers)
+    assert escalated.status_code == 200, escalated.text
+    assert all(m['content'] != 'What is the status of this invoice?' for m in escalated.json()['messages'])
+    assert escalated.json()['interrupt']['tool'] == 'draft_formal_demand_letter'
+    scripted.replies = [AIMessage(content='Approved outcome')]
+    result = await client.post(f"/api/invoices/{inv['id']}/resume?include_history=false", headers=headers, json={'decision':'approve'})
+    assert result.status_code == 200, result.text
+    assert all(m['content'] != 'What is the status of this invoice?' for m in result.json()['messages'])
+    assert result.json()['state']['communication_history'] == []
+    assert len(sent) == 1 and summarizer.call_count == 0
+
+
+@pytest.mark.asyncio
+async def test_dashboard_never_returns_communication_bodies(client, fake_db, scripted):
+    from src.db import add_communication
+    headers = signed_in(fake_db)
+    inv = await create_invoice(client, headers)
+    add_communication(inv['id'], 'client_reply', 'Sensitive subject', 'Sensitive client reply', direction='inbound')
+    result = await client.get('/api/invoices', headers=headers)
+    assert 'Sensitive client reply' not in result.text and 'Sensitive subject' not in result.text
+    row = result.json()[0]
+    assert row['communication_history'] == []
+    assert row['communication_count'] == 1 and row['last_communication_direction'] == 'inbound'

@@ -49,7 +49,7 @@ from src.state import FreelancerContext
 from src.tools.drafting import fill_draft_from_context
 from src.db import (
     TRACE_RUNS_MAX_LIMIT, get_trace_steps, list_agent_runs,
-    get_communications_for, get_summary_communications, communication_flags,
+    get_communications_for, get_summary_communications, communication_flags, get_communication_overviews,
     DatabaseUnavailable,
     InvoiceAlreadyExists,
     init_db, upsert_user, get_user, get_user_gmail_tokens,
@@ -1600,11 +1600,11 @@ def list_invoices(
 ):
     _user, user_id = resolve_user_id(request, response, authorization)
     invoices = get_invoices_by_user(user_id)
-    # One communications read for all invoices, and the agent-state reads in
-    # parallel: doing both per invoice made the dashboard slow to load.
-    communications = get_communications_for([inv["id"] for inv in invoices])
+    # Aggregate metadata only; email bodies require an explicit history request.
+    communications = get_communication_overviews([inv["id"] for inv in invoices])
     for inv in invoices:
-        inv["communication_history"] = communications.get(inv["id"], [])
+        inv["communication_history"] = []
+        inv.update(communications.get(inv["id"], {"communication_count": 0, "outbound_count": 0, "last_communication_direction": None}))
     presented = [present_invoice(inv) for inv in invoices]
     open_ids = [inv["id"] for inv in presented if inv.get("status") != "paid"]
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -1821,7 +1821,7 @@ def settle_invoice(invoice_id: str, request: Request, authorization: str | None 
     if invoice_service.settle(invoice_id, invoice.get("user_id")):
         sync_agent_state_from_invoice(invoice_id, {"configurable": {"thread_id": f"invoice-{invoice_id}"}})
     updated = get_invoice(invoice_id)
-    updated["communication_history"] = get_communications(invoice_id)
+    updated["communication_history"] = []
     return {"invoice": present_invoice(updated)}
 
 

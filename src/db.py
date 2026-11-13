@@ -785,3 +785,11 @@ def communication_flags(invoice_id: str) -> dict:
         return bool(_supabase_rest_request("GET", "communication_history", query=query, timeout=SUMMARY_STORE_TIMEOUT_SECONDS))
     outbound = exists('outbound')
     return {'has_history': outbound or exists(), 'has_outbound': outbound}
+
+
+def get_communication_overviews(invoice_ids: list[str]) -> dict[str, dict]:
+    if not invoice_ids:
+        return {}
+    rows = _supabase_rest_request('POST', 'rpc/invoice_communication_overviews',
+        payload={'p_invoice_ids': invoice_ids}, timeout=SUMMARY_STORE_TIMEOUT_SECONDS) or []
+    return {row['invoice_id']: row for row in rows}

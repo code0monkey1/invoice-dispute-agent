@@ -128,13 +128,15 @@ def read(invoice_id: str, agent) -> dict:
         return _present(invoice_id, row, None)
 
 
-def _call_model(payload: dict) -> str:
+def _call_model(payload: dict, model_name: str | None = None) -> str:
     from langchain.chat_models import init_chat_model
     from langchain_core.messages import HumanMessage, SystemMessage
     prompt = (Path(__file__).resolve().parents[1] / 'prompts' / 'v1' / 'conversation_summary.txt').read_text()
+    model_name = model_name or os.getenv('SUMMARY_MODEL') or 'openai/gpt-oss-20b'
+    reasoning = {'reasoning_effort': 'low'} if 'gpt-oss' in model_name or model_name.startswith('qwen/') else {}
     model = init_chat_model(
-        os.getenv('GROQ_MODEL') or 'openai/gpt-oss-120b', model_provider='groq',
-        temperature=0, timeout=MODEL_TIMEOUT_SECONDS, max_retries=0, max_tokens=2000,
+        model_name, model_provider='groq',
+        temperature=0, timeout=MODEL_TIMEOUT_SECONDS, max_retries=0, max_tokens=2000, **reasoning,
     )
     result = model.invoke([SystemMessage(content=prompt), HumanMessage(content=_json(payload))])
     text = _text(result.content).strip()

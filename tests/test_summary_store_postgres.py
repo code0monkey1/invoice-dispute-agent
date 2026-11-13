@@ -22,6 +22,7 @@ def conn():
             if not c.execute("SELECT 1 FROM pg_roles WHERE rolname=%s", (role,)).fetchone():
                 c.execute(f'CREATE ROLE "{role}" NOLOGIN' + (' BYPASSRLS' if role == 'service_role' else ''))
         c.execute("CREATE TABLE IF NOT EXISTS invoices (id text PRIMARY KEY)")
+        c.execute("CREATE TABLE IF NOT EXISTS communication_history (id bigint, invoice_id text, direction text, timestamp text)")
         sql = Path('supabase/schema.sql').read_text()
         assert MARKER in sql, "summary migration not implemented"
         migration = sql[sql.index(MARKER):]

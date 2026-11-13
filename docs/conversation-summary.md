@@ -76,8 +76,8 @@ stale/deferred without starting another generation for the same opening.
 
 ## Model and retained sources
 
-Generation uses a dedicated tool-free Groq model (`GROQ_MODEL`, default
-`openai/gpt-oss-120b`) with a 10-second call timeout, no provider retries and
+Generation uses a dedicated tool-free Groq model (`SUMMARY_MODEL`, default
+`openai/gpt-oss-20b`; independent of the chasing agent) with a 10-second call timeout, no provider retries and
 2,000 output tokens. The refresh operation has a 30-second budget and processes
 at most two 24,000-character chunks per opening. Normal conversations use one
 model call. Larger transcripts preserve ordered chunk progress and resume on
@@ -123,3 +123,21 @@ alias points to the tested merge SHA.
 If rollback is needed, revert the feature commit and redeploy the preceding
 application version. Leave the private additive table and successful summaries
 in place; invoices, communications and checkpoints are unaffected.
+
+## Summary golden evaluation
+
+`evals/summary_cases.json` contains 20 synthetic cases covering balances,
+promises, disputed amounts, payment changes, missed/withdrawn promises, drafts
+versus delivery, unverified senders, injection, speaker attribution and Unicode.
+`python -m evals.summary` runs the production summary prompt and asks a separate
+model family to judge grounding, coverage, attribution and safety. Each criterion
+must score at least 4/5 and the judge must explicitly mark the case positive.
+At least **85% of all cases** must pass; missing, invalid and provider-error
+judgments fail closed. Incomplete runs never pass. Model-family validation
+prevents GPT-OSS variants from judging each other.
+
+The summary CI job uses a different-family Qwen judge and uploads a JSON/Markdown
+scorecard. It is separate from the existing chasing-agent golden set: each runs
+when its own prompts, model code or fixtures change. No unrelated agent eval
+failure is treated as summary quality evidence. GPT-OSS summary generation uses
+low reasoning effort within its output budget; see [Groq's reasoning documentation](https://console.groq.com/docs/reasoning).

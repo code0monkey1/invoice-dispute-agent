@@ -88,7 +88,7 @@ export const senderProfileQuery = () =>
 // What the dashboard row already knows about an invoice, shaped like a chat
 // response, so the invoice page can render its details before /history returns.
 export function historyPlaceholder(invoice: Invoice): ChatResponse {
-  const communications = (invoice.communication_history ?? []) as unknown as SupabaseCommEntry[]
+  const communications: SupabaseCommEntry[] = []
   return {
     messages: [],
     interrupt: null,
@@ -103,7 +103,7 @@ export function historyPlaceholder(invoice: Invoice): ChatResponse {
       days_overdue: invoice.days_overdue,
       jurisdiction: invoice.jurisdiction,
       status: invoice.status,
-      communication_history: invoice.communication_history ?? [],
+      communication_history: [],
     },
     communications,
   }

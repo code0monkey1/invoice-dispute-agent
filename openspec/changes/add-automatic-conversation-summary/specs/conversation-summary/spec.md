@@ -128,3 +128,14 @@ Opening an invoice SHALL display its locally cached summary and retrieve only su
 #### Scenario: New chat while history is hidden
 - **WHEN** the owner sends a message without requesting prior history
 - **THEN** the current exchange and approvals are shown without retrieving or displaying earlier conversation history
+
+### Requirement: Independently judged summary quality gate
+The release SHALL include a repeatable synthetic summary golden set judged by an LLM from a different model family than the generator. At least 85% of cases SHALL receive a positive verdict with acceptable factual grounding, coverage, attribution and safety. Generation/judge failures SHALL count as failures; results and model identities SHALL be saved.
+
+#### Scenario: Passing release evaluation
+- **WHEN** the complete golden set is generated and independently judged
+- **THEN** release passes only if at least 85% of all cases are positive and the models belong to different families
+
+#### Scenario: Missing or unsafe judgment
+- **WHEN** a judge response is missing, malformed or rates a material criterion below acceptable
+- **THEN** the case fails even if a positive flag was supplied
