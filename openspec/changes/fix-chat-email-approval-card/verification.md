@@ -1,7 +1,7 @@
 # Verification status
 
 Implementation is complete in `fix/chat-email-approval-card` / PR #31. Release
-verification remains blocked on provider capacity; do not merge or deploy until
+verification is pending; do not merge or deploy until
 the complete required golden evaluation passes.
 
 ## Deterministic evidence
@@ -26,23 +26,27 @@ The follow-up changes keep all 36 cases and thresholds unchanged. They prevent
 informational turns and completed approvals from proposing emails, separate
 owner assistance from legal client-letter prompts, and make missing attachments
 nonblocking while retaining truthful card notes. Targeted reruns verified the
-card-routing repairs; final full live quality verification is still required.
+card-routing repairs. With the alternate credential, all five previously failing
+scenarios passed unchanged: judge mean 4.6/5 and zero pre-approval deliveries.
+Final full live quality verification is still required.
 
 The local Groq organization reached its 200,000-token daily allowance for
-`openai/gpt-oss-120b`. The user selected another authorized organization, but its
-key has not yet been supplied in the local `.env`. Browser access was unavailable
-and both existing local env files contained the same exhausted key. After a new
-key is saved, validate it and update the repository's `GROQ_API_KEY` secret and
-the linked Vercel project's appropriate environments without logging the value.
+`openai/gpt-oss-120b`. The user supplied a replacement credential. It was validated
+for the production model and different judge model, saved locally, and configured
+in the repository's `GROQ_API_KEY` secret and linked Vercel production Secret on
+2026-11-14 at 18:34 UTC. Credential values were not echoed or placed in command
+arguments. The [old-organization CI rerun](https://github.com/code0monkey1/invoice-dispute-agent/actions/runs/43626578276)
+stopped after 15/36 cases at its daily quota and correctly failed closed.
 
-The initial preview passed 24 checks; all disposable invoice, communication and
-checkpoint fixtures were removed. The latest deployed preview is
-`https://invoice-chaser-eukv1y9wi-code0monkey1s-projects.vercel.app`; refreshed
-live verification of the owner-assistance changes remains pending capacity.
+The initial preview passed 24 checks. The refreshed preview at
+`https://invoice-chaser-jqakb5z3k-code0monkey1s-projects.vercel.app` passed all 25
+checks, including an informational answer without a draft. All three disposable
+invoices, communication fixtures and their checkpoints were removed; no approval
+or send endpoint was invoked.
 
-After the full gate passes, rerun the preview smoke checks, merge only the tested
+After the full gate passes, merge only the tested
 head, verify production alias/merged SHA/health and owned disposable card flows,
-then complete tasks 4.3, 5.2 and 5.3. No real email approval/send is authorized by
+then complete tasks 4.3 and 5.3. No real email approval/send is authorized by
 this verification. The referenced real invoice has remained read-only.
 
 ## Isolation

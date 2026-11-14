@@ -63,18 +63,19 @@ An initial live Groq run passed all 14 original new scenarios. The first require
 exposed attachment-related refusal, informational requests becoming drafts,
 inaccurate answer formatting and another draft after approval. Request-scoped
 tool restrictions and a separate owner-assistance prompt address those failures;
-the 36 cases and all thresholds remain unchanged. Final live verification still
-requires provider capacity: the local production-model organization exhausted
-its 200,000-token daily allowance during verification.
+the 36 cases and all thresholds remain unchanged. The original organization
+exhausted its daily allowance; the user supplied a replacement credential, which
+was validated and configured locally, in GitHub and in Vercel production settings.
+All five previously failing cases then passed unchanged (judge mean 4.6/5).
+The complete 36-case CI run remains required before release.
 
-The [initial Vercel preview](https://invoice-chaser-470hhod7y-code0monkey1s-projects.vercel.app)
-passed 24 checks on owned disposable fixtures: typed/contextual Legal requests,
+The [refreshed Vercel preview](https://invoice-chaser-jqakb5z3k-code0monkey1s-projects.vercel.app)
+passed 25 checks on owned disposable fixtures: typed/contextual Legal requests,
 current figures, conditional previous delivery, explicit resend disclosure,
 attachment notes, hidden-history reopening, pending-card reuse and cross-owner
-denial. No approval/send endpoint was invoked. Test invoices, communication
-fixtures and their checkpoints were removed after verification. The additional
-owner-assistance changes require a refreshed preview check once capacity is
-available; do not treat the earlier preview evidence as final release approval.
+denial, plus an informational answer without a draft. No approval/send endpoint
+was invoked. Test invoices, communication fixtures and their checkpoints were
+removed after verification.
 
 Release requires the protected backend, frontend, golden-set and
 summary-golden-set checks before merging; the summary prompt is unchanged.
