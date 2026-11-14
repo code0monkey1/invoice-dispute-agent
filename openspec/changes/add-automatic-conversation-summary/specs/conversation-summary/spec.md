@@ -139,3 +139,19 @@ The release SHALL include a repeatable synthetic summary golden set judged by an
 #### Scenario: Missing or unsafe judgment
 - **WHEN** a judge response is missing, malformed or rates a material criterion below acceptable
 - **THEN** the case fails even if a positive flag was supplied
+
+### Requirement: Sequential summary evaluation preserves cumulative facts
+The evaluation SHALL test update sequences using actual prior generated summaries and new communications. A different-family LLM judge SHALL assess checkpoints against cumulative authoritative history. A sequence SHALL pass only if every checkpoint passes. Complete single-summary, sequence and checkpoint cohorts SHALL each achieve at least 85%. Production refresh behavior SHALL remain unchanged.
+
+#### Scenario: Withdrawn promises and corrected dates
+- **WHEN** later updates withdraw a payment promise or correct its date
+- **THEN** evaluation requires the summary to retain the earlier event while accurately identifying the current position and date
+
+#### Scenario: Partial payments and older objections
+- **WHEN** a sequence adds partial payments and successive unrelated updates
+- **THEN** evaluation requires current paid/outstanding totals and retention of unresolved earlier objections through eight refreshes
+
+#### Scenario: An intermediate checkpoint fails
+- **WHEN** generation or judging fails at any checkpoint
+- **THEN** that checkpoint and its sequence fail, and missing checkpoints cannot produce a passing run
+- **AND** subsequent generation uses actual prior generated text and any uncovered source delta, without judge-authored repairs

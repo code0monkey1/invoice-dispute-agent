@@ -29,11 +29,26 @@
 ## 5. Verification and release
 
 - [x] 5.1 Run the full backend suite, real Postgres summary/checkpoint integration tests, frontend suite, lint and build; verify all pass and record existing warnings separately.
-- [ ] 5.2 Review the complete diff and get one fresh whole-branch review; address significant findings with regression tests and validate OpenSpec strictly. Verify no unrelated edits or eager-generation wiring remain.
-- [ ] 5.3 Deploy preview and verify owned test invoice POST/GET/history agreement, cumulative content, unchanged reopen reuse, changed communication refresh on next opening, pending approval preservation and recoverable failure; record URL and results.
-- [ ] 5.4 Open/update the focused PR, pass CI, merge main and push; verify the tested commits are on origin/main and record PR URL/merge SHA.
-- [ ] 5.5 Apply the additive production migration, deploy merged SHA to Vercel production and verify alias, ready status, deployed SHA, persistent checkpoints and summary table readiness. Record deployment ID/URL.
-- [ ] 5.6 Verify owned production invoice lazy summary creation, unchanged reuse, later-message refresh only on reopening, restart persistence and cross-owner denial without sending real email; record evidence and rollback instructions.
+- [x] 5.2 Review the complete diff and get one fresh whole-branch review; address significant findings with regression tests and validate OpenSpec strictly. Verify no unrelated edits or eager-generation wiring remain.
+- [x] 5.3 Deploy preview and verify owned test invoice POST/GET/history agreement, cumulative content, unchanged reopen reuse, changed communication refresh on next opening, pending approval preservation and recoverable failure; record URL and results.
+- [x] 5.4 Open/update the focused PR, pass CI, merge main and push; verify the tested commits are on origin/main and record PR URL/merge SHA.
+- [x] 5.5 Apply the additive production migration, deploy merged SHA to Vercel production and verify alias, ready status, deployed SHA, persistent checkpoints and summary table readiness. Record deployment ID/URL.
+- [x] 5.6 Verify owned production invoice lazy summary creation, unchanged reuse, later-message refresh only on reopening, restart persistence and cross-owner denial without sending real email; record evidence and rollback instructions.
+
+## 6. Sequential summary evaluation extension
+
+- [x] 6.1 Write failing deterministic tests for delta-only generation, generated-summary carry-forward, independent cumulative judging, failure recovery and separate fail-closed sequence gating.
+- [x] 6.2 Add eight synthetic sequences for withdrawn/replaced promises, partial/corrected payments, corrected dates, pending versus approved follow-ups and older objections across eight refreshes. Implement the evaluation-only runner and auditable per-step reports; run deterministic tests.
+- [x] 6.3 Include sequence fixtures in CI change classification and the existing required 85% summary gate; document that this exercises proposed incremental inputs without changing production refresh behavior. Run backend tests and strict OpenSpec validation.
+- [x] 6.4 Run the complete live golden evaluation with a different-family judge, preserve complete reports and review any failures without lowering thresholds or removing difficult cases.
+
+## 7. Incremental-specific prompt fix and release
+
+- [x] 7.1 Use the failing unchanged sequence golden set as the red test; revise the shared summary prompt with general carry-forward rules for material financial history, corrected/withdrawn commitments, objections and current approval state. Preserve tool-free/injection/attribution rules and verify service tests.
+- [x] 7.2 Run the complete unchanged golden set with the independent different-family judge and unchanged 85% cohort gates; save reports and verify fixture hashes. Check additional synthetic holdout sequences without using their answers in the prompt.
+- [x] 7.3 Run backend/frontend checks and strict OpenSpec validation, review the complete prompt/evaluation diff independently and fix significant issues before committing.
+- [ ] 7.4 Commit only after local quality/verification pass, push PR #30, require successful GitHub backend/frontend/quality gates and merge to main without bypasses.
+- [ ] 7.5 Verify the merged SHA is ready on the production alias, exercise owned lazy summary creation/reuse/refresh and history/approval/access-control checks without sending email; record evidence and explain the prompt versus evaluation changes.
 
 ## Workflow follow-up
 

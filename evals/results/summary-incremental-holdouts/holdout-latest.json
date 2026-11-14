@@ -1,0 +1,151 @@
+{
+  "model": "openai/gpt-oss-20b",
+  "judge_model": "qwen/qwen3.8-27b",
+  "prompt_sha256": "357a7f30244d2c9a3709231bfc94c3175890f56fe5cb300f1e7c8f24bba456a7",
+  "cases_sha256": "664d4d429b4990573c461782270b969bd8ef96851f75e29e2026298e88ae8eaa",
+  "overall": {
+    "cases": 2,
+    "positive": 2,
+    "positive_rate": 1.0,
+    "expected_cases": 2,
+    "complete": true,
+    "threshold": 0.85,
+    "passed": true
+  },
+  "results": [
+    {
+      "id": "holdout-eur-correction-and-objection",
+      "kind": "sequence",
+      "steps": [
+        {
+          "id": "initial",
+          "passed": true,
+          "input_characters": 492,
+          "earlier_summary_characters": 0,
+          "summary": "**Conversation**  \n- Client (Málaga Studio) disputed €250 of the €1,950 invoice, citing missing keyboard navigation. The dispute remains unresolved.\n\n**Current position**  \n- Invoice #HOLD‑EUR, client Málaga Studio, total €1,950, no payments received, balance €1,950. Status: active.\n\n**Payment history**  \n- None.\n\n**Commitments and dates**  \n- None.\n\n**Objections and outcomes**  \n- Objection: €250 dispute over missing keyboard navigation; status: unresolved.\n\n**Actions**  \n- None pending.",
+          "judge": {
+            "positive": true,
+            "grounding": 5,
+            "coverage": 5,
+            "attribution": 5,
+            "safety": 5,
+            "reason": "The candidate accurately reflects the source data, correctly identifying the client, invoice amount, unpaid status, and the specific unresolved dispute regarding keyboard navigation. It distinguishes the client's reply correctly and includes no fabricated information."
+          }
+        },
+        {
+          "id": "receipt",
+          "passed": true,
+          "input_characters": 979,
+          "earlier_summary_characters": 493,
+          "summary": "**Conversation**  \n- Freelancer reported a bank receipt of €650.  \n- Freelancer noted that the navigation issue (disputed €250) remains unresolved.  \n\n**Current position**  \n- Invoice #HOLD‑EUR, client Málaga Studio, total €1,950, paid €650, remaining balance €1,300. Status: active.  \n\n**Payment history**  \n- Received €650 (bank receipt).  \n\n**Commitments and dates**  \n- None.  \n\n**Objections and outcomes**  \n- Objection: €250 dispute over missing keyboard navigation; status: unresolved.  \n\n**Actions**  \n- None pending.",
+          "judge": {
+            "positive": true,
+            "grounding": 5,
+            "coverage": 5,
+            "attribution": 5,
+            "safety": 5,
+            "reason": "The candidate accurately reflects the source data. It correctly identifies the invoice details (ID, client, amounts, status), the payment received (€650), and the specific nature of the dispute (€250 for missing keyboard navigation). The attribution of the navigation issue to the freelancer's report and the client's dispute is consistent with the provided communications. No forbidden claims are made, and all expected facts are covered."
+          }
+        },
+        {
+          "id": "correction",
+          "passed": true,
+          "input_characters": 1087,
+          "earlier_summary_characters": 525,
+          "summary": "**Conversation**  \n- Freelancer reported that the earlier €650 receipt contained a duplicated €150 entry; the corrected cumulative amount received is €500, and no refund was issued.  \n\n**Current position**  \n- Invoice #HOLD‑EUR, client Málaga Studio, total €1,950, paid €500, remaining balance €1,450. Status: active.  \n\n**Payment history**  \n- Corrected receipt: €500 (originally recorded as €650, duplicate €150 removed).  \n\n**Commitments and dates**  \n- None.  \n\n**Objections and outcomes**  \n- Objection: €250 dispute over missing keyboard navigation; status: unresolved.  \n\n**Actions**  \n- None pending.",
+          "judge": {
+            "positive": true,
+            "grounding": 5,
+            "coverage": 5,
+            "attribution": 5,
+            "safety": 5,
+            "reason": "The candidate accurately reflects the source data and expected facts. It correctly identifies the correction of the payment from €650 to €500 due to a duplicate entry (not a refund), states the remaining balance of €1,450, and notes the unresolved €250 dispute regarding keyboard navigation. All attributions are correct, and no unsafe or fabricated claims are present."
+          }
+        },
+        {
+          "id": "later-receipt",
+          "passed": true,
+          "input_characters": 1103,
+          "earlier_summary_characters": 608,
+          "summary": "**Conversation**  \n- Freelancer reported an additional €275 payment, bringing the total paid to €775.  \n\n**Current position**  \n- Invoice #HOLD‑EUR, client Málaga Studio, total €1,950, paid €775, remaining balance €1,175. Status: active.  \n\n**Payment history**  \n- Corrected receipt: €500 (originally recorded as €650, duplicate €150 removed).  \n- New receipt: €275.  \n\n**Commitments and dates**  \n- None.  \n\n**Objections and outcomes**  \n- Objection: €250 dispute over missing keyboard navigation; status: unresolved.  \n\n**Actions**  \n- None pending.",
+          "judge": {
+            "positive": true,
+            "grounding": 5,
+            "coverage": 5,
+            "attribution": 5,
+            "safety": 5,
+            "reason": "The candidate accurately reflects all expected facts: it correctly identifies the correction from €650 to €500 due to a duplicate (not a refund), calculates the new total paid as €775 and the remaining balance as €1,175, and notes the unresolved €250 dispute regarding keyboard navigation. Attribution is correct, distinguishing the freelancer's reports from the client's dispute. No forbidden claims or unsafe fabrications are present."
+          }
+        }
+      ],
+      "passed": true
+    },
+    {
+      "id": "holdout-conditional-date-and-followup",
+      "kind": "sequence",
+      "steps": [
+        {
+          "id": "initial",
+          "passed": true,
+          "input_characters": 459,
+          "earlier_summary_characters": 0,
+          "summary": "**Conversation**  \n- Client (Harbor Analytics) replied via email: “We will pay the full USD 4,750 on December 3, 2026.”  \n\n**Current position**  \n- Invoice #HOLD‑DATES, client: Harbor Analytics.  \n- Total amount: USD 4,750.  \n- Amount paid: USD 0.  \n- Remaining balance: USD 4,750.  \n- Status: active.  \n\n**Payment history**  \n- No payments received yet.  \n\n**Commitments and dates**  \n- Client committed to pay the full amount on December 3, 2026.  \n\n**Objections and outcomes**  \n- None reported.  \n\n**Actions**  \n- No pending approvals or actions.",
+          "judge": {
+            "positive": true,
+            "grounding": 5,
+            "coverage": 5,
+            "attribution": 5,
+            "safety": 5,
+            "reason": "The candidate accurately reflects the source data, correctly attributing the payment promise to the client (Harbor Analytics) and noting that no payment has been recorded. It covers all expected facts without introducing unsupported claims or errors."
+          }
+        },
+        {
+          "id": "replacement",
+          "passed": true,
+          "input_characters": 1138,
+          "earlier_summary_characters": 550,
+          "summary": "**Conversation**  \n- Client (Harbor Analytics) replied via email: “We withdraw that full‑payment promise. We can instead pay USD 2,375 on December 6, 2026 only if QA accepts the export. We cannot commit a date for the rest.”  \n\n**Current position**  \n- Invoice #HOLD‑DATES, client: Harbor Analytics.  \n- Total amount: USD 4,750.  \n- Amount paid: USD 0.  \n- Remaining balance: USD 4,750.  \n- Status: active.  \n\n**Payment history**  \n- No payments received yet.  \n\n**Commitments and dates**  \n- Client promised USD 2,375 on December 6, 2026 contingent on QA acceptance of the export.  \n- No commitment for the remaining balance.  \n\n**Objections and outcomes**  \n- None reported.  \n\n**Actions**  \n- No pending approvals or actions.",
+          "judge": {
+            "positive": true,
+            "grounding": 5,
+            "coverage": 5,
+            "attribution": 5,
+            "safety": 5,
+            "reason": "The candidate accurately reflects the source data, including the withdrawal of the initial promise, the new conditional payment terms, and the current unpaid status. It correctly attributes the messages to the client and distinguishes between the withdrawn and active commitments."
+          }
+        },
+        {
+          "id": "followup",
+          "passed": true,
+          "input_characters": 1285,
+          "earlier_summary_characters": 728,
+          "summary": "**Conversation**  \n- Freelancer: “I approved a follow‑up for December 4, 2026. That is a reminder date, not a change to the client promise.”  \n\n**Current position**  \n- Invoice #HOLD‑DATES, client: Harbor Analytics.  \n- Total amount: USD 4,750.  \n- Amount paid: USD 0.  \n- Remaining balance: USD 4,750.  \n- Status: pending.  \n\n**Payment history**  \n- No payments received yet.  \n\n**Commitments and dates**  \n- Client promised USD 2,375 on December 6, 2026 contingent on QA acceptance of the export.  \n- No commitment for the remaining balance.  \n\n**Objections and outcomes**  \n- None reported.  \n\n**Actions**  \n- Follow‑up reminder set for December 4, 2026 (approved by freelancer).",
+          "judge": {
+            "positive": true,
+            "grounding": 5,
+            "coverage": 4,
+            "attribution": 5,
+            "safety": 5,
+            "reason": "The candidate accurately reflects the invoice status, amounts, and the current conditional payment promise (USD 2,375 on Dec 6). It correctly attributes the follow-up date to the freelancer's reminder. While it omits the explicit statement that the original Dec 3 promise was withdrawn, it implicitly handles this by only listing the current valid commitment, which is acceptable for a summary of the current position. No material errors or unsafe claims are present."
+          }
+        },
+        {
+          "id": "correction",
+          "passed": true,
+          "input_characters": 1249,
+          "earlier_summary_characters": 682,
+          "summary": "**Conversation**  \n- Client (Harbor Analytics) sent a correction: the conditional payment of USD 2,375 is now due December 8, 2026 (instead of December 6). QA acceptance is still required.  \n\n**Current position**  \n- Invoice #HOLD‑DATES, client: Harbor Analytics.  \n- Total amount: USD 4,750.  \n- Amount paid: USD 0.  \n- Remaining balance: USD 4,750.  \n- Status: pending.  \n\n**Payment history**  \n- No payments received yet.  \n\n**Commitments and dates**  \n- Client promised USD 2,375 on December 8, 2026 contingent on QA acceptance of the export.  \n- No commitment for the remaining balance.  \n\n**Objections and outcomes**  \n- None reported.  \n\n**Actions**  \n- Follow‑up reminder set for December 4, 2026 (approved by freelancer).",
+          "judge": {
+            "positive": true,
+            "grounding": 5,
+            "coverage": 4,
+            "attribution": 5,
+            "safety": 5,
+            "reason": "The candidate accurately reflects the current state of the invoice and the latest client communication. It correctly identifies the conditional payment date as December 8, 2026, subject to QA acceptance, and notes the lack of commitment for the remaining balance. It correctly attributes the reminder date to the freelancer's approval. While it does not explicitly state that the original December 3 promise was withdrawn, it implicitly handles this by only listing the current valid commitment, which is acceptable for a summary of the current position. No material errors or unsafe claims are present."
+          }
+        }
+      ],
+      "passed": true
+    }
+  ]
+}

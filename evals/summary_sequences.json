@@ -1,0 +1,694 @@
+[
+  {
+    "id": "withdrawn-client-promise",
+    "steps": [
+      {
+        "id": "promise",
+        "expected_facts": [
+          "Client promised $1,200 on November 20, 2026; no payment is recorded."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 1,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We will pay the $1,200 on November 20, 2026.",
+            "direction": "inbound",
+            "timestamp": "2026-11-11T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "withdrawal",
+        "expected_facts": [
+          "The earlier November 20 promise was explicitly withdrawn due to a budget freeze.",
+          "No replacement payment date is committed; $1,200 remains unpaid."
+        ],
+        "forbidden_claims": [
+          "November 20 remains a current payment commitment."
+        ],
+        "communications": [
+          {
+            "id": 2,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We withdraw our November 20 payment promise because our budget is frozen. We cannot provide a replacement date.",
+            "direction": "inbound",
+            "timestamp": "2026-11-12T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "later-request",
+        "expected_facts": [
+          "The original November 20 promise was withdrawn and no new date is promised.",
+          "$1,200 remains unpaid. A friendly reminder is only a draft awaiting approval."
+        ],
+        "forbidden_claims": [
+          "Reminder was sent.",
+          "Payment remains promised for November 20."
+        ],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "Please draft a friendly reminder, but wait for my approval."
+          }
+        ],
+        "pending_approval": [
+          {
+            "name": "draft_polite_reminder",
+            "args": {}
+          }
+        ]
+      }
+    ],
+    "invoice": {
+      "id": "INV-SEQ-1",
+      "client_name": "Acme",
+      "invoice_amount": 1200,
+      "amount_paid": 0,
+      "status": "active",
+      "escalation_level": 1,
+      "days_overdue": 14,
+      "follow_up_date": null
+    }
+  },
+  {
+    "id": "successive-partial-payments",
+    "steps": [
+      {
+        "id": "unpaid",
+        "expected_facts": [
+          "$1,200 remains unpaid; acknowledgment is not payment."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 1,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We acknowledge the $1,200 balance but have not paid yet.",
+            "direction": "inbound",
+            "timestamp": "2026-11-11T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "first-payment",
+        "expected_facts": [
+          "$400 is recorded paid against $1,200; $800 remains."
+        ],
+        "forbidden_claims": [],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "I received and recorded a $400 bank payment."
+          }
+        ],
+        "invoice_updates": {
+          "amount_paid": 400
+        }
+      },
+      {
+        "id": "second-payment",
+        "expected_facts": [
+          "Two payments were $400 and $300; cumulative paid is $700, with $500 outstanding."
+        ],
+        "forbidden_claims": [
+          "Only $300 has been paid.",
+          "The remaining balance is $800."
+        ],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "A second bank payment of $300 has arrived. The cumulative paid total is now $700."
+          }
+        ],
+        "invoice_updates": {
+          "amount_paid": 700
+        }
+      },
+      {
+        "id": "remaining-promise",
+        "expected_facts": [
+          "$700 is already paid and $500 remains.",
+          "The client promised the remaining $500 for November 25, 2026; that promise is not a third payment."
+        ],
+        "forbidden_claims": [
+          "Invoice is fully paid."
+        ],
+        "communications": [
+          {
+            "id": 4,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We will pay the remaining $500 on November 25, 2026.",
+            "direction": "inbound",
+            "timestamp": "2026-11-14T10:00:00Z"
+          }
+        ]
+      }
+    ],
+    "invoice": {
+      "id": "INV-SEQ-2",
+      "client_name": "Acme",
+      "invoice_amount": 1200,
+      "amount_paid": 0,
+      "status": "active",
+      "escalation_level": 1,
+      "days_overdue": 14,
+      "follow_up_date": null
+    }
+  },
+  {
+    "id": "corrected-payment-date",
+    "steps": [
+      {
+        "id": "initial-date",
+        "expected_facts": [
+          "Client promised payment for November 20, 2026; invoice is unpaid."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 1,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We will pay $1,200 on November 20, 2026.",
+            "direction": "inbound",
+            "timestamp": "2026-11-11T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "corrected-date",
+        "expected_facts": [
+          "Original November 20 date was corrected to November 22, 2026.",
+          "$1,200 is unpaid; November 22 is the current promise."
+        ],
+        "forbidden_claims": [
+          "November 20 remains the current promise."
+        ],
+        "communications": [
+          {
+            "id": 2,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "Correction: I meant November 22, 2026, not November 20. The amount remains $1,200.",
+            "direction": "inbound",
+            "timestamp": "2026-11-12T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "later-question",
+        "expected_facts": [
+          "November 20 was the earlier mistaken date; the current client promise is November 22, 2026.",
+          "No payment has been recorded."
+        ],
+        "forbidden_claims": [
+          "The freelancer changed the date.",
+          "Payment is promised for both dates."
+        ],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "What date should I expect payment?"
+          }
+        ]
+      }
+    ],
+    "invoice": {
+      "id": "INV-SEQ-3",
+      "client_name": "Acme",
+      "invoice_amount": 1200,
+      "amount_paid": 0,
+      "status": "active",
+      "escalation_level": 1,
+      "days_overdue": 14,
+      "follow_up_date": null
+    }
+  },
+  {
+    "id": "older-objection-eight-refreshes",
+    "steps": [
+      {
+        "id": "early-objection",
+        "expected_facts": [
+          "The client has an unresolved $300 objection about missing image alt text.",
+          "$1,200 remains unpaid."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 1,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "I dispute $300 of the invoice because the delivered images lack alt text. This objection is unresolved.",
+            "direction": "inbound",
+            "timestamp": "2026-11-11T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "evidence-request",
+        "expected_facts": [
+          "The earlier $300 missing-alt-text objection remains unresolved.",
+          "The freelancer requested specifics and has not accepted a reduction."
+        ],
+        "forbidden_claims": [],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "I asked which image files are missing alt text. I have not agreed to reduce the invoice."
+          }
+        ]
+      },
+      {
+        "id": "contact-change",
+        "expected_facts": [
+          "The earlier $300 missing-alt-text objection remains unresolved.",
+          "The accounts-payable contact is now Morgan."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 3,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "Use our new accounts-payable contact, Morgan, for future correspondence.",
+            "direction": "inbound",
+            "timestamp": "2026-11-13T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "currency",
+        "expected_facts": [
+          "The earlier $300 missing-alt-text objection remains unresolved.",
+          "The invoice is in USD."
+        ],
+        "forbidden_claims": [],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "The invoice currency is USD. Please keep that clear."
+          }
+        ]
+      },
+      {
+        "id": "partial-payment",
+        "expected_facts": [
+          "The earlier $300 missing-alt-text objection remains unresolved.",
+          "$200 is paid and $1,000 remains outstanding."
+        ],
+        "forbidden_claims": [],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "We received a $200 payment and recorded it, without resolving the disputed work."
+          }
+        ],
+        "invoice_updates": {
+          "amount_paid": 200
+        }
+      },
+      {
+        "id": "tone",
+        "expected_facts": [
+          "The earlier $300 missing-alt-text objection remains unresolved.",
+          "$200 remains paid, leaving $1,000 outstanding."
+        ],
+        "forbidden_claims": [],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "Please keep future messages friendly while we work through this."
+          }
+        ]
+      },
+      {
+        "id": "still-reviewing",
+        "expected_facts": [
+          "The earlier $300 missing-alt-text objection remains unresolved.",
+          "The client is still reviewing and has not committed a payment date.",
+          "$200 is paid and $1,000 remains."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 7,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We are still reviewing the image evidence. We cannot promise a payment date.",
+            "direction": "inbound",
+            "timestamp": "2026-11-17T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "eighth-refresh",
+        "expected_facts": [
+          "The original unresolved $300 objection concerns missing image alt text.",
+          "$200 has been paid and $1,000 remains outstanding.",
+          "The client is still reviewing and no payment date is committed."
+        ],
+        "forbidden_claims": [
+          "The original objection has been resolved.",
+          "Only $300 remains outstanding."
+        ],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "What is still outstanding on this invoice?"
+          }
+        ]
+      }
+    ],
+    "invoice": {
+      "id": "INV-SEQ-4",
+      "client_name": "Acme",
+      "invoice_amount": 1200,
+      "amount_paid": 0,
+      "status": "active",
+      "escalation_level": 1,
+      "days_overdue": 14,
+      "follow_up_date": null
+    }
+  },
+  {
+    "id": "withdrawn-and-replaced-promise",
+    "steps": [
+      {
+        "id": "full-promise",
+        "expected_facts": [
+          "A full-payment promise exists for November 20; nothing is paid."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 1,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We will pay all $1,200 on November 20, 2026.",
+            "direction": "inbound",
+            "timestamp": "2026-11-11T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "replacement",
+        "expected_facts": [
+          "The original full-payment November 20 promise was withdrawn.",
+          "The replacement promise is $200 on November 21, 2026; the remaining $1,000 has no promised date.",
+          "No payment is recorded yet."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 2,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We withdraw the full-payment promise. Instead, we can pay $200 on November 21, 2026, with no commitment for the rest.",
+            "direction": "inbound",
+            "timestamp": "2026-11-12T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "receipt",
+        "expected_facts": [
+          "The original November 20 full-payment promise was withdrawn and replaced by a $200 promise.",
+          "$200 is now actually paid, leaving $1,000 with no agreed payment date."
+        ],
+        "forbidden_claims": [
+          "All $1,200 has been paid.",
+          "The remaining $1,000 is promised for November 21."
+        ],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "The replacement $200 payment was received and recorded. There is still no agreement for the remaining balance."
+          }
+        ],
+        "invoice_updates": {
+          "amount_paid": 200
+        }
+      }
+    ],
+    "invoice": {
+      "id": "INV-SEQ-5",
+      "client_name": "Acme",
+      "invoice_amount": 1200,
+      "amount_paid": 0,
+      "status": "active",
+      "escalation_level": 1,
+      "days_overdue": 14,
+      "follow_up_date": null
+    }
+  },
+  {
+    "id": "corrected-partial-payment",
+    "steps": [
+      {
+        "id": "reported-payment",
+        "expected_facts": [
+          "$400 is recorded paid and $800 remains."
+        ],
+        "forbidden_claims": [],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "I recorded a $400 payment against the invoice."
+          }
+        ],
+        "invoice_updates": {
+          "amount_paid": 400
+        }
+      },
+      {
+        "id": "correction",
+        "expected_facts": [
+          "The earlier $400 paid total was corrected because of a duplicate entry.",
+          "Actual cumulative paid is $200 and $1,000 remains."
+        ],
+        "forbidden_claims": [
+          "A $200 refund occurred.",
+          "The paid total is still $400."
+        ],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "Correction: that $400 included a duplicate entry. Only $200 was actually received. The recorded cumulative total has been corrected to $200."
+          }
+        ],
+        "invoice_updates": {
+          "amount_paid": 200
+        }
+      },
+      {
+        "id": "next-payment",
+        "expected_facts": [
+          "The earlier duplicate $400 entry was corrected to $200 actually received.",
+          "A later $100 payment makes total paid $300 and the outstanding balance $900."
+        ],
+        "forbidden_claims": [
+          "Total paid is $500.",
+          "There was a refund."
+        ],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "Another $100 was received after the correction. Cumulative actual paid is now $300."
+          }
+        ],
+        "invoice_updates": {
+          "amount_paid": 300
+        }
+      }
+    ],
+    "invoice": {
+      "id": "INV-SEQ-6",
+      "client_name": "Acme",
+      "invoice_amount": 1200,
+      "amount_paid": 0,
+      "status": "active",
+      "escalation_level": 1,
+      "days_overdue": 14,
+      "follow_up_date": null
+    }
+  },
+  {
+    "id": "followup-versus-corrected-promise",
+    "steps": [
+      {
+        "id": "proposed-followup",
+        "expected_facts": [
+          "The freelancer reports a client promise for November 22, 2026.",
+          "A November 20 follow-up is proposed and pending approval; no follow-up date has been saved."
+        ],
+        "forbidden_claims": [
+          "A follow-up is already scheduled for November 20."
+        ],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "The client told me they will pay on November 22, 2026. Propose a follow-up for November 20, but do not save it until I approve."
+          }
+        ],
+        "pending_approval": [
+          {
+            "name": "mark_invoice_pending",
+            "args": {
+              "follow_up_date": "2026-11-20"
+            }
+          }
+        ]
+      },
+      {
+        "id": "approved-followup",
+        "expected_facts": [
+          "The earlier proposed November 20 follow-up was replaced by an approved November 21 follow-up.",
+          "The reported client payment promise is still November 22, distinct from the follow-up date."
+        ],
+        "forbidden_claims": [],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "I approved a follow-up for November 21 instead of the proposed November 20. The saved follow-up is November 21, 2026."
+          }
+        ],
+        "invoice_updates": {
+          "follow_up_date": "2026-11-21",
+          "status": "pending"
+        },
+        "pending_approval": []
+      },
+      {
+        "id": "client-correction",
+        "expected_facts": [
+          "The client corrected the payment promise from November 22 to November 24, 2026.",
+          "The approved follow-up remains November 21, 2026; it is not the payment promise.",
+          "$1,200 remains unpaid."
+        ],
+        "forbidden_claims": [
+          "The follow-up moved to November 24.",
+          "The current payment promise is November 21."
+        ],
+        "communications": [
+          {
+            "id": 3,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "Our payment date was November 22, but we must correct it to November 24, 2026.",
+            "direction": "inbound",
+            "timestamp": "2026-11-13T10:00:00Z"
+          }
+        ]
+      }
+    ],
+    "invoice": {
+      "id": "INV-SEQ-7",
+      "client_name": "Acme",
+      "invoice_amount": 1200,
+      "amount_paid": 0,
+      "status": "active",
+      "escalation_level": 1,
+      "days_overdue": 14,
+      "follow_up_date": null
+    }
+  },
+  {
+    "id": "objection-payment-withdrawal",
+    "steps": [
+      {
+        "id": "objection",
+        "expected_facts": [
+          "The client has an unresolved $300 missing-deliverables objection.",
+          "$1,200 is unpaid."
+        ],
+        "forbidden_claims": [],
+        "communications": [
+          {
+            "id": 1,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "I dispute $300 for missing deliverables. That objection remains unresolved.",
+            "direction": "inbound",
+            "timestamp": "2026-11-11T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "partial-payment",
+        "expected_facts": [
+          "$500 is paid and $700 remains.",
+          "The original $300 missing-deliverables objection is still unresolved."
+        ],
+        "forbidden_claims": [],
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "We received and recorded $500. The missing-deliverables objection remains open."
+          }
+        ],
+        "invoice_updates": {
+          "amount_paid": 500
+        }
+      },
+      {
+        "id": "conditional-promise",
+        "expected_facts": [
+          "The client conditionally promised the remaining $700 for November 25, subject to resolving missing deliverables.",
+          "$500 is already paid; the $300 objection remains unresolved."
+        ],
+        "forbidden_claims": [
+          "There is an unconditional promise to pay November 25."
+        ],
+        "communications": [
+          {
+            "id": 3,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "If the missing deliverables are resolved, we will pay the remaining $700 on November 25, 2026.",
+            "direction": "inbound",
+            "timestamp": "2026-11-13T10:00:00Z"
+          }
+        ]
+      },
+      {
+        "id": "withdrawal",
+        "expected_facts": [
+          "The conditional November 25 promise was withdrawn; there is no new promised date.",
+          "The earlier $300 missing-deliverables objection remains unresolved.",
+          "$500 remains paid with $700 outstanding."
+        ],
+        "forbidden_claims": [
+          "The earlier payment was reversed.",
+          "November 25 remains a current commitment."
+        ],
+        "communications": [
+          {
+            "id": 4,
+            "type": "client_reply",
+            "subject": "Re: invoice",
+            "content": "We withdraw that November 25 payment promise. The missing deliverables are still unresolved and we cannot promise a new date.",
+            "direction": "inbound",
+            "timestamp": "2026-11-14T10:00:00Z"
+          }
+        ]
+      }
+    ],
+    "invoice": {
+      "id": "INV-SEQ-8",
+      "client_name": "Acme",
+      "invoice_amount": 1200,
+      "amount_paid": 0,
+      "status": "active",
+      "escalation_level": 1,
+      "days_overdue": 14,
+      "follow_up_date": null
+    }
+  }
+]

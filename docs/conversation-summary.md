@@ -149,3 +149,48 @@ maintainer branch before merge. The protected main branch requires this gate
 alongside backend/frontend and chasing-agent gates, including admin merges.
 These 20 judged fixtures cover short histories; long-history carry-forward and
 resume mechanics are separately covered by deterministic service tests.
+
+### Sequences of updates
+
+The same command also runs eight synthetic sequences (31 checkpoints) from
+`evals/summary_sequences.json`: withdrawn/replaced promises, successive and
+corrected partial payments, corrected payment dates, follow-up dates distinct
+from promises, and an older unresolved objection through eight refreshes.
+
+At every checkpoint, generation receives the actual previous generated summary,
+only new messages/emails, current invoice facts and pending approvals. The
+independent judge receives the complete accumulated authoritative history and
+cumulative expected/forbidden facts. Expected facts never enter the generator's
+input. A negative or missing judge verdict cannot repair the next summary;
+generation failures retain the prior summary and include the uncovered delta
+in the next attempt.
+
+A sequence is positive only when **every checkpoint** is positive. Single
+summaries, complete sequences and individual sequence checkpoints must each
+reach **85%**, with all expected evaluations present. Strong single-summary
+scores cannot hide sequence failures. Reports include every checkpoint,
+candidate text, input character counts, verdict/error, model identities and
+SHA-256 hashes of the prompt and both fixture files. Interrupted runs fail.
+The existing required GitHub `summary-golden-set` check runs both cohorts,
+including when only the new sequence fixture changes.
+
+This is an evaluation of the proposed incremental input strategy. Production
+refreshes still rebuild from retained history when communications change;
+no production coverage cursors, persistence changes or incremental refreshes
+are introduced by this evaluation extension.
+
+### Prompt support for cumulative memory
+
+The shared prompt treats `earlier_summary` as retained conversation memory and
+merges new records into it. It preserves current financial position and material
+payment corrections, original/corrected/withdrawn commitments, conditional
+promises, and the specific reason/status of earlier objections. Follow-up dates
+remain distinct from client payment promises. It also preserves who said what,
+including unverified claims and explicit business/legal confirmations, instead
+of replacing the conversation with empty financial headings.
+
+This improves the instructions used for chunk carry-forward and tested
+incremental inputs. Production still collects retained history when changed
+communications warrant a refresh. Backend coverage checkpoints and delta-only
+source retrieval require a separate implementation; changing the prompt alone
+does not reduce production history retrieval or enable that optimization.

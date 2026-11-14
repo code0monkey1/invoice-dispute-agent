@@ -31,3 +31,5 @@ None. Existing quick actions and durable agent memory remain unchanged.
 - Service/API/frontend and real Postgres concurrency tests, documentation, preview and production verification.
 - The existing `feat/chat-summary-on-open` is clean at the same `4cb07e2` as main and can be reused. No unfinished summary API was found on inspected branches/PRs.
 - User refinement during apply: opening-triggered refresh replaces the original post-commit generation plan. No invalidation triggers, scheduled drain, background generation, or eager backfill is needed.
+- Evaluation-only extension: test generated-summary carry-forward across sequences of new communications, independently judge every checkpoint against cumulative authoritative history, and require the sequence cohort to meet the same 85% threshold. This does not enable incremental refreshes in production.
+- Follow-up prompt fix: improve cumulative memory preservation using general instructions; keep golden cases, independent judging and thresholds unchanged, validate before committing, then pass protected CI and deploy the merged prompt/evaluation change. Incremental retrieval remains outside this release.
