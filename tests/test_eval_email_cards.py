@@ -351,7 +351,10 @@ async def test_explicit_provider_capacity_errors_still_retry(monkeypatch, error)
     import evals.run as runner
 
     case = email_case()
-    outcomes = [CaseRun(case_id=case.id, error=error), good_card_run(case)]
+    minute_limit_trace = [{"steps": [{"type": "model_call", "payload": {
+        "error": "RateLimitError: tokens per minute (TPM) limit reached",
+    }}]}]
+    outcomes = [CaseRun(case_id=case.id, error=error, runs=minute_limit_trace), good_card_run(case)]
 
     class Harness:
         async def __aenter__(self):
@@ -405,3 +408,96 @@ async def test_capacity_retry_preserves_safety_evidence_from_failed_attempt(monk
     assert results[0].pre_approval_outbox_count == unsafe.pre_approval_outbox_count
     assert results[0].hitl_violations or results[0].card_violations
     assert gate(summarize(results, model="scripted", judge_model=None, expected_cases=[case]))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("diagnostic", ["tokens per day", "(TPD)"])
+@pytest.mark.parametrize("premature_send", [False, True])
+async def test_daily_token_quota_stops_remaining_cases_without_erasing_failure(monkeypatch, diagnostic, premature_send):
+    import evals.run as runner
+
+    first = email_case()
+    second = replace(first, id="second-required-card")
+    original_error = 'RuntimeError: chat failed: 429 {"detail":"AI rate limit reached."}'
+    failed = CaseRun(case_id=first.id, error=original_error,
+                     pre_approval_outbox_count=int(premature_send),
+                     outbox=[{"subject": "Premature", "body": "Unapproved"}] if premature_send else [],
+                     runs=[{"steps": [{"type": "model_call", "payload": {
+                         "error": f"RateLimitError: rate limit reached on {diagnostic}: Limit 200000, Used 199708, Requested 1103",
+                     }}]}])
+    calls, sleeps = [], []
+
+    class Harness:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def run_case(self, case, model):
+            calls.append(case.id)
+            return failed if len(calls) == 1 else good_card_run(case)
+
+    async def no_wait(seconds):
+        sleeps.append(seconds)
+
+    monkeypatch.setattr("evals.harness.EvalHarness", Harness)
+    monkeypatch.setattr(runner.asyncio, "sleep", no_wait)
+    results = await runner._run_all([first, second], 1, lambda _: None, None, 20, retry_wait=30)
+    assert calls == [first.id]
+    assert sleeps == []
+    assert len(results) == 1 and results[0].error.startswith(original_error)
+    assert "daily token quota" in results[0].error.lower()
+    assert results[0].pre_approval_outbox_count == int(premature_send)
+    if premature_send:
+        assert results[0].hitl_violations
+        assert failed.outbox == [{"subject": "Premature", "body": "Unapproved"}]
+    summary = summarize(results, model="scripted", judge_model=None, expected_cases=[first, second])
+    assert len(summary["email_card_expectations"]) == 2
+    assert any(second.id in failure for failure in gate(summary))
+
+
+def test_daily_quota_abort_fails_even_after_every_card_passed(tmp_path, monkeypatch):
+    import json
+    import evals.run as runner
+
+    card = email_case()
+    controls = [replace(card, id=f"passed-control-{i}", expect=Expect(interrupt_tool=None)) for i in range(20)]
+    quota = replace(card, id="quota-control", expect=Expect(interrupt_tool=None))
+    unrun = replace(quota, id="unrun-control")
+    cases = [card, *controls, quota, unrun]
+    calls = []
+    original_error = "RuntimeError: chat failed: 429 rate limit"
+
+    class Harness:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            pass
+
+        async def run_case(self, case, model):
+            calls.append(case.id)
+            if case.id == card.id:
+                return good_card_run(case)
+            if case.id == quota.id:
+                return CaseRun(case_id=case.id, error=original_error, pre_approval_outbox_count=0,
+                               runs=[{"steps": [{"type": "model_call", "payload": {
+                                   "error": "RateLimitError: tokens per day (TPD) exhausted",
+                               }}]}])
+            return CaseRun(case_id=case.id, reply_text="The balance is outstanding.", pre_approval_outbox_count=0)
+
+    monkeypatch.setattr("evals.harness.EvalHarness", Harness)
+    monkeypatch.setattr(runner, "load_cases", lambda **kwargs: cases)
+    status = main(["--out-dir", str(tmp_path), "--no-judge", "--pace", "0"], model_factory=lambda _: None)
+    summary = json.loads((tmp_path / "latest.json").read_text())
+    assert calls == [case.id for case in cases[:-1]]
+    assert summary["overall"]["tool_accuracy"] == pytest.approx(21 / 22)
+    assert summary["email_card_expectations"] == [{"id": card.id, "tool": "draft_final_notice", "runs": 1}]
+    assert summary["cases"][0]["card_ok"] is True
+    assert summary["cases"][-1]["error"].startswith(original_error)
+    assert status == 1, "an incomplete quota-aborted cohort must never ship, even after all cards passed"
+    assert summary["daily_token_quota_exhausted"] is True
+    assert any("quota" in failure for failure in gate(summary))
+    del summary["daily_token_quota_exhausted"]
+    assert any("quota" in failure for failure in gate(summary)), "retained case diagnostics must also fail closed"

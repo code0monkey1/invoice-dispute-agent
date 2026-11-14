@@ -55,19 +55,26 @@ checks prepare cards on owned disposable invoices without approving delivery.
 
 ## Verification and rollout
 
-Local verification passed 664 backend tests (13 environment-dependent skips),
+Local verification passed 741 backend tests (13 environment-dependent skips),
 178 frontend tests (6 existing skips), frontend lint/build and strict OpenSpec
-validation. Independent review passed 194 focused tests and found no remaining
-critical or important issues. An initial live Groq run passed all 14 original
-new scenarios; the required GitHub evaluation runs the complete 36-case set,
-including four further review regressions, against the final commit.
+validation. Independent reviews found no remaining critical or important issues.
+An initial live Groq run passed all 14 original new scenarios. The first required
+36-case GitHub run then failed 5 cases and correctly blocked merging. The failures
+exposed attachment-related refusal, informational requests becoming drafts,
+inaccurate answer formatting and another draft after approval. Request-scoped
+tool restrictions and a separate owner-assistance prompt address those failures;
+the 36 cases and all thresholds remain unchanged. Final live verification still
+requires provider capacity: the local production-model organization exhausted
+its 200,000-token daily allowance during verification.
 
-The [Vercel preview](https://invoice-chaser-470hhod7y-code0monkey1s-projects.vercel.app)
+The [initial Vercel preview](https://invoice-chaser-470hhod7y-code0monkey1s-projects.vercel.app)
 passed 24 checks on owned disposable fixtures: typed/contextual Legal requests,
 current figures, conditional previous delivery, explicit resend disclosure,
 attachment notes, hidden-history reopening, pending-card reuse and cross-owner
 denial. No approval/send endpoint was invoked. Test invoices, communication
-fixtures and their checkpoints are removed after verification.
+fixtures and their checkpoints were removed after verification. The additional
+owner-assistance changes require a refreshed preview check once capacity is
+available; do not treat the earlier preview evidence as final release approval.
 
 Release requires the protected backend, frontend, golden-set and
 summary-golden-set checks before merging; the summary prompt is unchanged.
