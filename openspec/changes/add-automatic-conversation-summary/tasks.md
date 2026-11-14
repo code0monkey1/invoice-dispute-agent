@@ -29,11 +29,18 @@
 ## 5. Verification and release
 
 - [x] 5.1 Run the full backend suite, real Postgres summary/checkpoint integration tests, frontend suite, lint and build; verify all pass and record existing warnings separately.
-- [ ] 5.2 Review the complete diff and get one fresh whole-branch review; address significant findings with regression tests and validate OpenSpec strictly. Verify no unrelated edits or eager-generation wiring remain.
-- [ ] 5.3 Deploy preview and verify owned test invoice POST/GET/history agreement, cumulative content, unchanged reopen reuse, changed communication refresh on next opening, pending approval preservation and recoverable failure; record URL and results.
-- [ ] 5.4 Open/update the focused PR, pass CI, merge main and push; verify the tested commits are on origin/main and record PR URL/merge SHA.
-- [ ] 5.5 Apply the additive production migration, deploy merged SHA to Vercel production and verify alias, ready status, deployed SHA, persistent checkpoints and summary table readiness. Record deployment ID/URL.
-- [ ] 5.6 Verify owned production invoice lazy summary creation, unchanged reuse, later-message refresh only on reopening, restart persistence and cross-owner denial without sending real email; record evidence and rollback instructions.
+- [x] 5.2 Review the complete diff and get one fresh whole-branch review; address significant findings with regression tests and validate OpenSpec strictly. Verify no unrelated edits or eager-generation wiring remain.
+- [x] 5.3 Deploy preview and verify owned test invoice POST/GET/history agreement, cumulative content, unchanged reopen reuse, changed communication refresh on next opening, pending approval preservation and recoverable failure; record URL and results.
+- [x] 5.4 Open/update the focused PR, pass CI, merge main and push; verify the tested commits are on origin/main and record PR URL/merge SHA.
+- [x] 5.5 Apply the additive production migration, deploy merged SHA to Vercel production and verify alias, ready status, deployed SHA, persistent checkpoints and summary table readiness. Record deployment ID/URL.
+- [x] 5.6 Verify owned production invoice lazy summary creation, unchanged reuse, later-message refresh only on reopening, restart persistence and cross-owner denial without sending real email; record evidence and rollback instructions.
+
+## 6. Sequential summary evaluation extension
+
+- [x] 6.1 Write failing deterministic tests for delta-only generation, generated-summary carry-forward, independent cumulative judging, failure recovery and separate fail-closed sequence gating.
+- [x] 6.2 Add eight synthetic sequences for withdrawn/replaced promises, partial/corrected payments, corrected dates, pending versus approved follow-ups and older objections across eight refreshes. Implement the evaluation-only runner and auditable per-step reports; run deterministic tests.
+- [x] 6.3 Include sequence fixtures in CI change classification and the existing required 85% summary gate; document that this exercises proposed incremental inputs without changing production refresh behavior. Run backend tests and strict OpenSpec validation.
+- [x] 6.4 Run the complete live golden evaluation with a different-family judge, preserve complete reports and review any failures without lowering thresholds or removing difficult cases.
 
 ## Workflow follow-up
 

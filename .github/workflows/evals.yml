@@ -39,7 +39,7 @@ jobs:
           import os, subprocess
           changed = [] if os.environ['EVENT'] == 'workflow_dispatch' else subprocess.check_output(
               ['git','diff','--name-only',os.environ['BASE'],os.environ['HEAD']],text=True).splitlines()
-          summary_files = {'src/services/conversation_summary.py','src/prompts/v1/conversation_summary.txt','evals/summary.py','evals/summary_cases.json'}
+          summary_files = {'src/services/conversation_summary.py','src/prompts/v1/conversation_summary.txt','evals/summary.py','evals/summary_cases.json','evals/summary_sequences.json'}
           def agent_file(path):
               return (path in {'src/agent.py','src/prompts.py'} or path.startswith(('src/middleware/','src/tools/'))
                   or (path.startswith('src/prompts/') and path not in summary_files)
