@@ -8,9 +8,9 @@ import { withQueryClient } from '../../test/queryClient';
 
 const state: { invoices: Invoice[]; loading: boolean } = { invoices: [], loading: false };
 const settleInvoice = vi.hoisted(() => vi.fn());
-const getHistory = vi.hoisted(() => vi.fn());
+const getConversation = vi.hoisted(() => vi.fn());
 
-vi.mock('../../api', () => ({ api: { getHistory } }));
+vi.mock('../../api', () => ({ api: { getConversation } }));
 
 vi.mock('../../hooks/useInvoices', () => ({
   useInvoices: () => ({ invoices: state.invoices, loading: state.loading, createInvoice: vi.fn(), settleInvoice, refetch: vi.fn() }),
@@ -64,7 +64,7 @@ describe('Dashboard', () => {
     auth.gmailConnected = true;
     auth.connectGmail.mockClear();
     settleInvoice.mockReset();
-    getHistory.mockReset().mockResolvedValue({ messages: [], interrupt: null, state: {}, communications: [] });
+    getConversation.mockReset().mockResolvedValue({ messages: [], interrupt: null, state: {}, communications: [] });
     settleInvoice.mockResolvedValue(undefined);
   });
 
@@ -177,20 +177,20 @@ describe('Dashboard', () => {
     expect(within(settledRow).getAllByText('Settled').length).toBeGreaterThan(0);
   });
 
-  it('starts loading an invoice chat when the user points at its row', async () => {
+  it('prefetches only compact summary data when the user points at its row', async () => {
     state.invoices = [inv('INV-1')];
     renderDashboard();
     await userEvent.hover(screen.getByText('INV-1 Client').closest('tr')!);
-    expect(getHistory).toHaveBeenCalledWith('u1__inv__INV-1');
+    expect(getConversation).toHaveBeenCalledWith('u1__inv__INV-1');
   });
 
-  it('prefetches only once while the chat is fresh', async () => {
+  it('prefetches only once while the compact summary is fresh', async () => {
     state.invoices = [inv('INV-1')];
     renderDashboard();
     const row = screen.getByText('INV-1 Client').closest('tr')!;
     await userEvent.hover(row);
     await userEvent.unhover(row);
     await userEvent.hover(row);
-    expect(getHistory).toHaveBeenCalledTimes(1);
+    expect(getConversation).toHaveBeenCalledTimes(1);
   });
 });

@@ -43,7 +43,8 @@ async def test_invoice_list_reads_communications_once_for_many_invoices(client, 
     r = await client.get("/api/invoices", headers=headers)
 
     assert r.status_code == 200 and len(r.json()) == 6
-    assert len(comm_reads(fake_db)) == 1
+    assert len([r for r in fake_db.requests if r[1] == "rpc/invoice_communication_overviews"]) == 1
+    assert len(comm_reads(fake_db)) == 0
     assert {i["id"] for i in r.json()} == set(ids)
     assert all("communication_history" in i for i in r.json())
 

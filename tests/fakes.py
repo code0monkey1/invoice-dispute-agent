@@ -30,6 +30,7 @@ class FakeDB:
         self.requests: list[tuple] = []  # (method, table, params), to count round trips
         self.agent_runs: list[dict] = []
         self.trace_steps: list[dict] = []
+        self.summaries: dict[str, dict] = {}
         self.down_tables: set[str] = set()  # tables that answer like a Supabase outage
 
     def handle(self, method, path_segments, query=None, payload=None, prefer=None):
@@ -40,6 +41,17 @@ class FakeDB:
         if table in self.down_tables:
             from src.db import DatabaseUnavailable
             raise DatabaseUnavailable(f"{table} is down (simulated)")
+        if table == 'rpc/invoice_communication_overviews':
+            results = []
+            for invoice_id in payload['p_invoice_ids']:
+                rows = sorted([r for r in self.communications if r['invoice_id'] == invoice_id], key=lambda r: (r.get('timestamp',''), r['id']))
+                if rows:
+                    results.append({'invoice_id':invoice_id,'communication_count':len(rows), 'outbound_count':sum(r['direction']=='outbound' for r in rows), 'last_communication_direction':rows[-1]['direction']})
+            return results
+        if table == "invoice_conversation_summaries":
+            return self._filter(list(self.summaries.values()), params)
+        if table.startswith("rpc/") and "invoice_summary" in table:
+            return self._summary_rpc(table.removeprefix("rpc/"), payload)
         if table == "agent_runs":
             return self._rows(self.agent_runs, method, params, payload, order_key="started_at")
         if table == "agent_trace_steps":
@@ -52,9 +64,51 @@ class FakeDB:
             return self._communications(method, params, payload)
         return None
 
+    def _summary_rpc(self, name, p):
+        from copy import deepcopy
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        invoice_id = p['p_invoice_id']
+        row = self.summaries.get(invoice_id)
+        if name == 'claim_invoice_summary':
+            row = self.summaries.setdefault(invoice_id, {
+                'invoice_id': invoice_id, 'summary': None, 'source_version': None,
+                'generated_at': None, 'status': 'pending', 'target_version': None,
+                'lease_token': None, 'lease_until': None, 'retry_after': None,
+                'progress': {}, 'error_code': None,
+            })
+            if (row['source_version'] == p['p_version'] or
+                    (row['lease_until'] and _as_time(row['lease_until']) > now) or
+                    (row['retry_after'] and _as_time(row['retry_after']) > now)):
+                return []
+            if row['target_version'] != p['p_version']:
+                row['progress'] = {}
+            row.update(status='refreshing', target_version=p['p_version'],
+                       lease_token=p['p_token'], lease_until=(now + timedelta(seconds=50)).isoformat(),
+                       retry_after=None, error_code=None)
+            return [deepcopy(row)]
+        if not row or row['lease_token'] != p['p_token'] or not row['lease_until'] or _as_time(row['lease_until']) <= now:
+            return False
+        if name == 'publish_invoice_summary':
+            if row['target_version'] != p['p_version']:
+                return False
+            row.update(summary=p['p_summary'], source_version=p['p_version'],
+                       generated_at=now.isoformat(), status='current', lease_token=None,
+                       lease_until=None, retry_after=None, progress={}, error_code=None)
+        elif name == 'progress_invoice_summary':
+            if row['target_version'] != p['p_version']:
+                return False
+            row['progress'] = deepcopy(p['p_progress'])
+        elif name == 'release_invoice_summary':
+            error = p['p_error']
+            row.update(status='failed' if error else 'pending', error_code=error,
+                       lease_token=None, lease_until=None,
+                       retry_after=(now + timedelta(seconds=30)).isoformat() if error else None)
+        return True
+
     def _filter(self, rows, params):
         for k, v in params.items():
-            if k in ("select", "order", "limit"):
+            if k in ("select", "order", "limit", "offset"):
                 continue
             if v.startswith("eq."):
                 wanted = v[3:]
@@ -141,7 +195,8 @@ class FakeDB:
             rows = self._filter(list(self.communications), params)
             if params.get("order") == "timestamp.asc":
                 rows = sorted(rows, key=lambda r: r.get("timestamp", ""))
-            return rows
+            start = int(params.get("offset", 0))
+            return rows[start:start + int(params.get("limit", len(rows)))]
         if method == "POST":
             row = dict(payload or {})
             row["id"] = len(self.communications) + 1

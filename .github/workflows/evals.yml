@@ -9,13 +9,6 @@ name: Agent eval
 
 on:
   pull_request:
-    paths:
-      - src/prompts/**
-      - src/prompts.py
-      - src/middleware/**
-      - src/tools/**
-      - src/agent.py
-      - evals/**
   workflow_dispatch:
 
 permissions:
@@ -27,9 +20,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  golden-set:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      agent: ${{ steps.paths.outputs.agent }}
+      summary: ${{ steps.paths.outputs.summary }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: paths
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python - <<'PY'
+          import os, subprocess
+          changed = [] if os.environ['EVENT'] == 'workflow_dispatch' else subprocess.check_output(
+              ['git','diff','--name-only',os.environ['BASE'],os.environ['HEAD']],text=True).splitlines()
+          summary_files = {'src/services/conversation_summary.py','src/prompts/v1/conversation_summary.txt','evals/summary.py','evals/summary_cases.json'}
+          def agent_file(path):
+              return (path in {'src/agent.py','src/prompts.py'} or path.startswith(('src/middleware/','src/tools/'))
+                  or (path.startswith('src/prompts/') and path not in summary_files)
+                  or (path.startswith('evals/') and not path.startswith(('evals/summary','evals/results/summary'))))
+          dispatch = os.environ['EVENT'] == 'workflow_dispatch'
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+              f.write(f"agent={str(dispatch or any(agent_file(p) for p in changed)).lower()}\n")
+              f.write(f"summary={str(dispatch or any(p in summary_files for p in changed)).lower()}\n")
+          PY
+
+  agent-evaluation:
+    needs: changes
     # Fork PRs can't read secrets (pull_request, not pull_request_target, on purpose).
-    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    if: needs.changes.outputs.agent == 'true' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -77,3 +101,82 @@ jobs:
             echo "::error::The golden-set eval failed a gate (exit $CODE). See the scorecard on the PR or in the eval-results artifact."
           fi
           exit 1
+
+  summary-evaluation:
+    needs: changes
+    if: needs.changes.outputs.summary == 'true' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      SUMMARY_MODEL: ${{ vars.SUMMARY_MODEL || 'openai/gpt-oss-20b' }}
+      SUMMARY_JUDGE_MODEL: ${{ vars.SUMMARY_JUDGE_MODEL || 'qwen/qwen3.8-27b' }}
+      LANGSMITH_TRACING: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Judge the summary golden set (85% minimum)
+        run: python -m evals.summary --out-dir summary-eval-out
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: summary-eval-results
+          path: summary-eval-out/
+      - name: Save scorecard in job summary
+        if: always()
+        run: |
+          if [ -f summary-eval-out/summary-latest.md ]; then
+            cat summary-eval-out/summary-latest.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  golden-set:
+    if: always()
+    needs: [changes, agent-evaluation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce the chasing-agent evaluation
+        env:
+          CLASSIFICATION: ${{ needs.changes.result }}
+          RELEVANT: ${{ needs.changes.outputs.agent }}
+          EVALUATION: ${{ needs.agent-evaluation.result }}
+        run: |
+          if [ "$CLASSIFICATION" != "success" ]; then
+            echo "::error::Cannot establish which eval is required. Classification must succeed."
+            exit 1
+          fi
+          case "$RELEVANT" in
+            true|false) ;;
+            *) echo "::error::Missing or invalid eval classification."; exit 1 ;;
+          esac
+          if [ "$RELEVANT" = "true" ] && [ "$EVALUATION" != "success" ]; then
+            echo "::error::Relevant agent changes require a successful trusted evaluation."
+            exit 1
+          fi
+
+  summary-golden-set:
+    if: always()
+    needs: [changes, summary-evaluation]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce the 85 percent summary quality gate
+        env:
+          CLASSIFICATION: ${{ needs.changes.result }}
+          RELEVANT: ${{ needs.changes.outputs.summary }}
+          EVALUATION: ${{ needs.summary-evaluation.result }}
+        run: |
+          if [ "$CLASSIFICATION" != "success" ]; then
+            echo "::error::Cannot establish whether summary eval is required. Classification must succeed."
+            exit 1
+          fi
+          case "$RELEVANT" in
+            true|false) ;;
+            *) echo "::error::Missing or invalid eval classification."; exit 1 ;;
+          esac
+          if [ "$RELEVANT" = "true" ] && [ "$EVALUATION" != "success" ]; then
+            echo "::error::Summary changes require a completed trusted evaluation with at least 85% positive cases. Fork code never receives provider secrets; evaluate it on a trusted maintainer branch before merging."
+            exit 1
+          fi

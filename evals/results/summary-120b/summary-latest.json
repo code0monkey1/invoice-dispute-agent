@@ -1,0 +1,61 @@
+{
+  "generated_at": "2026-11-13T19:33:03.921768+00:00",
+  "model": "openai/gpt-oss-120b",
+  "judge_model": "qwen/qwen3.8-27b",
+  "overall": {
+    "cases": 4,
+    "positive": 3,
+    "positive_rate": 0.15,
+    "threshold": 0.85,
+    "passed": false,
+    "complete": false,
+    "expected_cases": 20
+  },
+  "results": [
+    {
+      "id": "balance-and-owner-attribution",
+      "passed": true,
+      "summary": "**Catch‑up Summary (Invoice INV‑EVAL – Acme)**  \n\n- **Current invoice facts (authoritative):** Total amount $1,200; $0 paid; unpaid balance $1,200. The invoice is **active**, **14 days overdue**, with **escalation level 1** and no follow‑up date set.  \n\n- **Freelancer‑client communication to date:**  \n  1. **Chat (Freelancer → Assistant):** The freelancer asked, “What is unpaid balance?”  \n  2. **Assistant reply (informational):** “The balance is $1,200.”  \n\n- **Client side:** No inbound email, chat message, or other client‑authored record has been received yet; therefore no client objections, promises, or confirmations exist.  \n\n- **Pending actions:** None. No draft or pending‑approval emails have been created, and no follow‑up has been scheduled.  \n\n- **Next steps for the freelancer:**  \n  * Consider reaching out to Acme to request payment, referencing the $1,200 overdue amount and the 14‑day delinquency.  \n  * If no response is received, plan a follow‑up after a reasonable interval (e.g., 7 days) and be prepared to move to escalation level 2 if the balance remains unpaid.  \n\nAll information above reflects the only recorded interaction and the current invoice status; no additional promises or objections have been made by the client.",
+      "judge": {
+        "positive": true,
+        "grounding": 5,
+        "coverage": 5,
+        "attribution": 5,
+        "safety": 5,
+        "reason": "The candidate accurately reflects the source data, correctly identifying the freelancer as the inquirer and the assistant as the responder. It covers all expected facts regarding the unpaid balance and the nature of the communication. No forbidden claims are made, and the attribution of roles is precise."
+      }
+    },
+    {
+      "id": "payment-promise",
+      "passed": true,
+      "summary": "**Invoice INV‑EVAL – Acme (California)**  \n- **Amount:** $1,200 invoice amount; **Paid:** $0 (outstanding).  \n- **Status:** Active, **Days overdue:** 14.  \n- **Client contact:** ap@example.invalid (Acme).  \n\n**Recent communication (chronology)**  \n- **Chat (freelancer):** The freelancer reported that the client said they would pay on **2026‑11‑20**. This is an owner‑reported promise and has not been independently verified as a confirmed client statement.\n\n**Current position**  \n- No payment has been received; the invoice remains unpaid and overdue.  \n- The client’s alleged payment date (2026‑11‑20) is noted but remains unverified; it should be treated as a tentative commitment rather than a firm guarantee.\n\n**Outstanding actions**  \n- Monitor the promised payment date; if payment is not received by 2026‑11‑20, schedule a follow‑up (e.g., reminder email or call).  \n- No pending email drafts or approvals exist at this time.  \n\n**Next steps**  \n- Prepare to contact the client after the stated date if the balance remains unpaid, referencing the overdue amount and any prior agreements.  \n\n*All facts are drawn from the invoice record and the single chat entry; no additional client‑authored statements have been recorded.*",
+      "judge": {
+        "positive": true,
+        "grounding": 5,
+        "coverage": 5,
+        "attribution": 5,
+        "safety": 5,
+        "reason": "The candidate accurately reflects the source data, correctly attributing the payment promise to the freelancer's report of the client's statement. It explicitly distinguishes this unverified promise from a confirmed payment or client-authored record, aligning perfectly with the expected facts and maintaining high safety by avoiding fabrication or over-interpretation."
+      }
+    },
+    {
+      "id": "confirmed-client-promise",
+      "passed": false,
+      "error": "RateLimitError"
+    },
+    {
+      "id": "pending-payment-approval",
+      "passed": true,
+      "summary": "**Invoice INV‑EVAL – Current Status (as of 2026‑11‑13)**  \n\n- **Client & Amounts** – Acme (ap@example.invalid) was invoiced $1,200. No payment has been received; the invoice remains **active** and is **14 days overdue**. The balance due is therefore **$1,200**.  \n- **Escalation** – The invoice is at **escalation level 1**. No formal follow‑up date has been set yet.  \n\n**Recent freelancer activity**  \n- In the latest chat entry (m0), the freelancer asked the system to **“Record their promise.”** No specific promise from the client was supplied, so no new client commitment can be logged at this time. The request itself is noted for the freelancer’s reference.  \n\n**Pending system actions**  \n- A pending approval exists to **mark the invoice as pending** with a proposed follow‑up date of **2026‑11‑20**. This action has not yet been executed; it will be applied only after approval.  \n\n**Outstanding items**  \n- The freelancer should obtain a concrete statement from Acme (e.g., a payment date or partial‑payment agreement) so that the promised commitment can be recorded.  \n- Once the pending approval is granted, the system will set the follow‑up date to 20 Nov 2026, after which the next outreach can be scheduled.  \n\nNo client‑authored replies or emails have been received to date, so the invoice remains unpaid and awaiting further clarification from Acme.",
+      "judge": {
+        "positive": true,
+        "grounding": 5,
+        "coverage": 5,
+        "attribution": 5,
+        "safety": 5,
+        "reason": "The candidate accurately reflects the source data, correctly distinguishing between the current active status and the proposed pending status awaiting approval. It properly attributes the chat message to the freelancer and notes the lack of client communication. All expected facts are covered without fabrication or unsafe claims."
+      }
+    }
+  ],
+  "incomplete_reason": "Stopped after provider daily-token quota failures; incomplete experiment."
+}

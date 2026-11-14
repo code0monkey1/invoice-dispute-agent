@@ -6,7 +6,7 @@ import { invoiceStatus } from './invoiceStatus'
 import type { InvoiceStatusKind } from './invoiceStatus'
 import { formatMoney, formatOverdue } from './format'
 import type { Invoice } from '../types'
-import { usePrefetchHistory } from '../hooks/usePrefetchHistory'
+import { usePrefetchConversation } from '../hooks/usePrefetchConversation'
 
 type Filter = 'all' | 'you' | 'active' | 'promised' | 'paid'
 
@@ -34,7 +34,7 @@ interface InvoiceTableProps {
 
 export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) {
   const navigate = useNavigate()
-  const prefetch = usePrefetchHistory()
+  const prefetch = usePrefetchConversation()
   const [filter, setFilter] = useState<Filter>('all')
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [settlingId, setSettlingId] = useState<string | null>(null)

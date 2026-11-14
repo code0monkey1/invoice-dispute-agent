@@ -8,7 +8,8 @@ import { useChat } from '../useChat'
 
 const api = vi.hoisted(() => ({
   getInvoices: vi.fn(),
-  getHistory: vi.fn(),
+  getConversation: vi.fn(),
+  refreshSummary: vi.fn(),
   settle: vi.fn(),
   chat: vi.fn(),
   resume: vi.fn(),
@@ -46,6 +47,7 @@ const never = () => new Promise<never>(() => {})
 
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset())
+  api.refreshSummary.mockResolvedValue({ invoice_id: ID, summary: null, source_version: null, generated_at: null, status: 'empty', is_stale: false })
   idb.del.mockReset().mockResolvedValue(undefined)
 })
 
@@ -66,7 +68,7 @@ describe('shared invoice cache', () => {
   })
 
   it('opens a chat with the invoice details from the dashboard before history arrives', () => {
-    api.getHistory.mockImplementation(never)
+    api.getConversation.mockImplementation(never)
     const client = createTestQueryClient()
     client.setQueryData(qk.invoices, [row()])
 
@@ -77,14 +79,14 @@ describe('shared invoice cache', () => {
     expect(result.current.historyLoaded).toBe(false)
   })
 
-  it('shows a chat opened earlier straight from cache', () => {
-    api.getHistory.mockImplementation(never)
+  it('keeps earlier chat hidden while compact invoice data is served from cache', () => {
+    api.getConversation.mockImplementation(never)
     const client = createTestQueryClient()
-    client.setQueryData(qk.history(ID), history())
+    client.setQueryData(qk.conversation(ID), history())
 
     const { result } = renderHook(() => useChat(ID), { wrapper: withQueryClient(client) })
 
-    expect(result.current.messages).toEqual([{ type: 'AIMessage', content: 'Hello' }])
+    expect(result.current.messages).toEqual([])
     expect(result.current.historyLoaded).toBe(true)
   })
 })
@@ -94,41 +96,41 @@ describe('settling updates every screen at once', () => {
     let finish!: (v: unknown) => void
     api.settle.mockImplementation(() => new Promise((r) => { finish = r }))
     api.getInvoices.mockResolvedValue([row({ status: 'paid' })])
-    api.getHistory.mockResolvedValue(history({ state: { ...history().state, status: 'paid' } }))
+    api.getConversation.mockResolvedValue(history({ state: { ...history().state, status: 'paid' } }))
     const client = createTestQueryClient()
     client.setQueryData(qk.invoices, [row()])
-    client.setQueryData(qk.history(ID), history())
+    client.setQueryData(qk.conversation(ID), history())
 
     const { result } = renderHook(() => useInvoices(), { wrapper: withQueryClient(client) })
     act(() => { void result.current.settleInvoice(ID) })
 
     await waitFor(() => expect(client.getQueryData<Invoice[]>(qk.invoices)?.[0].status).toBe('paid'))
-    expect(client.getQueryData<ChatResponse>(qk.history(ID))?.state.status).toBe('paid')
-    expect(client.getQueryData<ChatResponse>(qk.history(ID))?.interrupt).toBeNull()
+    expect(client.getQueryData<ChatResponse>(qk.conversation(ID))?.state.status).toBe('paid')
+    expect(client.getQueryData<ChatResponse>(qk.conversation(ID))?.interrupt).toBeNull()
     await act(async () => { finish({ invoice: row({ status: 'paid' }) }) })
   })
 
   it('puts everything back if settling fails', async () => {
     api.settle.mockRejectedValue(new Error('network down'))
     api.getInvoices.mockImplementation(never)
-    api.getHistory.mockImplementation(never)
+    api.getConversation.mockImplementation(never)
     const client = createTestQueryClient()
     client.setQueryData(qk.invoices, [row()])
-    client.setQueryData(qk.history(ID), history({ interrupt: { tool: 'draft_polite_reminder', args: {}, description: 'Hi' } }))
+    client.setQueryData(qk.conversation(ID), history({ interrupt: { tool: 'draft_polite_reminder', args: {}, description: 'Hi' } }))
 
     const { result } = renderHook(() => useInvoices(), { wrapper: withQueryClient(client) })
     await act(async () => { await result.current.settleInvoice(ID).catch(() => {}) })
 
     expect(client.getQueryData<Invoice[]>(qk.invoices)?.[0].status).toBe('active')
-    expect(client.getQueryData<ChatResponse>(qk.history(ID))?.interrupt?.tool).toBe('draft_polite_reminder')
+    expect(client.getQueryData<ChatResponse>(qk.conversation(ID))?.interrupt?.tool).toBe('draft_polite_reminder')
   })
 
   it('settling from the chat uses the same update', async () => {
     api.settle.mockImplementation(never)
-    api.getHistory.mockImplementation(never)
+    api.getConversation.mockImplementation(never)
     const client = createTestQueryClient()
     client.setQueryData(qk.invoices, [row()])
-    client.setQueryData(qk.history(ID), history())
+    client.setQueryData(qk.conversation(ID), history())
 
     const { result } = renderHook(() => useChat(ID), { wrapper: withQueryClient(client) })
     act(() => { void result.current.settle() })
@@ -142,11 +144,11 @@ describe('chat mutations write into the cache', () => {
   it('shows the sent message at once, then the agent reply, and refreshes the dashboard', async () => {
     let reply!: (v: ChatResponse) => void
     api.chat.mockImplementation(() => new Promise((r) => { reply = r }))
-    api.getHistory.mockImplementation(never)
+    api.getConversation.mockImplementation(never)
     api.getInvoices.mockResolvedValue([row()])
     const client = createTestQueryClient()
     client.setQueryData(qk.invoices, [row()])
-    client.setQueryData(qk.history(ID), history())
+    client.setQueryData(qk.conversation(ID), history())
 
     const { result } = renderHook(() => useChat(ID), { wrapper: withQueryClient(client) })
     act(() => { void result.current.sendMessage('Draft a reminder') })
@@ -163,7 +165,7 @@ describe('chat mutations write into the cache', () => {
     await waitFor(() => expect(result.current.loading).toBe(false))
     expect(result.current.messages.at(-1)).toEqual({ type: 'AIMessage', content: 'Here it is' })
     expect(result.current.interrupt?.tool).toBe('draft_polite_reminder')
-    expect(client.getQueryData<ChatResponse>(qk.history(ID))?.interrupt?.tool).toBe('draft_polite_reminder')
+    expect(client.getQueryData<ChatResponse>(qk.conversation(ID))?.interrupt?.tool).toBe('draft_polite_reminder')
     // The dashboard list is marked stale, so it refetches when next shown.
     expect(client.getQueryState(qk.invoices)?.isInvalidated).toBe(true)
   })
@@ -174,13 +176,13 @@ describe('polling for client replies', () => {
 
   it('re-checks an open chat every 30 seconds', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
-    api.getHistory.mockResolvedValue(history())
+    api.getConversation.mockResolvedValue(history())
     const client = createTestQueryClient()
 
     renderHook(() => useChat(ID), { wrapper: withQueryClient(client) })
-    await waitFor(() => expect(api.getHistory).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(api.getConversation).toHaveBeenCalledTimes(1))
     await act(async () => { await vi.advanceTimersByTimeAsync(HISTORY_POLL_MS + 50) })
-    await waitFor(() => expect(api.getHistory).toHaveBeenCalledTimes(2))
+    await waitFor(() => expect(api.getConversation).toHaveBeenCalledTimes(2))
   })
 })
 

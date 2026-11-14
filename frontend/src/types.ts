@@ -1,4 +1,7 @@
 export interface Invoice {
+  communication_count?: number;
+  outbound_count?: number;
+  last_communication_direction?: string | null;
   id: string;
   invoice_id: string;
   client_name: string;
@@ -67,7 +70,27 @@ export interface AgentState {
   communication_history: CommunicationEntry[];
 }
 
+export interface SummaryMetadata {
+  source_version: string | null;
+  generated_at: string | null;
+  status: 'empty' | 'pending' | 'refreshing' | 'current' | 'failed' | 'unavailable';
+  is_stale: boolean;
+}
+
+export interface ConversationSummary extends SummaryMetadata {
+  state: AgentState;
+  interrupt: Interrupt | null;
+  has_history: boolean;
+  has_outbound: boolean;
+  invoice_id: string;
+  summary: string | null;
+}
+
 export interface ChatResponse {
+  has_history?: boolean;
+  has_outbound?: boolean;
+  summary?: string | null;
+  summary_metadata?: SummaryMetadata;
   messages: Message[];
   interrupt: Interrupt | null;
   state: AgentState;

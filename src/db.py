@@ -711,3 +711,85 @@ def get_trace_steps(run_ids: list[str]) -> dict[str, list[dict]]:
 def get_agent_run(run_id: str) -> Optional[dict]:
     rows = _supabase_rest_request("GET", "agent_runs", query=[("id", f"eq.{run_id}")]) or []
     return rows[0] if rows else None
+
+
+# ---------------------------------------------------------------------------
+# Conversation summaries: generated explicitly on invoice open, never on writes.
+# ---------------------------------------------------------------------------
+
+SUMMARY_STORE_TIMEOUT_SECONDS = 3
+
+
+def get_invoice_summary(invoice_id: str) -> Optional[dict]:
+    rows = _supabase_rest_request(
+        "GET", "invoice_conversation_summaries",
+        query=[("invoice_id", f"eq.{invoice_id}"), ("select", "*")],
+        timeout=SUMMARY_STORE_TIMEOUT_SECONDS,
+    ) or []
+    return rows[0] if rows else None
+
+
+def _summary_rpc(name: str, payload: dict):
+    return _supabase_rest_request(
+        "POST", f"rpc/{name}", payload=payload, timeout=SUMMARY_STORE_TIMEOUT_SECONDS,
+    )
+
+
+def claim_invoice_summary(invoice_id: str, version: str, token: str) -> Optional[dict]:
+    rows = _summary_rpc("claim_invoice_summary", {
+        "p_invoice_id": invoice_id, "p_version": version, "p_token": token,
+    }) or []
+    return rows[0] if rows else None
+
+
+def publish_invoice_summary(invoice_id: str, token: str, version: str, summary: str) -> bool:
+    return bool(_summary_rpc("publish_invoice_summary", {
+        "p_invoice_id": invoice_id, "p_token": token, "p_version": version, "p_summary": summary,
+    }))
+
+
+def progress_invoice_summary(invoice_id: str, token: str, version: str, progress: dict) -> bool:
+    return bool(_summary_rpc("progress_invoice_summary", {
+        "p_invoice_id": invoice_id, "p_token": token, "p_version": version, "p_progress": progress,
+    }))
+
+
+def release_invoice_summary(invoice_id: str, token: str, error: Optional[str] = None) -> bool:
+    return bool(_summary_rpc("release_invoice_summary", {
+        "p_invoice_id": invoice_id, "p_token": token, "p_error": error,
+    }))
+
+
+def get_summary_communications(invoice_id: str) -> list[dict]:
+    """Read every retained record, beyond PostgREST's per-request row limit."""
+    rows = []
+    page_size = 1000
+    while True:
+        page = _supabase_rest_request(
+            "GET", "communication_history",
+            query=[("select", "*"), ("invoice_id", f"eq.{invoice_id}"),
+                   ("order", "timestamp.asc,id.asc"), ("limit", str(page_size)), ("offset", str(len(rows)))],
+            timeout=SUMMARY_STORE_TIMEOUT_SECONDS,
+        ) or []
+        rows.extend(page)
+        if len(page) < page_size:
+            return rows
+
+
+def communication_flags(invoice_id: str) -> dict:
+    """Existence-only reads for the summary-first page; never retrieve bodies."""
+    def exists(direction=None):
+        query = [("invoice_id", f"eq.{invoice_id}"), ("select", "id"), ("limit", "1")]
+        if direction:
+            query.append(("direction", f"eq.{direction}"))
+        return bool(_supabase_rest_request("GET", "communication_history", query=query, timeout=SUMMARY_STORE_TIMEOUT_SECONDS))
+    outbound = exists('outbound')
+    return {'has_history': outbound or exists(), 'has_outbound': outbound}
+
+
+def get_communication_overviews(invoice_ids: list[str]) -> dict[str, dict]:
+    if not invoice_ids:
+        return {}
+    rows = _supabase_rest_request('POST', 'rpc/invoice_communication_overviews',
+        payload={'p_invoice_ids': invoice_ids}, timeout=SUMMARY_STORE_TIMEOUT_SECONDS) or []
+    return {row['invoice_id']: row for row in rows}

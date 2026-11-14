@@ -12,7 +12,7 @@ load_dotenv()
 import secrets
 import hashlib
 import hmac
-from fastapi import FastAPI, File, Form, Request, Response, UploadFile
+from fastapi import Body, FastAPI, File, Form, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
@@ -49,7 +49,7 @@ from src.state import FreelancerContext
 from src.tools.drafting import fill_draft_from_context
 from src.db import (
     TRACE_RUNS_MAX_LIMIT, get_trace_steps, list_agent_runs,
-    get_communications_for,
+    get_communications_for, get_summary_communications, communication_flags, get_communication_overviews,
     DatabaseUnavailable,
     InvoiceAlreadyExists,
     init_db, upsert_user, get_user, get_user_gmail_tokens,
@@ -67,7 +67,7 @@ from src.invoice_parser import (
     parsed_invoice_payload,
     validate_invoice_upload,
 )
-from src.services import invoice_service
+from src.services import conversation_summary, invoice_service
 from src.services.invoice_service import compute_balance, invoice_state_from_db
 from src.services.gmail_service import GmailService, SCOPES, SIGN_IN_SCOPES, GMAIL_SEND_SCOPE
 from src.services.resend_inbound import (
@@ -251,6 +251,7 @@ class UpdateSenderRequest(BaseModel):
 
 RATE_LIMITS: dict[str, list[float]] = {}
 CHAT_LIMIT_PER_MINUTE = 20
+SUMMARY_LIMIT_PER_MINUTE = 10
 PARSE_LIMIT_PER_MINUTE = 8
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 INVOICE_FILE_BUCKET = os.getenv("SUPABASE_INVOICE_FILE_BUCKET", "invoice-files")
@@ -1213,6 +1214,75 @@ def patch_sender_profile_route(
     return update_user_sender_profile(user_id, merged)
 
 
+class SummaryRefreshRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+
+def compact_conversation(invoice: dict, authorization: str | None) -> dict:
+    """Invoice/approval metadata for summary-first pages; no prior message bodies."""
+    config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
+    snapshot = agent.get_state(config)
+    values = (getattr(snapshot, "values", None) or {})
+    state = {**invoice_state_from_db(invoice), "communication_history": []}
+    interrupt = None
+    if invoice.get("status") != "paid":
+        for task in (getattr(snapshot, "tasks", None) or []):
+            if getattr(task, "interrupts", None):
+                action = task.interrupts[0].value["action_requests"][0]
+                ctx = get_context_for_invoice(invoice['id'], get_current_user(authorization))
+                interrupt = {
+                    "tool": action["name"], "args": action.get("args", {}),
+                    "description": generate_draft_preview(action["name"], {**values, **state}, ctx, action.get("args", {})) or action.get("description", ""),
+                }
+                break
+    flags = communication_flags(invoice['id'])
+    return {"state": state, "interrupt": interrupt,
+            "has_history": bool(values.get("messages")) or flags['has_history'],
+            "has_outbound": flags['has_outbound']}
+
+
+def prior_message_count(config: dict, include_history: bool) -> int:
+    if include_history:
+        return 0
+    snapshot = agent.get_state(config)
+    return len((getattr(snapshot, "values", None) or {}).get("messages", []))
+
+
+def trim_action_response(result: dict, before: int, include_history: bool) -> dict:
+    if not include_history:
+        result = {**result, "messages": result.get("messages", [])[before:]}
+        result['state'] = {**result.get('state', {}), 'communication_history': []}
+    return result
+
+
+@app.get("/api/invoices/{invoice_id}/summary")
+def get_conversation_summary(invoice_id: str, request: Request, authorization: str | None = Header(None)):
+    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    return {**conversation_summary.read(invoice_id, agent), **compact_conversation(invoice, authorization)}
+
+
+@app.post("/api/invoices/{invoice_id}/summary")
+def refresh_conversation_summary(
+    invoice_id: str, request: Request, response: Response,
+    payload: SummaryRefreshRequest | None = Body(None),
+    authorization: str | None = Header(None),
+):
+    """Explicit invoice opening only; history reads and source writes never generate."""
+    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    enforce_rate_limit(_client_key(request, authorization), "summary", SUMMARY_LIMIT_PER_MINUTE)
+    result = conversation_summary.refresh(invoice_id, agent)
+    if result["status"] not in ("current", "empty"):
+        response.status_code = 202
+    return {**result, **compact_conversation(invoice, authorization)}
+
+
+def history_summary_fields(invoice_id: str) -> dict:
+    result = conversation_summary.read(invoice_id, agent)
+    return {"summary": result["summary"], "summary_metadata": {
+        key: result[key] for key in ("source_version", "generated_at", "status", "is_stale")
+    }}
+
+
 @app.get("/api/invoices/{invoice_id}/history")
 def get_invoice_history(
     invoice_id: str,
@@ -1236,10 +1306,10 @@ def get_invoice_history(
     try:
         snapshot = agent.get_state(config)
     except Exception:
-        return {"messages": [], "interrupt": None, "state": persisted_state}
+        return {"messages": [], "interrupt": None, "state": persisted_state, **history_summary_fields(invoice_id)}
 
     if not snapshot or not snapshot.values:
-        return {"messages": [], "interrupt": None, "state": persisted_state}
+        return {"messages": [], "interrupt": None, "state": persisted_state, **history_summary_fields(invoice_id)}
 
     state = snapshot.values
     messages = serialize_messages(state.get("messages", []))
@@ -1267,7 +1337,8 @@ def get_invoice_history(
         "messages": messages,
         "interrupt": interrupt_data,
         "state": extract_state(state),
-        "communications": get_communications(invoice_id),
+        "communications": get_summary_communications(invoice_id),
+        **history_summary_fields(invoice_id),
     }
 
 
@@ -1529,11 +1600,11 @@ def list_invoices(
 ):
     _user, user_id = resolve_user_id(request, response, authorization)
     invoices = get_invoices_by_user(user_id)
-    # One communications read for all invoices, and the agent-state reads in
-    # parallel: doing both per invoice made the dashboard slow to load.
-    communications = get_communications_for([inv["id"] for inv in invoices])
+    # Aggregate metadata only; email bodies require an explicit history request.
+    communications = get_communication_overviews([inv["id"] for inv in invoices])
     for inv in invoices:
-        inv["communication_history"] = communications.get(inv["id"], [])
+        inv["communication_history"] = []
+        inv.update(communications.get(inv["id"], {"communication_count": 0, "outbound_count": 0, "last_communication_direction": None}))
     presented = [present_invoice(inv) for inv in invoices]
     open_ids = [inv["id"] for inv in presented if inv.get("status") != "paid"]
     with ThreadPoolExecutor(max_workers=8) as pool:
@@ -1605,11 +1676,12 @@ def update_sender(
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest, request: Request, authorization: str | None = Header(None)):
+def chat(req: ChatRequest, request: Request, authorization: str | None = Header(None), include_history: bool = Query(True)):
     enforce_rate_limit(_client_key(request, authorization), "chat", CHAT_LIMIT_PER_MINUTE)
     # thread_id format is "invoice-{invoice_id}"
     inv_id = req.thread_id.removeprefix("invoice-")
     invoice = authorize_invoice_access(inv_id, request, authorization)
+    before = prior_message_count({"configurable": {"thread_id": req.thread_id}}, include_history)
     if not is_invoice_chat_message(req.message, invoice, invoice.get("user_id", "")):
         config = {"configurable": {"thread_id": req.thread_id}}
         persisted_state = sync_agent_state_from_invoice(inv_id, config)
@@ -1623,7 +1695,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
             "content": "I can only answer questions about your invoices.",
         })
         return {
-            "messages": messages,
+            "messages": messages[before:],
             "interrupt": None,
             "state": persisted_state or invoice_state_from_db(invoice),
         }
@@ -1643,7 +1715,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
             "content": "This invoice is marked as resolved / fully paid, so I will not continue chasing payment.",
         })
         return {
-            "messages": messages,
+            "messages": messages[before:],
             "interrupt": None,
             "state": persisted_state,
         }
@@ -1667,9 +1739,9 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
     invoice_service.set_escalation_level(inv_id, response.get("escalation_level"))
 
     return {
-        "messages": serialize_messages(response["messages"]),
+        "messages": serialize_messages(response["messages"])[before:],
         "interrupt": extract_interrupt(response, context),
-        "state": extract_state(response),
+        "state": {**extract_state(response), **({"communication_history": []} if not include_history else {})},
     }
 
 
@@ -1677,7 +1749,7 @@ ESCALATION_LEVEL_NAMES = {1: "Friendly", 2: "Formal", 3: "Legal"}
 
 
 @app.post("/api/invoices/{invoice_id}/escalate")
-def escalate_invoice(invoice_id: str, request: Request, authorization: str | None = Header(None)):
+def escalate_invoice(invoice_id: str, request: Request, authorization: str | None = Header(None), include_history: bool = Query(True)):
     """Move an invoice to the next escalation level, then ask the agent for a draft.
 
     Escalating is the user's decision, so the level changes here directly
@@ -1686,6 +1758,7 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     """
     enforce_rate_limit(_client_key(request, authorization), "chat", CHAT_LIMIT_PER_MINUTE)
     invoice = authorize_invoice_access(invoice_id, request, authorization)
+    before = prior_message_count({"configurable": {"thread_id": f"invoice-{invoice_id}"}}, include_history)
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="This invoice is paid, so there's nothing to escalate.")
 
@@ -1723,13 +1796,15 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
             "type": "AIMessage",
             "content": f"Moved to {level_name}. I couldn't draft the next email just now. Ask me to draft it when you're ready.",
         })
-        return {"messages": messages, "interrupt": None, "state": persisted_state}
+        return {"messages": messages[before:], "interrupt": None, "state": persisted_state}
 
     state = extract_state(response)
+    if not include_history:
+        state["communication_history"] = []
     # The level set above is authoritative even if the model's run reports less.
     state["escalation_level"] = max(new_level, int(state.get("escalation_level") or 0))
     return {
-        "messages": serialize_messages(response["messages"]),
+        "messages": serialize_messages(response["messages"])[before:],
         "interrupt": extract_interrupt(response, context),
         "state": state,
     }
@@ -1746,7 +1821,7 @@ def settle_invoice(invoice_id: str, request: Request, authorization: str | None 
     if invoice_service.settle(invoice_id, invoice.get("user_id")):
         sync_agent_state_from_invoice(invoice_id, {"configurable": {"thread_id": f"invoice-{invoice_id}"}})
     updated = get_invoice(invoice_id)
-    updated["communication_history"] = get_communications(invoice_id)
+    updated["communication_history"] = []
     return {"invoice": present_invoice(updated)}
 
 
@@ -1946,11 +2021,13 @@ def resume(
     req: ResumeRequest,
     request: Request,
     authorization: str | None = Header(None),
+    include_history: bool = Query(True),
 ):
     invoice = authorize_invoice_access(invoice_id, request, authorization)
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="This invoice is settled, so nothing will be sent.")
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
+    before = prior_message_count(config, include_history)
     user = get_current_user(authorization)
     context = get_context_for_invoice(invoice_id, user)
     # Read the pending draft BEFORE syncing state from the DB. LangGraph's
@@ -1974,7 +2051,8 @@ def resume(
     with traced_run("resume", invoice_id, context, request, level=level) as run:
         run.add("human_decision", (pending_action or {}).get("name"),
                 describe_decision(req.decision, req.message, pending_action, pending_state, context))
-        return _resume_run(invoice_id, req, user, context, config, pending_action, pending_state, run)
+        result = _resume_run(invoice_id, req, user, context, config, pending_action, pending_state, run)
+        return trim_action_response(result, before, include_history)
 
 
 @traceable(name="human_decision", process_inputs=_resume_trace_inputs)

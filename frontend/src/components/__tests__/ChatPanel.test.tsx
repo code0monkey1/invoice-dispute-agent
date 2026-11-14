@@ -15,6 +15,9 @@ const mocks = vi.hoisted(() => ({
   edit: vi.fn(),
   initMessages: vi.fn(),
   refreshHistory: vi.fn(),
+  viewHistory: vi.fn(),
+  hideHistory: vi.fn(),
+  retryHistory: vi.fn(),
   hookState: {} as {
     messages: Message[];
     interrupt: null | {
@@ -27,6 +30,11 @@ const mocks = vi.hoisted(() => ({
     loading: boolean;
     lastEmailSent: null | { sent: boolean; id?: string; status?: string; note?: string };
     historyLoaded?: boolean;
+    summary?: string | null;
+    hasHistory?: boolean;
+    fullHistoryVisible?: boolean;
+    fullHistoryLoading?: boolean;
+    fullHistoryError?: boolean;
     error: null;
   },
 }));
@@ -56,6 +64,9 @@ vi.mock('../../hooks/useChat', () => ({
     edit: mocks.edit,
     initMessages: mocks.initMessages,
     refreshHistory: mocks.refreshHistory,
+    viewHistory: mocks.viewHistory,
+    hideHistory: mocks.hideHistory,
+    retryHistory: mocks.retryHistory,
   }),
 }));
 
@@ -384,5 +395,29 @@ describe('ChatPanel trace tab', () => {
     renderChat();
     await user.click(screen.getByRole('tab', { name: /trace/i }));
     expect(screen.getByRole('tab', { name: /chat/i })).toHaveTextContent(/1 waiting/i);
+  });
+});
+
+
+describe('summary first with optional conversation history', () => {
+  it('shows the saved summary and only requests history when selected', async () => {
+    mocks.hookState.summary = 'The client **promised payment** tomorrow.';
+    mocks.hookState.hasHistory = true;
+    renderChat();
+    expect(screen.getByText('promised payment').tagName).toBe('STRONG');
+    expect(mocks.viewHistory).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole('button', { name: 'View conversation history' }));
+    expect(mocks.viewHistory).toHaveBeenCalledTimes(1);
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('offers retry for explicitly requested history without regenerating summary', async () => {
+    mocks.hookState.hasHistory = true;
+    mocks.hookState.fullHistoryVisible = true;
+    mocks.hookState.fullHistoryError = true;
+    renderChat();
+    await userEvent.click(screen.getByRole('button', { name: 'Retry history' }));
+    expect(mocks.retryHistory).toHaveBeenCalledTimes(1);
+    expect(mocks.sendMessage).not.toHaveBeenCalled();
   });
 });
