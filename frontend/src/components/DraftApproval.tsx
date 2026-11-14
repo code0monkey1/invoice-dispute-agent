@@ -210,6 +210,15 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
           <FileText className="w-5 h-5 text-white/40" />
         </div>
 
+        {interrupt.notes && interrupt.notes.length > 0 && (
+          <aside aria-label="Before sending" className="px-5 py-3 border-b border-amber-100 bg-amber-50/60">
+            <p className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Before sending</p>
+            <ul className="mt-2 space-y-1 list-disc pl-4 text-xs text-amber-800 leading-relaxed">
+              {interrupt.notes.map((note, index) => <li key={index}>{note}</li>)}
+            </ul>
+          </aside>
+        )}
+
         {/* Draft Content */}
         <div className="px-5 py-4 bg-gradient-to-b from-amber-50/50 to-white">
           {editing ? (

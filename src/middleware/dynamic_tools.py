@@ -3,8 +3,10 @@ from typing import Callable
 
 from langchain.agents.middleware import after_model, wrap_model_call, ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, ToolMessage
+from pydantic import ValidationError
 
 from src.observability.tracer import record_step
+from src.email_drafts import DRAFT_LABELS, DraftPreparationError
 from src.tools.drafting import (
     draft_invoice_delivery_email,
     draft_polite_reminder,
@@ -64,8 +66,30 @@ def dynamic_tool_middleware(
     handler: Callable[[ModelRequest], ModelResponse]
 ) -> ModelResponse:
     """Dynamically provide tools based on the current escalation level in state."""
-    request = request.override(tools=tools_for_level(request.state.get("escalation_level", 0)))
-    return handler(request)
+    tools = tools_for_level(request.state.get("escalation_level", 0))
+    ctx = request.runtime.context
+    required = getattr(ctx, 'required_draft_tool', None) if not getattr(ctx, 'untrusted_input', False) else None
+    overrides = {'tools': tools}
+    if required:
+        if required not in DRAFT_LABELS or required not in {t.name for t in tools}:
+            raise DraftPreparationError('Draft is unavailable at this level')
+        overrides['tool_choice'] = {'type':'function', 'function':{'name':required}}
+    response = handler(request.override(**overrides))
+    if required:
+        replies = response.result if isinstance(response, ModelResponse) else [response]
+        calls = [call for reply in replies if isinstance(reply, AIMessage) for call in reply.tool_calls]
+        if len(calls) != 1 or calls[0].get('name') != required:
+            raise DraftPreparationError('Provider did not prepare the required draft')
+        selected = next(t for t in tools if t.name == required)
+        try:
+            selected.tool_call_schema.model_validate(calls[0].get('args'), strict=True)
+            if required == 'draft_invoice_delivery_email' and any(
+                not calls[0]['args'][key].strip() for key in ('subject', 'body')
+            ):
+                raise ValueError('Empty delivery draft')
+        except (ValidationError, ValueError, TypeError, KeyError):
+            raise DraftPreparationError('Provider returned an invalid draft action') from None
+    return response
 
 
 # Offering a tool list is only advice to the model: the graph registers every

@@ -760,6 +760,16 @@ def release_invoice_summary(invoice_id: str, token: str, error: Optional[str] = 
     }))
 
 
+def get_last_outbound_delivery(invoice_id: str, kind: str) -> Optional[dict]:
+    """Compact successful-delivery metadata; no email bodies for review cards."""
+    rows = _supabase_rest_request('GET', 'communication_history', query=[
+        ('invoice_id', f'eq.{invoice_id}'), ('direction', 'eq.outbound'),
+        ('type', f'eq.{kind}'), ('select', 'type,timestamp'),
+        ('order', 'timestamp.desc,id.desc'), ('limit', '1'),
+    ], timeout=SUMMARY_STORE_TIMEOUT_SECONDS) or []
+    return rows[0] if rows else None
+
+
 def get_summary_communications(invoice_id: str) -> list[dict]:
     """Read every retained record, beyond PostgREST's per-request row limit."""
     rows = []

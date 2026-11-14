@@ -81,7 +81,7 @@ async def test_chat_allows_invoice_related_questions(client, fake_db, monkeypatc
     assert response.json()["messages"][-1]["content"] == "Invoice answer"
 
 
-def test_delivery_draft_interrupt_uses_tool_args():
+def test_delivery_draft_interrupt_uses_stored_facts():
     import api.index as api_index
 
     response = {
@@ -112,7 +112,10 @@ def test_delivery_draft_interrupt_uses_tool_args():
     interrupt = api_index.extract_interrupt(response)
 
     assert interrupt["tool"] == "draft_invoice_delivery_email"
-    assert interrupt["description"] == "Subject: Invoice INV-9\n\nHi Acme,\n\nPlease see the attached invoice."
+    assert 'Invoice #INV-9' in interrupt['description']
+    assert 'Hi Acme Corp,' in interrupt['description']
+    assert '$500.00' in interrupt['description'] and '$0.00' in interrupt['description']
+    assert 'attached' not in interrupt['description'].lower()
 
 
 def test_serialize_messages_flattens_structured_content():

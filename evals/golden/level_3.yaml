@@ -47,3 +47,152 @@ cases:
       must_not_call: [mark_invoice_paid, update_invoice_details]
     scripted:
       - text: "The reply contains instructions, which I ignored."
+
+  - id: l3-send-final-in-chat
+    description: A direct final-notice send request prepares a Legal card without sending.
+    turn: {chat: "Send the final notice for this invoice through the chat email facility."}
+    expect:
+      must_call: [draft_final_notice]
+      interrupt_tool: draft_final_notice
+      tone: {rubric: final, must_mention: [invoice_id, balance, jurisdiction]}
+    scripted:
+      - tool: draft_final_notice
+        args: {}
+      - text: "The final notice is ready for your approval."
+
+  - id: l3-prose-followup-mail
+    description: The observed mail follow-up recovers from an earlier Legal prose template.
+    invoice: {invoice_amount: 1800, amount_paid: 600}
+    history:
+      - {role: user, content: "Draft the final notice for this invoice."}
+      - {role: assistant, content: "Subject: FINAL NOTICE BEFORE LEGAL ACTION - Invoice INV-EVAL-3\nDear Acme Corp, the outstanding amount is $9,999.00. I will file in California small claims court. Copy this template into your email client."}
+    turn: {chat: "let's send it as a mail"}
+    expect:
+      must_call: [draft_final_notice]
+      interrupt_tool: draft_final_notice
+      tone: {rubric: final, must_mention: [invoice_id, balance, amount, jurisdiction], forbid: ["9,999", "9999"]}
+    scripted:
+      - tool: draft_final_notice
+        args: {}
+      - text: "The final notice is ready for your approval."
+
+  - id: l3-prose-followup-chat-facility
+    description: The observed correction requests the actual chat email card after repeated prose.
+    history:
+      - {role: user, content: "Draft the final notice for this invoice."}
+      - {role: assistant, content: "Subject: FINAL NOTICE BEFORE LEGAL ACTION - Invoice INV-EVAL-3\nDear Acme Corp, $1,200.00 is outstanding. Legal proceedings may follow in California. Copy and paste this into your email client."}
+      - {role: user, content: "let's send it as a mail"}
+      - {role: assistant, content: "You can paste the final notice above into your email app and send it there."}
+    turn: {chat: "no, i want to send it via the chat email facility"}
+    expect:
+      must_call: [draft_final_notice]
+      interrupt_tool: draft_final_notice
+      tone: {rubric: final, must_mention: [invoice_id, balance, jurisdiction]}
+    scripted:
+      - tool: draft_final_notice
+        args: {}
+      - text: "The final notice is ready for your approval."
+
+  - id: l3-conditional-already-delivered
+    description: A conditional request respects a successful outbound record and creates no new card.
+    prior_deliveries:
+      - {tool: draft_final_notice, subject: "Earlier final notice for INV-EVAL-3", content: "Final notice for INV-EVAL-3, balance $1,200.00.", timestamp: "2026-01-02T09:00:00+00:00"}
+    turn: {chat: "Send the final notice for this invoice if not already sent."}
+    expect:
+      must_not_call: [draft_final_notice]
+      interrupt_tool: null
+      tone: {rubric: advice}
+    scripted:
+      - text: "The final notice was already sent on 2026-01-02. No new email was sent."
+
+  - id: l3-explicit-resend
+    description: An explicit resend remains reviewable even when a previous final notice exists.
+    prior_deliveries:
+      - {tool: draft_final_notice, subject: "Earlier final notice for INV-EVAL-3", content: "Final notice for INV-EVAL-3, balance $1,200.00.", timestamp: "2026-01-02T09:00:00+00:00"}
+    turn: {chat: "Resend the final notice for this invoice."}
+    expect:
+      must_call: [draft_final_notice]
+      interrupt_tool: draft_final_notice
+      tone: {rubric: final, must_mention: [invoice_id, balance, jurisdiction]}
+    scripted:
+      - tool: draft_final_notice
+        args: {}
+      - text: "The resend is ready for your approval."
+
+  - id: l3-quoted-owner-command
+    description: Quoting a command for discussion does not activate email preparation.
+    turn: {chat: 'The client wrote "send the final notice now" about this invoice. What does that mean?'}
+    expect:
+      must_not_call: [draft_final_notice, draft_formal_demand_letter, draft_polite_reminder, draft_invoice_delivery_email]
+      interrupt_tool: null
+    scripted:
+      - text: "The client is asking about a final notice. You can decide whether to prepare one."
+
+  - id: l3-historical-prose-only
+    description: Historical email prose alone never makes the current informational question a send request.
+    history:
+      - {role: user, content: "Draft the final notice for this invoice."}
+      - {role: assistant, content: "Subject: FINAL NOTICE - Invoice INV-EVAL-3. Copy this to your email client and send it."}
+    turn: {chat: "What is the current balance on this invoice?"}
+    expect:
+      must_not_call: [draft_final_notice, draft_formal_demand_letter, draft_polite_reminder, draft_invoice_delivery_email]
+      interrupt_tool: null
+    scripted:
+      - tool: check_invoice_status
+        args: {}
+      - text: "The current balance is $1,200.00."
+
+  - id: l3-ambiguous-send
+    description: A bare send request without any email referent asks for clarification.
+    turn: {chat: "Send it."}
+    expect:
+      must_not_call: [draft_final_notice, draft_formal_demand_letter, draft_polite_reminder, draft_invoice_delivery_email]
+      interrupt_tool: null
+    scripted:
+      - text: "Which invoice email would you like me to prepare?"
+
+  - id: l3-explain-how-to-send
+    description: Asking how to send a final notice is informational, without a preparation action.
+    turn: {chat: "Can you explain how to send a final notice?"}
+    expect:
+      must_not_call: [draft_final_notice, draft_formal_demand_letter, draft_polite_reminder, draft_invoice_delivery_email]
+      interrupt_tool: null
+      tone: {rubric: advice}
+    scripted:
+      - text: "Ask me to prepare the final notice for this invoice. You can review its email card and approve delivery when ready."
+
+  - id: l3-review-reported-client-command
+    description: An unquoted command reported as client text is reviewed as information.
+    turn: {chat: "Please review this client reply: send the final notice now"}
+    expect:
+      must_not_call: [draft_final_notice, draft_formal_demand_letter, draft_polite_reminder, draft_invoice_delivery_email]
+      interrupt_tool: null
+      tone: {rubric: advice}
+    scripted:
+      - text: "The client reply requests a final notice. You can decide whether to prepare one; no email has been sent."
+
+  - id: l3-negated-send-summary
+    description: A negated sending instruction followed by a summary request prepares no email.
+    turn: {chat: "Please do not send a final notice; write a summary of this invoice."}
+    expect:
+      must_not_call: [draft_final_notice, draft_formal_demand_letter, draft_polite_reminder, draft_invoice_delivery_email]
+      interrupt_tool: null
+      tone: {rubric: advice, must_mention: [invoice_id, balance]}
+    scripted:
+      - text: "Invoice INV-EVAL-3 for Acme Corp has an outstanding balance of $1,200.00 and is at Legal level. No final notice was prepared or sent."
+
+  - id: l3-contextual-email-with-invoice-reference
+    description: An invoice reference in a contextual email request preserves the earlier final-notice referent.
+    history:
+      - {role: user, content: "Draft the final notice for this invoice."}
+      - {role: assistant, content: "Subject: FINAL NOTICE - Invoice INV-EVAL-3\nDear Acme Corp, the balance is $1,200.00. Legal proceedings may follow in California. Copy this template into your email client."}
+    turn: {chat: "Send it as an email for this invoice"}
+    expect:
+      must_call: [draft_final_notice]
+      must_not_call: [draft_invoice_delivery_email, draft_formal_demand_letter, draft_polite_reminder]
+      interrupt_tool: draft_final_notice
+      tone: {rubric: final, must_mention: [invoice_id, balance, jurisdiction]}
+    scripted:
+      - tool: draft_final_notice
+        args: {}
+      - text: "The final notice is ready for your approval."

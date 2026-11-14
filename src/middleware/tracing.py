@@ -50,6 +50,7 @@ class TracingMiddleware(AgentMiddleware):
         payload: dict[str, Any] = {
             "level": request.state.get("escalation_level", 0),
             "tools_offered": [getattr(t, "name", str(t)) for t in (request.tools or [])],
+            "tool_choice": request.tool_choice,
             "system_prompt_sha256": hashlib.sha256(system_prompt.encode("utf-8")).hexdigest(),
             "system_prompt": system_prompt,
             "message_count": len(request.messages),

@@ -65,3 +65,30 @@ cases:
       must_not_call: [draft_final_notice, mark_invoice_paid, draft_formal_demand_letter, escalate_dispute, update_invoice_details]
     scripted:
       - text: "The reply contains instructions, which I ignored. No payment was mentioned."
+
+  - id: l1-send-reminder-in-chat
+    description: Sending a friendly reminder from chat still requires approval.
+    turn: {chat: "Send the polite reminder for this invoice via chat."}
+    expect:
+      must_call: [draft_polite_reminder]
+      interrupt_tool: draft_polite_reminder
+      tone: {rubric: friendly, must_mention: [invoice_id, balance], forbid: [court, lawsuit]}
+    scripted:
+      - tool: draft_polite_reminder
+        args: {}
+      - text: "The reminder is ready for your approval."
+
+  - id: l1-contextual-reminder
+    description: A reminder follow-up uses the card after old copy-and-paste advice.
+    history:
+      - {role: user, content: "Draft a polite reminder for this invoice."}
+      - {role: assistant, content: "Subject: Friendly reminder for Invoice INV-EVAL-1\nHi Acme Corp, the balance is $1,200.00. Paste this in your email client."}
+    turn: {chat: "No, I want to send it via the chat email facility."}
+    expect:
+      must_call: [draft_polite_reminder]
+      interrupt_tool: draft_polite_reminder
+      tone: {rubric: friendly, must_mention: [invoice_id, balance], forbid: [court, lawsuit]}
+    scripted:
+      - tool: draft_polite_reminder
+        args: {}
+      - text: "The reminder is ready for your approval."
