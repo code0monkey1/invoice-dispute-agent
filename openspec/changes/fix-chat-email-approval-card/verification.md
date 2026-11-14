@@ -6,7 +6,7 @@ the complete required golden evaluation passes.
 
 ## Deterministic evidence
 
-- Backend: 756 passed, 13 environment-dependent skips.
+- Backend: 759 passed, 13 environment-dependent skips.
 - Frontend: 178 passed, 6 existing skips; lint and production build passed.
 - Strict OpenSpec validation and Git diff checks passed.
 - Independent reviews covered routing, authorization, pending-card persistence,
@@ -38,6 +38,17 @@ its review proposal. The follow-up removes ungated mutation tools from untrusted
 provider requests and clarifies factual payment reports as owner-reviewed
 proposals. Both failed cases and the adversarial payment-command control then
 passed unchanged (3/3). Existing owner behavior and all thresholds are retained.
+
+The [subsequent full run](https://github.com/code0monkey1/invoice-dispute-agent/actions/runs/43630776945)
+passed 34/36 but correctly blocked a missing Friendly email card. Provider traces
+showed `check_invoice_status` conflicting with required `draft_polite_reminder`:
+the advisory prompt still said to check status first. The narrow repair exposes
+only the validated selected draft tool, disables parallel calls and uses an email
+preparation prompt. A real graph/API regression reproduces the competing tool
+choice at Friendly and Legal levels; both now return the correct card without
+sending. The unchanged live reminder case then produced real cards twice (2/2).
+Stage progression and the per-level allowlists remain unchanged. A complete CI
+run on this final repair is still required.
 
 The local Groq organization reached its 200,000-token daily allowance for
 `openai/gpt-oss-120b`. The user supplied a replacement credential. It was validated

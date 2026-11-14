@@ -77,7 +77,9 @@ def dynamic_tool_middleware(
     if required:
         if required not in DRAFT_LABELS or required not in {t.name for t in tools}:
             raise DraftPreparationError('Draft is unavailable at this level')
+        overrides['tools'] = [tool for tool in tools if tool.name == required]
         overrides['tool_choice'] = {'type':'function', 'function':{'name':required}}
+        overrides['model_settings'] = {**request.model_settings, 'parallel_tool_calls': False}
     response = handler(request.override(**overrides))
     if required:
         replies = response.result if isinstance(response, ModelResponse) else [response]

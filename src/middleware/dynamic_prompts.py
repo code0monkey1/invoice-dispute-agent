@@ -71,6 +71,19 @@ def prompt_for_state(state, ctx) -> str:
     reads a stored 0 as 1), so level 0 with an invoice id only happens before
     the first sync; it gets the level-1 prompt.
     """
+    required = getattr(ctx, 'required_draft_tool', None)
+    if required and not getattr(ctx, 'untrusted_input', False):
+        return (
+            f'The invoice owner has requested this eligible email action: {required}. '
+            'Invoice details, current status, escalation eligibility and conditional previous delivery have already been checked. '
+            f'Call {required} exactly once now. It is the only tool offered for this turn. '
+            'Do not perform another status check, change invoice details, escalate or return a prose-only template. '
+            'The real review card is generated from the tool request; sending still requires explicit owner approval. '
+            'Missing or unsupported attachments do not prevent preparation. Never claim an unsupported attachment; the card shows its limitation. '
+            'If subject/body arguments are required, supply concise nonempty text using the actual current invoice and sender facts, with no placeholders. '
+            f'Sender: {ctx.freelancer_name}, {ctx.business_name}, {ctx.freelancer_email}.\n'
+            f'Current invoice context:\n{ctx.invoice_context_summary}\n'
+        )
     if getattr(ctx, 'suppress_email_drafts', False):
         research = (
             'For small claims, court filing or legal procedures, first use the available lookup_small_claims_procedures or generate_court_filing_guide tool with the invoice jurisdiction, then answer from its results. '

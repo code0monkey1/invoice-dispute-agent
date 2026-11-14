@@ -9,7 +9,9 @@ research, quoted instructions and client-reply text do not activate this routing
 
 The API authorizes invoice access first, checks required details/current level,
 and places the chosen draft tool in request-local context. The model request
-requires that allowed tool; a provider returning no valid required action
+offers only that allowed draft tool and requires one call, using a preparation
+prompt instead of the advisory prompt's status-check instructions. A provider
+returning no valid required action
 receives a bounded 503 preparation error, rather than a fictitious composer.
 The normal tool gate and human-approval middleware still apply. The intent is
 not saved in graph state and cannot force another draft during approval/resume.
@@ -55,7 +57,7 @@ checks prepare cards on owned disposable invoices without approving delivery.
 
 ## Verification and rollout
 
-Local verification passed 756 backend tests (13 environment-dependent skips),
+Local verification passed 759 backend tests (13 environment-dependent skips),
 178 frontend tests (6 existing skips), frontend lint/build and strict OpenSpec
 validation. Independent reviews found no remaining critical or important issues.
 An initial live Groq run passed all 14 original new scenarios. The first required
@@ -83,6 +85,6 @@ Production follows the merged main commit and is verified against its canonical
 alias, health and owned card fixtures. No schema migration or backfill is needed.
 The preceding application commit is `6c34e0d3557f543a00b68bbf89cf963ba3ce1902`
 and deployment is `dpl_7Zfb6rygUSqtXwUavMDD8zYxqK33`. For application rollback,
-restore that deployment with `vercel rollback dpl_7Zfb6rygUSqtXwUavMDD8zYxqK33`;
-retain invoice/communication/checkpoint data. A Vercel rollback disables automatic
-domain assignment until a later `vercel promote` restores it.
+redeploy that application commit from a clean checkout with the current production
+environment; retain invoice/communication/checkpoint data. Reusing the old
+deployment would also restore its obsolete Groq credential snapshot.
