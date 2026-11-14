@@ -68,6 +68,8 @@ def dynamic_tool_middleware(
     """Dynamically provide tools based on the current escalation level in state."""
     tools = tools_for_level(request.state.get("escalation_level", 0))
     ctx = request.runtime.context
+    if getattr(ctx, 'untrusted_input', False):
+        tools = [tool for tool in tools if tool.name not in UNAPPROVED_STATE_TOOLS]
     if getattr(ctx, 'suppress_email_drafts', False):
         tools = [tool for tool in tools if tool.name not in DRAFT_LABELS]
     required = getattr(ctx, 'required_draft_tool', None) if not getattr(ctx, 'untrusted_input', False) else None

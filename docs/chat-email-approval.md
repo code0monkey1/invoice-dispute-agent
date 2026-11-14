@@ -55,7 +55,7 @@ checks prepare cards on owned disposable invoices without approving delivery.
 
 ## Verification and rollout
 
-Local verification passed 741 backend tests (13 environment-dependent skips),
+Local verification passed 756 backend tests (13 environment-dependent skips),
 178 frontend tests (6 existing skips), frontend lint/build and strict OpenSpec
 validation. Independent reviews found no remaining critical or important issues.
 An initial live Groq run passed all 14 original new scenarios. The first required

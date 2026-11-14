@@ -6,7 +6,7 @@ the complete required golden evaluation passes.
 
 ## Deterministic evidence
 
-- Backend: 741 passed, 13 environment-dependent skips.
+- Backend: 756 passed, 13 environment-dependent skips.
 - Frontend: 178 passed, 6 existing skips; lint and production build passed.
 - Strict OpenSpec validation and Git diff checks passed.
 - Independent reviews covered routing, authorization, pending-card persistence,
@@ -30,6 +30,15 @@ card-routing repairs. With the alternate credential, all five previously failing
 scenarios passed unchanged: judge mean 4.6/5 and zero pre-approval deliveries.
 Final full live quality verification is still required.
 
+The [replacement-key full CI run](https://github.com/code0monkey1/invoice-dispute-agent/actions/runs/43628514018)
+completed all 36 cases: 34 passed, with 100% required email cards, approval checks
+and tone rules. It correctly failed the per-level regression gate because a
+client reply attempted a recipient edit; a separate payment report also missed
+its review proposal. The follow-up removes ungated mutation tools from untrusted
+provider requests and clarifies factual payment reports as owner-reviewed
+proposals. Both failed cases and the adversarial payment-command control then
+passed unchanged (3/3). Existing owner behavior and all thresholds are retained.
+
 The local Groq organization reached its 200,000-token daily allowance for
 `openai/gpt-oss-120b`. The user supplied a replacement credential. It was validated
 for the production model and different judge model, saved locally, and configured
@@ -43,6 +52,8 @@ The initial preview passed 24 checks. The refreshed preview at
 checks, including an informational answer without a draft. All three disposable
 invoices, communication fixtures and their checkpoints were removed; no approval
 or send endpoint was invoked.
+The subsequent inbound-only change is covered by the targeted live cases and
+15 graph regressions, including unchanged owner tool availability.
 
 After the full gate passes, merge only the tested
 head, verify production alias/merged SHA/health and owned disposable card flows,
