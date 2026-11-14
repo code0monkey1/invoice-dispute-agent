@@ -16,3 +16,5 @@ The four failed sequences exposed omitted payment-date history/unpaid status, an
 The scorecard and generated candidates are stored in `evals/results/summary-sequences/summary-latest.json` and `.md`, with prompt and both fixture SHA-256 hashes. This result assesses proposed incremental model inputs, not production coverage-cursor correctness. The existing full-history production summarizer was not changed. Keep the evaluation PR in draft while the expanded sequence quality gate fails; do not bypass branch protection or treat the combined 85.7% rate as a pass.
 
 Verification: 46 focused deterministic tests passed; full backend suite 486 passed with 23 existing/environment-dependent skips. Strict OpenSpec validation and independent review passed. Unit tests exercise the actual CLI runner/report path and prove a combined rate above 85% cannot hide a failing sequence cohort.
+
+This records the initial evaluation-only experiment. The user subsequently authorized a shared prompt fix; its separate evidence is in `prompt-evaluation.md`. The original failed scorecards remain unchanged for comparison.

@@ -1,0 +1,155 @@
+[
+  {
+    "id": "holdout-eur-correction-and-objection",
+    "invoice": {
+      "id": "HOLD-EUR",
+      "client_name": "Málaga Studio",
+      "invoice_amount": 1950,
+      "amount_paid": 0,
+      "status": "active"
+    },
+    "steps": [
+      {
+        "id": "initial",
+        "communications": [
+          {
+            "id": "initial",
+            "type": "client_reply",
+            "content": "The invoice is EUR 1,950. We dispute EUR 250 because the keyboard navigation is missing. This remains unresolved.",
+            "direction": "inbound"
+          }
+        ],
+        "expected_facts": [
+          "EUR 1,950 is unpaid; an unresolved EUR 250 objection concerns missing keyboard navigation."
+        ]
+      },
+      {
+        "id": "receipt",
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "I recorded a EUR 650 bank receipt. The navigation issue remains unresolved."
+          }
+        ],
+        "expected_facts": [
+          "EUR 650 paid, EUR 1,300 outstanding.",
+          "The unresolved EUR 250 objection concerns missing keyboard navigation."
+        ],
+        "invoice_updates": {
+          "amount_paid": 650
+        }
+      },
+      {
+        "id": "correction",
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "Correction: the EUR 650 included a duplicated EUR 150 entry. Actual cumulative received is EUR 500, and I corrected the record. No money was refunded."
+          }
+        ],
+        "expected_facts": [
+          "The earlier EUR 650 entry was corrected to EUR 500 because EUR 150 was duplicated, not refunded.",
+          "EUR 1,450 remains; the unresolved EUR 250 keyboard-navigation objection remains."
+        ],
+        "invoice_updates": {
+          "amount_paid": 500
+        }
+      },
+      {
+        "id": "later-receipt",
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "A further EUR 275 arrived. Actual paid total is now EUR 775; keep the tone friendly."
+          }
+        ],
+        "expected_facts": [
+          "The earlier EUR 650 total was corrected to EUR 500 due to a duplicate, not a refund.",
+          "A later EUR 275 makes cumulative paid EUR 775 and outstanding EUR 1,175.",
+          "The original EUR 250 missing-keyboard-navigation objection is unresolved."
+        ],
+        "invoice_updates": {
+          "amount_paid": 775
+        }
+      }
+    ]
+  },
+  {
+    "id": "holdout-conditional-date-and-followup",
+    "invoice": {
+      "id": "HOLD-DATES",
+      "client_name": "Harbor Analytics",
+      "invoice_amount": 4750,
+      "amount_paid": 0,
+      "status": "active",
+      "follow_up_date": null
+    },
+    "steps": [
+      {
+        "id": "initial",
+        "communications": [
+          {
+            "id": "initial",
+            "type": "client_reply",
+            "content": "We will pay the full USD 4,750 on December 3, 2026.",
+            "direction": "inbound"
+          }
+        ],
+        "expected_facts": [
+          "Client promised full USD 4,750 on December 3, 2026; no payment is recorded."
+        ]
+      },
+      {
+        "id": "replacement",
+        "communications": [
+          {
+            "id": "replacement",
+            "type": "client_reply",
+            "content": "We withdraw that full-payment promise. We can instead pay USD 2,375 on December 6, 2026 only if QA accepts the export. We cannot commit a date for the rest.",
+            "direction": "inbound"
+          }
+        ],
+        "expected_facts": [
+          "The December 3 full-payment promise was withdrawn.",
+          "Replacement promise is USD 2,375 on December 6, conditional on QA acceptance; the remaining balance has no promised date.",
+          "Nothing has been received."
+        ]
+      },
+      {
+        "id": "followup",
+        "messages": [
+          {
+            "participant": "freelancer",
+            "text": "I approved a follow-up for December 4, 2026. That is a reminder date, not a change to the client promise."
+          }
+        ],
+        "expected_facts": [
+          "The approved follow-up is December 4, distinct from the conditional December 6 payment promise.",
+          "The original December 3 full-payment promise was withdrawn.",
+          "USD 4,750 remains unpaid."
+        ],
+        "invoice_updates": {
+          "follow_up_date": "2026-12-04",
+          "status": "pending"
+        },
+        "pending_approval": []
+      },
+      {
+        "id": "correction",
+        "communications": [
+          {
+            "id": "correction",
+            "type": "client_reply",
+            "content": "Correction: our conditional USD 2,375 payment date is December 8, 2026 instead of December 6. QA acceptance is still required.",
+            "direction": "inbound"
+          }
+        ],
+        "expected_facts": [
+          "Original full-payment December 3 promise was withdrawn.",
+          "Conditional half-payment date was corrected from December 6 to December 8, 2026, still subject to QA acceptance.",
+          "The approved reminder remains December 4; no payment has been received and USD 4,750 remains outstanding."
+        ]
+      }
+    ]
+  }
+]

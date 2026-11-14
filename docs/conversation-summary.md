@@ -178,3 +178,19 @@ This is an evaluation of the proposed incremental input strategy. Production
 refreshes still rebuild from retained history when communications change;
 no production coverage cursors, persistence changes or incremental refreshes
 are introduced by this evaluation extension.
+
+### Prompt support for cumulative memory
+
+The shared prompt treats `earlier_summary` as retained conversation memory and
+merges new records into it. It preserves current financial position and material
+payment corrections, original/corrected/withdrawn commitments, conditional
+promises, and the specific reason/status of earlier objections. Follow-up dates
+remain distinct from client payment promises. It also preserves who said what,
+including unverified claims and explicit business/legal confirmations, instead
+of replacing the conversation with empty financial headings.
+
+This improves the instructions used for chunk carry-forward and tested
+incremental inputs. Production still collects retained history when changed
+communications warrant a refresh. Backend coverage checkpoints and delta-only
+source retrieval require a separate implementation; changing the prompt alone
+does not reduce production history retrieval or enable that optimization.
