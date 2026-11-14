@@ -40,3 +40,5 @@ class FreelancerContext:
     untrusted_input: bool = False
     # Set only by the authorized current owner chat request, never persisted.
     required_draft_tool: str | None = None
+    # Informational owner turns and completed email approvals cannot redraft.
+    suppress_email_drafts: bool = False

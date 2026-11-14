@@ -68,6 +68,8 @@ def dynamic_tool_middleware(
     """Dynamically provide tools based on the current escalation level in state."""
     tools = tools_for_level(request.state.get("escalation_level", 0))
     ctx = request.runtime.context
+    if getattr(ctx, 'suppress_email_drafts', False):
+        tools = [tool for tool in tools if tool.name not in DRAFT_LABELS]
     required = getattr(ctx, 'required_draft_tool', None) if not getattr(ctx, 'untrusted_input', False) else None
     overrides = {'tools': tools}
     if required:
@@ -109,8 +111,9 @@ def enforce_tool_gate(state, runtime) -> dict | None:
         return None
     level = state.get("escalation_level", 0) or 0
     untrusted = bool(getattr(runtime.context, "untrusted_input", False))
+    suppress_drafts = bool(getattr(runtime.context, 'suppress_email_drafts', False))
     calls = messages[-1].tool_calls
-    reasons = {c["id"]: _refusal(c["name"], level, untrusted) for c in calls}
+    reasons = {c["id"]: _refusal(c["name"], level, untrusted, suppress_drafts) for c in calls}
     if not any(reasons.values()):
         return None
 
@@ -135,6 +138,7 @@ def enforce_tool_gate(state, runtime) -> dict | None:
 UNAPPROVED_STATE_TOOLS = {"update_invoice_details", "escalate_dispute"}
 
 REFUSAL_MESSAGES = {
+    'email_preparation': 'Tool {tool} cannot run: this turn requests information or completes an existing approval. Answer the owner without preparing another email.',
     "level": "Tool {tool} is not available at escalation level {level}.",
     "untrusted_input": (
         "Tool {tool} can't run on a client's reply: it changes the invoice without the freelancer's approval. "
@@ -143,9 +147,11 @@ REFUSAL_MESSAGES = {
 }
 
 
-def _refusal(name: str, level: int, untrusted: bool) -> str | None:
+def _refusal(name: str, level: int, untrusted: bool, suppress_drafts: bool = False) -> str | None:
     if name not in {t.name for t in tools_for_level(level)}:
         return "level"
     if untrusted and name in UNAPPROVED_STATE_TOOLS:
         return "untrusted_input"
+    if suppress_drafts and name in DRAFT_LABELS:
+        return 'email_preparation'
     return None

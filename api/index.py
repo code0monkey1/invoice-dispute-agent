@@ -46,7 +46,7 @@ from src.agent import agent
 from src.observability import tracer
 from src.observability.tracer import RunRecorder, langsmith_config, langsmith_status, note_run_outcome, trace_run
 from src.state import FreelancerContext
-from src.email_drafts import DRAFT_LABELS, DraftPreparationError, resolve_email_request
+from src.email_drafts import DRAFT_LABELS, DraftPreparationError, is_email_information, resolve_email_request
 from src.middleware.dynamic_tools import tools_for_level
 from src.tools.drafting import invoice_delivery_draft
 from src.db import (
@@ -1757,6 +1757,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
         }
     user = get_current_user(authorization)
     context = get_context_for_invoice(inv_id, user)
+    context.suppress_email_drafts = intent is None and is_email_information(req.message)
     config = {"configurable": {"thread_id": req.thread_id}}
     prepared = prepare_chat_email(req, invoice, context, config, snapshot, intent, before, request)
     if prepared is not None:
@@ -1788,7 +1789,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
             )
             note_run_outcome(run, response)
     except Exception as e:
-        if isinstance(e, DraftPreparationError):
+        if isinstance(e, DraftPreparationError) or (context.required_draft_tool and 'tool_use_failed' in str(e)):
             raise HTTPException(status_code=503, detail='Could not prepare the email review card. Please try again.')
         error_msg = str(e)
         if "rate_limit" in error_msg.lower() or "429" in error_msg:
@@ -2149,6 +2150,8 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
     # happened": the user would approve again (a duplicate is blocked by
     # already_sent_recently, but they still deserve the truth).
     email_went_out = email_status in EMAIL_SENT_STATUSES
+    if req.decision == 'approve' and approved_tool_name in EMAIL_DRAFT_TOOLS:
+        context.suppress_email_drafts = True
     try:
         response = agent.invoke(
             Command(resume={"decisions": decisions}),
