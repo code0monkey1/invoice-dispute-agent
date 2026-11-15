@@ -251,3 +251,17 @@ def test_present_invoice_adds_the_public_number_and_balance():
 @pytest.mark.parametrize("name,safe", [("a/b\\c.pdf", "c.pdf"), ("...", "invoice"), ("ok-1.pdf", "ok-1.pdf")])
 def test_safe_filename(name, safe):
     assert safe_filename(name) == safe
+
+
+@pytest.mark.parametrize("current,requested,saved,changed", [
+    (1, 2, 2, True), (2, 9, 3, True), (2, 2, 2, False), (2, 1, 2, False), (1, True, 1, False), (1, "2", 1, False)])
+def test_escalation_only_moves_up_and_stops_at_legal(current, requested, saved, changed):
+    invoices, store, _ = use_cases()
+    store.create_invoice(invoice_id=ID, user_id="u1", escalation_level=current)
+    assert invoices.set_escalation_level(ID, requested) is changed
+    assert store.invoices[ID]["escalation_level"] == saved
+
+
+def test_escalating_a_missing_invoice_changes_nothing():
+    invoices, _, _ = use_cases()
+    assert invoices.set_escalation_level("nope", 2) is False

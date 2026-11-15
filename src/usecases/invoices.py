@@ -14,7 +14,9 @@ from src.domain.invoice import (
     build_invoice_storage_id,
     clean_client_details,
     compute_balance,
+    escalation_target,
     invoice_state,
+    is_escalation_level,
     parse_public_invoice_id,
 )
 from src.ports import AgentSession, CommunicationLog, InvoiceStore
@@ -218,6 +220,19 @@ class InvoiceUseCases:
         updated = self._invoices.get_invoice(invoice_id)
         updated["communication_history"] = []
         return present_invoice(updated)
+
+    def set_escalation_level(self, invoice_id: str, new_level) -> bool:
+        """Raise the invoice's escalation level. Never lowers it. Returns True if it changed."""
+        if not is_escalation_level(new_level):
+            return False
+        invoice = self._invoices.get_invoice(invoice_id)
+        if not invoice:
+            return False
+        target = escalation_target(int(invoice.get("escalation_level") or 0), new_level)
+        if target is None:
+            return False
+        self._invoices.update_invoice(invoice_id, escalation_level=target)
+        return True
 
     def sync_session(self, invoice_id: str) -> dict | None:
         """Copy the saved invoice into the agent's state. Returns that state, or None if the invoice is gone.

@@ -371,7 +371,7 @@ def chat(req: ChatRequest, request: Request, caller: Caller = Depends(get_caller
         raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
 
     # Persist escalation level changes from the agent response.
-    invoice_service.set_escalation_level(inv_id, response.get("escalation_level"))
+    invoice_use_cases.set_escalation_level(inv_id, response.get("escalation_level"))
 
     return {
         "messages": serialize_messages(response["messages"])[before:],
@@ -400,7 +400,7 @@ def escalate_invoice(invoice_id: str, request: Request, caller: Caller = Depends
         raise HTTPException(status_code=400, detail="This invoice is already at the highest level (Legal).")
     level_name = escalation_name(new_level)
 
-    invoice_service.set_escalation_level(invoice_id, new_level)
+    invoice_use_cases.set_escalation_level(invoice_id, new_level)
     config = deps.agent_session.thread_config(invoice_id)
     persisted_state = sync_agent_state_from_invoice(invoice_id, config)
 
@@ -751,7 +751,7 @@ def record_resume_outcome(invoice_id, decision, approved_tool_name, approved_sub
         deps.agent_session.update_state(invoice_id, {"communication_history": history})
         response["communication_history"] = history
 
-    invoice_service.set_escalation_level(invoice_id, response.get("escalation_level"))
+    invoice_use_cases.set_escalation_level(invoice_id, response.get("escalation_level"))
 
 
 def current_state(invoice_id: str, fallback: dict) -> dict:

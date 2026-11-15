@@ -93,11 +93,11 @@ def test_no_changes_means_no_write(fake_db):
     assert after == before
 
 
-# --- set_escalation_level ---------------------------------------------------
+# --- set_escalation_level (InvoiceUseCases, over the real database module) ---
 
 def test_escalation_moves_up(fake_db):
     row = seed(fake_db)
-    assert invoice_service.set_escalation_level(row["id"], 2) is True
+    assert invoice_use_cases().set_escalation_level(row["id"], 2) is True
     assert fake_db.invoices[row["id"]]["escalation_level"] == 2
 
 
@@ -105,14 +105,14 @@ def test_escalation_moves_up(fake_db):
 def test_escalation_never_moves_down_or_rewrites(fake_db, level):
     row = seed(fake_db, escalation_level=2)
     before = len(fake_db.requests)
-    assert invoice_service.set_escalation_level(row["id"], level) is False
+    assert invoice_use_cases().set_escalation_level(row["id"], level) is False
     assert fake_db.invoices[row["id"]]["escalation_level"] == 2
     assert not [r for r in fake_db.requests[before:] if r[0] == "PATCH"]
 
 
 def test_escalation_is_capped_at_legal(fake_db):
     row = seed(fake_db, escalation_level=2)
-    invoice_service.set_escalation_level(row["id"], 9)
+    invoice_use_cases().set_escalation_level(row["id"], 9)
     assert fake_db.invoices[row["id"]]["escalation_level"] == 3
 
 
