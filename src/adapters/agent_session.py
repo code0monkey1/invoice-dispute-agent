@@ -73,6 +73,11 @@ class LangGraphAgentSession:
                     return PendingInterrupt(action=actions[0], state=state)
         return None
 
+    @staticmethod
+    def has_interrupt(snapshot: Any) -> bool:
+        """Any waiting interrupt, well-formed approval or not."""
+        return any(getattr(task, "interrupts", None) for task in (getattr(snapshot, "tasks", None) or []))
+
     def pending(self, invoice_id: str) -> PendingInterrupt | None:
         return self.pending_from_snapshot(self.get_state(invoice_id))
 
@@ -86,7 +91,7 @@ class LangGraphAgentSession:
         """Capture an interrupt before a state write can clear its details."""
         snapshot = self.get_state(invoice_id)
         pending = self.pending_from_snapshot(snapshot)
-        if preserve_pending and pending is not None:
+        if preserve_pending and self.has_interrupt(snapshot):
             return SessionRead(snapshot=snapshot, pending=pending)
 
         current = dict(getattr(snapshot, "values", None) or {})

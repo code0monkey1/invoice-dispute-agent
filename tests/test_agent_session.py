@@ -116,3 +116,19 @@ def test_sync_failure_does_not_discard_the_interrupt_read_first():
     assert read.pending.state == {"client_name": "Before"}
     assert isinstance(read.sync_error, RuntimeError)
     assert [event[0] for event in agent.events] == ["get", "update"]
+
+
+def test_preserving_reads_skip_the_sync_for_any_interrupt_not_just_approvals():
+    """Any state write empties a waiting interrupt, so history leaves every kind alone
+    (as it did before the adapter), even one that isn't an approval request."""
+    from src.adapters.agent_session import LangGraphAgentSession
+
+    odd = SimpleNamespace(values={"client_name": "Before"},
+                          tasks=[SimpleNamespace(interrupts=[SimpleNamespace(value="not an approval request")])])
+    agent = FakeAgent(odd)
+    session = LangGraphAgentSession(lambda: agent)
+
+    read = session.read_before_sync("owner::INV-1", {"client_name": "After"}, preserve_pending=True)
+
+    assert read.pending is None
+    assert not [e for e in agent.events if e[0] == "update"]
