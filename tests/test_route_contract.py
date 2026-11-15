@@ -4,6 +4,7 @@ Routes may move between modules; this list may not change by accident. A
 route added or removed on purpose is a one-line edit here.
 """
 import pytest
+from collections import Counter
 
 SPA_CATCH_ALL = "/{full_path:path}"
 FRAMEWORK_PATHS = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
@@ -46,6 +47,11 @@ def _routes():
 def test_api_routes_are_exactly_the_pinned_set():
     actual = {r for r in _routes() if r[1] not in FRAMEWORK_PATHS and r[1] != SPA_CATCH_ALL}
     assert actual == EXPECTED_ROUTES
+
+
+def test_every_pinned_route_is_registered_once():
+    counts = Counter(r for r in _routes() if r in EXPECTED_ROUTES)
+    assert counts == Counter({route: 1 for route in EXPECTED_ROUTES})
 
 
 def test_spa_catch_all_cannot_shadow_an_api_route():

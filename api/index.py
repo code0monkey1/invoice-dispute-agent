@@ -97,24 +97,19 @@ from web.app import (  # noqa: E402  (after env and database setup above)
     AI_UNAVAILABLE_DETAIL, DATABASE_UNAVAILABLE_DETAIL, UNEXPECTED_ERROR_DETAIL,
     Deps, SafeJSONResponse, _json_safe, create_app,
 )
+from web.routers.health import create_health_router
+from web.routers.traces import create_traces_router
 
 deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, gmail_client=GmailService,
             fetch_inbound_email=fetch_received_email, db=db_module)
 deps.agent_session = LangGraphAgentSession(lambda: deps.agent)
 identity = Identity(SECRET_KEY, store=lambda: deps.db)
 app = create_app(deps, identity)
-
-
-@app.get("/api/health")
-def health():
-    import sys, os
-    store = agent_module.checkpointer_status
-    # Memory loses conversations on every restart: degraded in production, and
-    # anywhere a configured database failed (not just never configured).
-    degraded = store["store"] == "memory" and (
-        os.getenv("VERCEL_ENV") == "production" or store["reason"] != "not_configured")
-    return {"status": "degraded" if degraded else "ok", "python": sys.version, "checkpointer": store,
-            "traces": tracer.stats(), "langsmith": langsmith_status()}
+app.include_router(create_health_router(
+    checkpointer_status=lambda: agent_module.checkpointer_status,
+    trace_stats=tracer.stats,
+    langsmith_status=langsmith_status,
+))
 
 
 # --- Helpers ---
@@ -635,10 +630,6 @@ def _parse_google_http_error(exc: urllib.error.HTTPError) -> tuple[str, str]:
 
 
 # --- Routes ---
-
-@app.get("/api/health")
-def health():
-    return {"status": "ok"}
 
 
 def _google_auth_url(scopes: list[str], **extra: str) -> str:
@@ -1589,26 +1580,11 @@ def send_approved_draft(
     return "sent", result, subject, draft
 
 
-@app.get("/api/invoices/{invoice_id}/traces")
-def invoice_traces(
-    invoice_id: str,
-    request: Request,
-    limit: int = Query(20, ge=1, le=TRACE_RUNS_MAX_LIMIT),
-    before: datetime | None = Query(None, description="started_at cursor from next_before"),
-    caller: Caller = Depends(get_caller),
-):
-    """The invoice's agent runs, newest first, each with its steps in order.
-
-    Access goes through the invoice: a run is visible to whoever owns the
-    invoice now, which also covers a guest who has since signed in.
-    """
-    invoice = caller.authorize(invoice_id)
-    runs = deps.db.list_agent_runs(invoice["id"], limit=limit, before=before.isoformat() if before else None)
-    steps = deps.db.get_trace_steps([run["id"] for run in runs])
-    for run in runs:
-        run["steps"] = steps.get(run["id"], [])
-    next_before = runs[-1]["started_at"] if len(runs) == limit else None
-    return {"runs": runs, "next_before": next_before}
+app.include_router(create_traces_router(
+    deps=deps,
+    caller_dependency=get_caller,
+    max_limit=TRACE_RUNS_MAX_LIMIT,
+))
 
 
 @app.post("/api/invoices/{invoice_id}/resume")

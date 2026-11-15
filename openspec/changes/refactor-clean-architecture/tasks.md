@@ -34,7 +34,7 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 
 ## 5. Use cases and routers
 
-- [ ] 5.1 Extract health and traces to `web/routers/` and remove the shadowed second `/api/health`; verify `tests/test_traces_endpoint.py` and the route contract pass
+- [x] 5.1 Extract health and traces to `web/routers/` and remove the shadowed second `/api/health`; verify `tests/test_traces_endpoint.py` and the route contract pass
 - [ ] 5.2 Extract auth and sender profile (use case plus router); verify `tests/test_sender_profile.py` and `tests/test_security.py` pass
 - [ ] 5.3 Extract invoice CRUD, upload, parsing and generator; verify `tests/test_generated_invoice.py`, `tests/test_create_validation.py` and `tests/test_settle_invoice.py` pass
 - [ ] 5.4 Extract summary and history; verify `tests/test_summary_api.py` and `tests/test_history_keeps_approval.py` pass
