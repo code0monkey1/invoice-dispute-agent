@@ -38,6 +38,20 @@ class Deps:
     db: Any = None                   # users, invoices, communications, traces and invoice files
 
 
+class Live:
+    """Forwards every attribute lookup to provider(), so an object built once
+    (a use case) keeps seeing whatever a test later puts on Deps.
+
+        InvoiceUseCases(Live(lambda: deps.db), ...)
+    """
+
+    def __init__(self, provider):
+        self._provider = provider
+
+    def __getattr__(self, name):
+        return getattr(self._provider(), name)
+
+
 def _json_safe(value):
     """Replace inf/NaN (which JSON can't encode) with None, recursively."""
     if isinstance(value, float) and not math.isfinite(value):

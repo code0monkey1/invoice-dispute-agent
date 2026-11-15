@@ -83,3 +83,12 @@ async def test_trace_ids_come_back_in_a_header_browsers_may_read():
     assert r.headers["x-trace-id"] == "run-1,run-2"
     assert r.headers["access-control-expose-headers"] == "X-Trace-Id"
     assert r.headers["access-control-allow-credentials"] == "true"
+
+
+def test_live_forwards_to_whatever_the_provider_returns_now():
+    from types import SimpleNamespace
+    from web.app import Live
+    holder = SimpleNamespace(db=SimpleNamespace(name="first"))
+    view = Live(lambda: holder.db)
+    holder.db = SimpleNamespace(name="second")
+    assert view.name == "second"
