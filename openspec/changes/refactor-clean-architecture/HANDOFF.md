@@ -24,9 +24,10 @@ Read this first if you are a new session continuing the work. Update the "State"
 
 - Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`. Nothing pushed; no pull request.
 - Baseline before any change: backend 761 passed, 13 skipped; frontend 178 passed, 6 skipped.
-- Now: backend 959 passed, 13 skipped; frontend 178 passed, 6 skipped. `api/index.py` is 1,265 lines (from 2,388).
+- Now: backend 971 passed, 13 skipped; frontend 178 passed, 6 skipped. `api/index.py` is about 1,270 lines (from 2,388).
 - Done: groups 1-4, and 5.1-5.4. Last commit of 5.4: `89e0f7a`.
-- Next: 5.5 escalate and chat, then 5.6 inbound reply, 5.7 approve/resume, 5.8.
+- 5.5 in progress (not ticked): the email preflight is domain policy (`src.domain.chat.email_preflight`, commit `af2e574`). Left: moving the chat and escalate routes.
+- Next, decided: before moving chat/escalate (5.5), inbound reply (5.6) and approve/resume (5.7), move the helpers those four share out of `api/index.py` into one `web/` module (`serialize_messages`, `serialize_message_content`, `extract_state`, `action_card`, `extract_interrupt`, `attachment_note`, `generate_draft_preview`, `traced_run`, `run_id_of`, `prior_message_count`, `trim_action_response`). Otherwise each router factory needs 12+ callables. Pin with the OpenAPI snapshot and the email-card tests; then 5.5 to 5.8.
 - Live eval for groups 3-4: the user approved a run on 2026-11-16 (local key confirmed not production's org), but every model call got `401 Invalid API Key` from Groq with the key in `.env` (no shell override). No result yet: it needs a valid key from the user, then a rerun (see "Live eval" below).
 
 ### Layout so far
