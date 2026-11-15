@@ -107,7 +107,10 @@ from web.routers.invoices import create_invoices_router
 from web.routers.conversations import create_conversations_router
 from web.agent_context import AgentContexts
 from web.agent_runs import AgentRuns
-from web.rate_limits import RATE_LIMITS, enforce_rate_limit  # noqa: F401  (tests clear RATE_LIMITS through api.index)
+from web.rate_limits import (  # noqa: F401  (tests read these through api.index)
+    CHAT_LIMIT_PER_MINUTE, PARSE_LIMIT_PER_MINUTE, RATE_LIMITS, SUMMARY_LIMIT_PER_MINUTE, enforce_rate_limit,
+)
+from web.routers.chat import create_chat_router
 from web import presentation
 from web.presentation import (  # noqa: F401  (several are read through api.index by tests and evals)
     EMAIL_DRAFT_TOOLS, EMAIL_LOG_LABELS, EMAIL_SENT_STATUSES, EMAIL_STATUS_NOTES,
@@ -167,9 +170,6 @@ app.include_router(create_accounts_router(
 
 # --- Helpers ---
 
-CHAT_LIMIT_PER_MINUTE = 20
-SUMMARY_LIMIT_PER_MINUTE = 10
-PARSE_LIMIT_PER_MINUTE = 8
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 INVOICE_FILE_BUCKET = os.getenv("SUPABASE_INVOICE_FILE_BUCKET", "invoice-files")
 
@@ -239,207 +239,7 @@ def extract_interrupt(response, ctx: FreelancerContext | None = None, invoice=No
     return presentation.extract_interrupt(response, ctx, invoice, last_delivery=deps.db.get_last_outbound_delivery)
 
 
-def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -> bool:
-    """The framework-free chat policy, loading the owner's other invoices only if it needs them."""
-    def other_invoices() -> list:
-        try:
-            return deps.db.get_invoices_by_user(user_id)
-        except Exception:
-            logger.exception("Failed to load invoices for chat guard")
-            return []
-    return invoice_chat_policy(message, current_invoice, other_invoices)
-
-
 # --- Routes ---
-
-
-class _DeliveryUnknown(Exception):
-    """The last send of an email couldn't be looked up."""
-
-
-def prepare_chat_email(req, invoice, context, config, snapshot, intent, before, request):
-    """Preflight a current owner action, leaving real delivery behind /resume (src.domain.chat.email_preflight)."""
-    waiting = pending_action(snapshot)
-
-    def last_delivery(label):
-        try:
-            return deps.db.get_last_outbound_delivery(invoice["id"], label)
-        except Exception as exc:
-            raise _DeliveryUnknown from exc
-
-    try:
-        decision = email_preflight(
-            intent=intent,
-            waiting=waiting,
-            invoice=invoice,
-            allowed_tools={t.name for t in tools_for_level(invoice_state_from_db(invoice)["escalation_level"])},
-            labels=DRAFT_LABELS,
-            last_delivery=last_delivery,
-        )
-    except _DeliveryUnknown:
-        raise HTTPException(status_code=503, detail='Previous delivery could not be verified. Please try again.')
-    if decision is None:
-        return None
-    if decision.outcome is None:
-        context.required_draft_tool = decision.tool
-        context.invoice_context_summary += '\nCurrent email attachment status: ' + attachment_note(invoice, decision.tool)
-        return None
-    reply, outcome = decision.reply, decision.outcome
-    card = action_card(waiting, getattr(snapshot, 'values', None) or {}, context, invoice) if decision.reuse_pending else None
-    with traced_run('chat', invoice['id'], context, request, level=invoice.get('escalation_level')) as run:
-        run.add('email_preparation', decision.tool, {'outcome': outcome})
-        extra = [HumanMessage(content=req.message), AIMessage(content=reply)]
-        if waiting:
-            messages = list((getattr(snapshot, 'values', None) or {}).get('messages', [])) + extra
-            run.status = 'interrupted'
-        else:
-            sync_agent_state_from_invoice(invoice['id'], config)
-            deps.agent_session.update_state(invoice["id"], {"messages": extra})
-            messages = (deps.agent_session.get_state(invoice["id"]).values or {}).get("messages", [])
-        return {'messages':serialize_messages(messages)[before:], 'interrupt':card,
-                'state':{**invoice_state_from_db(invoice), 'communication_history':[]}}
-
-
-@app.post("/api/chat")
-def chat(req: ChatRequest, request: Request, caller: Caller = Depends(get_caller), include_history: bool = Query(True)):
-    enforce_rate_limit(caller.rate_key(), "chat", CHAT_LIMIT_PER_MINUTE)
-    # thread_id format is "invoice-{invoice_id}"
-    inv_id = req.thread_id.removeprefix("invoice-")
-    invoice = caller.authorize(inv_id)
-    before = prior_message_count(inv_id, include_history)
-    config = deps.agent_session.thread_config(inv_id)
-    try:
-        snapshot = deps.agent_session.get_state(inv_id)
-    except Exception:
-        raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
-    intent = resolve_email_request(req.message, (getattr(snapshot, 'values', None) or {}).get('messages', []))
-    if not intent and not pending_action(snapshot) and not is_invoice_chat_message(req.message, invoice, invoice.get("user_id", "")):
-        persisted_state = sync_agent_state_from_invoice(inv_id, config)
-        try:
-            snapshot = deps.agent_session.get_state(inv_id)
-            messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
-        except Exception:
-            messages = []
-        messages.append({
-            "type": "AIMessage",
-            "content": "I can only answer questions about your invoices.",
-        })
-        return {
-            "messages": messages[before:],
-            "interrupt": None,
-            "state": persisted_state or invoice_state_from_db(invoice),
-        }
-    user = caller.user()
-    context = get_context_for_invoice(inv_id, user)
-    context.suppress_email_drafts = intent is None and is_email_information(req.message)
-    prepared = prepare_chat_email(req, invoice, context, config, snapshot, intent, before, request)
-    if prepared is not None:
-        return prepared
-    persisted_state = sync_agent_state_from_invoice(inv_id, config)
-
-    if persisted_state and persisted_state.get("status") == "paid":
-        try:
-            snapshot = deps.agent_session.get_state(inv_id)
-            messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
-        except Exception:
-            messages = []
-        messages.append({
-            "type": "AIMessage",
-            "content": "This invoice is marked as resolved / fully paid, so I will not continue chasing payment.",
-        })
-        return {
-            "messages": messages[before:],
-            "interrupt": None,
-            "state": persisted_state,
-        }
-
-    try:
-        with traced_run("chat", inv_id, context, request, level=(persisted_state or {}).get("escalation_level")) as run:
-            response = deps.run_agent(
-                {"messages": [HumanMessage(content=req.message)]},
-                context=context,
-                config=langsmith_config(config, run),
-            )
-            note_run_outcome(run, response)
-    except Exception as e:
-        if isinstance(e, DraftPreparationError) or (context.required_draft_tool and 'tool_use_failed' in str(e)):
-            raise HTTPException(status_code=503, detail='Could not prepare the email review card. Please try again.')
-        error_msg = str(e)
-        if "rate_limit" in error_msg.lower() or "429" in error_msg:
-            raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
-        logger.exception("Agent invocation failed run_id=%s", context.trace_run_id or run_id_of(request))
-        raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
-
-    # Persist escalation level changes from the agent response.
-    invoice_use_cases.set_escalation_level(inv_id, response.get("escalation_level"))
-
-    return {
-        "messages": serialize_messages(response["messages"])[before:],
-        "interrupt": extract_interrupt(response, context, invoice),
-        "state": {**extract_state(response), **({"communication_history": []} if not include_history else {})},
-    }
-
-
-@app.post("/api/invoices/{invoice_id}/escalate")
-def escalate_invoice(invoice_id: str, request: Request, caller: Caller = Depends(get_caller), include_history: bool = Query(True)):
-    """Move an invoice to the next escalation level, then ask the agent for a draft.
-
-    Escalating is the user's decision, so the level changes here directly
-    instead of depending on the model choosing to call its escalate tool.
-    The new draft still waits for the user's approval like any other.
-    """
-    enforce_rate_limit(caller.rate_key(), "chat", CHAT_LIMIT_PER_MINUTE)
-    invoice = caller.authorize(invoice_id)
-    before = prior_message_count(invoice_id, include_history)
-    if invoice.get("status") == "paid":
-        raise HTTPException(status_code=400, detail="This invoice is paid, so there's nothing to escalate.")
-
-    current = int(invoice.get("escalation_level") or 1)
-    new_level = next_escalation_level(current)
-    if new_level is None:
-        raise HTTPException(status_code=400, detail="This invoice is already at the highest level (Legal).")
-    level_name = escalation_name(new_level)
-
-    invoice_use_cases.set_escalation_level(invoice_id, new_level)
-    config = deps.agent_session.thread_config(invoice_id)
-    persisted_state = sync_agent_state_from_invoice(invoice_id, config)
-
-    user = caller.user()
-    context = get_context_for_invoice(invoice_id, user)
-    public_id = parse_public_invoice_id(invoice_id)
-    prompt = (
-        f"I've moved invoice {public_id} to the {level_name} level. "
-        f"It's already escalated, so don't escalate it again. "
-        f"Please draft the next email to the client in a {level_name.lower()} tone."
-    )
-    try:
-        with traced_run("escalate", invoice_id, context, request, level=new_level) as run:
-            response = deps.run_agent({"messages": [HumanMessage(content=prompt)]}, context=context,
-                                               config=langsmith_config(config, run))
-            note_run_outcome(run, response)
-    except Exception:
-        logger.exception("Agent could not draft after escalating invoice %s run_id=%s", invoice_id, run_id_of(request))
-        try:
-            snapshot = deps.agent_session.get_state(invoice_id)
-            messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
-        except Exception:
-            messages = []
-        messages.append({
-            "type": "AIMessage",
-            "content": f"Moved to {level_name}. I couldn't draft the next email just now. Ask me to draft it when you're ready.",
-        })
-        return {"messages": messages[before:], "interrupt": None, "state": persisted_state}
-
-    state = extract_state(response)
-    if not include_history:
-        state["communication_history"] = []
-    # The level set above is authoritative even if the model's run reports less.
-    state["escalation_level"] = max(new_level, int(state.get("escalation_level") or 0))
-    return {
-        "messages": serialize_messages(response["messages"])[before:],
-        "interrupt": extract_interrupt(response, context, invoice),
-        "state": state,
-    }
 
 
 def already_sent_recently(invoice_id: str, subject: str, body: str) -> bool:
@@ -592,6 +392,9 @@ app.include_router(create_invoices_router(
     parse_limit=PARSE_LIMIT_PER_MINUTE,
     max_upload_bytes=MAX_UPLOAD_BYTES,
     file_bucket=INVOICE_FILE_BUCKET,
+))
+app.include_router(create_chat_router(
+    deps=deps, runs=runs, contexts=agent_contexts, invoices=invoice_use_cases, caller_dependency=get_caller,
 ))
 app.include_router(create_traces_router(
     deps=deps,

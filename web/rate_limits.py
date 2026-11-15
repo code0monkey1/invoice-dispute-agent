@@ -4,6 +4,9 @@ import time
 from fastapi import HTTPException
 
 RATE_LIMITS: dict[str, list[float]] = {}
+CHAT_LIMIT_PER_MINUTE = 20
+SUMMARY_LIMIT_PER_MINUTE = 10
+PARSE_LIMIT_PER_MINUTE = 8
 
 
 def enforce_rate_limit(key: str, action: str, limit: int) -> None:

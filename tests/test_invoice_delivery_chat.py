@@ -253,9 +253,8 @@ GUARD_INVOICE = {"id": "guest-x__inv__SU5WLTE", "client_name": "Acme Corp", "cli
     "they asked for an extension until Friday",
 ])
 def test_guard_lets_invoice_conversation_through(message, monkeypatch):
-    import api.index as api_index
-    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda _uid: []))
-    assert api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
+    from web.routers.chat import is_invoice_chat_message
+    assert is_invoice_chat_message(SimpleNamespace(get_invoices_by_user=lambda _uid: []), message, GUARD_INVOICE, "guest-x")
 
 
 @pytest.mark.parametrize("message", [
@@ -264,9 +263,8 @@ def test_guard_lets_invoice_conversation_through(message, monkeypatch):
     "who won the football match last night",
 ])
 def test_guard_still_blocks_off_topic_questions(message, monkeypatch):
-    import api.index as api_index
-    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda _uid: []))
-    assert not api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
+    from web.routers.chat import is_invoice_chat_message
+    assert not is_invoice_chat_message(SimpleNamespace(get_invoices_by_user=lambda _uid: []), message, GUARD_INVOICE, "guest-x")
 
 
 @pytest.mark.parametrize("message,lookups", [
@@ -275,8 +273,7 @@ def test_guard_still_blocks_off_topic_questions(message, monkeypatch):
     ("what happened with northwind lately?", 1),    # only a lookup can tell
 ])
 def test_guard_reads_the_owners_invoices_only_when_it_must(message, lookups, monkeypatch):
-    import api.index as api_index
+    from web.routers.chat import is_invoice_chat_message
     calls = []
-    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda uid: calls.append(uid) or []))
-    api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
+    is_invoice_chat_message(SimpleNamespace(get_invoices_by_user=lambda uid: calls.append(uid) or []), message, GUARD_INVOICE, "guest-x")
     assert len(calls) == lookups
