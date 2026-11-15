@@ -54,7 +54,7 @@ from src.observability.tracer import RunRecorder, langsmith_config, langsmith_st
 from src.state import FreelancerContext
 from src.email_drafts import DRAFT_LABELS, DraftPreparationError, is_email_information, resolve_email_request
 from src.middleware.dynamic_tools import tools_for_level
-from src.tools.drafting import invoice_delivery_draft
+from src.domain.email_templates import render_draft
 from src import db as db_module
 from src.db import (
     TRACE_RUNS_MAX_LIMIT, DatabaseUnavailable, InvoiceAlreadyExists, init_db, get_user_gmail_tokens,
@@ -369,78 +369,11 @@ def generate_draft_preview(
     context: FreelancerContext,
     action_args: dict | None = None,
 ) -> str:
-    """Generate the actual email draft that the tool would produce, so users can review it."""
+    """The email the draft tool produces, for the approval card and the send. '' if it can't be built."""
     try:
-        action_args = action_args or {}
-        client_name = state.get("client_name", "Client")
-        client_email = state.get("client_email", "")
-        invoice_id = state.get("invoice_id", "N/A")
-        invoice_amount = float(state.get("invoice_amount", 0) or 0)
-        amount_paid = float(state.get("amount_paid", 0) or 0)
-        balance_due = compute_balance(invoice_amount, amount_paid)
-        if "balance_due" in state:
-            balance_due = float(state.get("balance_due", balance_due) or balance_due)
-        days_overdue = state.get("days_overdue", 0)
-        jurisdiction = state.get("jurisdiction", "")
-
-        if tool_name == "draft_invoice_delivery_email":
-            return invoice_delivery_draft(state, context)
-        if tool_name == "draft_polite_reminder":
-            return (
-                f"Subject: Friendly Reminder - Invoice #{invoice_id} Payment\n\n"
-                f"Hi {client_name},\n\n"
-                f"I hope this message finds you well. I wanted to kindly follow up on "
-                f"Invoice #{invoice_id}. The original invoice total was ${invoice_amount:,.2f}, "
-                f"and the remaining balance is ${balance_due:,.2f}, "
-                f"which was due {days_overdue} days ago.\n\n"
-                f"I understand things can get busy, and I'd appreciate it if you could "
-                f"let me know the status of this payment at your earliest convenience.\n\n"
-                f"If you've already sent the payment, please disregard this message.\n\n"
-                f"Best regards,\n"
-                f"{context.freelancer_name}\n"
-                f"{context.business_name}\n"
-                f"{context.freelancer_email}"
-            )
-        elif tool_name == "draft_formal_demand_letter":
-            return (
-                f"Subject: FORMAL DEMAND - Overdue Invoice #{invoice_id}\n\n"
-                f"Dear {client_name},\n\n"
-                f"This letter constitutes a formal demand for payment of Invoice "
-                f"#{invoice_id}. The original invoice amount was ${invoice_amount:,.2f}; "
-                f"the remaining unpaid balance is ${balance_due:,.2f}, "
-                f"which is now {days_overdue} days past due.\n\n"
-                f"Per our agreed payment terms ({context.default_payment_terms}), this invoice "
-                f"was due for immediate payment.\n\n"
-                f"Total amount now due: ${balance_due:,.2f}\n\n"
-                f"Please remit payment within 7 business days of receipt of this notice "
-                f"to avoid further action.\n\n"
-                f"This letter serves as formal documentation of this outstanding debt.\n\n"
-                f"Sincerely,\n"
-                f"{context.freelancer_name}\n"
-                f"{context.business_name}"
-            )
-        elif tool_name == "draft_final_notice":
-            return (
-                f"Subject: FINAL NOTICE BEFORE LEGAL ACTION - Invoice #{invoice_id}\n\n"
-                f"Dear {client_name},\n\n"
-                f"NOTICE: This is a final demand for payment before legal proceedings "
-                f"are initiated in {jurisdiction}.\n\n"
-                f"Despite previous communications, Invoice #{invoice_id} remains unpaid.\n\n"
-                f"Original amount: ${invoice_amount:,.2f}\n"
-                f"Amount paid: ${amount_paid:,.2f}\n"
-                f"TOTAL DUE: ${balance_due:,.2f}\n\n"
-                f"If full payment is not received within 10 business days of this notice, "
-                f"I will file a claim in small claims court in {jurisdiction}. "
-                f"You may also be liable for court filing fees and additional costs.\n\n"
-                f"This letter serves as evidence of attempted resolution prior to legal action.\n\n"
-                f"All prior correspondence regarding this matter has been documented.\n\n"
-                f"{context.freelancer_name}\n"
-                f"{context.business_name}\n"
-                f"{context.freelancer_email}"
-            )
+        return render_draft(tool_name, state, context)
     except Exception:
-        pass
-    return ""
+        return ""
 
 
 def build_invoice_attachment(invoice: dict | None) -> dict | None:
