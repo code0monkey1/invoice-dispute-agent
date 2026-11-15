@@ -57,34 +57,34 @@ checks prepare cards on owned disposable invoices without approving delivery.
 
 ## Verification and rollout
 
-Local verification passed 761 backend tests (13 environment-dependent skips),
-178 frontend tests (6 existing skips), frontend lint/build and strict OpenSpec
-validation. Independent reviews found no remaining critical or important issues.
-An initial live Groq run passed all 14 original new scenarios. The first required
-36-case GitHub run then failed 5 cases and correctly blocked merging. The failures
-exposed attachment-related refusal, informational requests becoming drafts,
-inaccurate answer formatting and another draft after approval. Request-scoped
-tool restrictions and a separate owner-assistance prompt address those failures;
-the 36 cases and all thresholds remain unchanged. The original organization
-exhausted its daily allowance; the user supplied a replacement credential, which
-was validated and configured locally, in GitHub and in Vercel production settings.
-All five previously failing cases then passed unchanged (judge mean 4.6/5).
-The complete 36-case CI run remains required before release.
+Released on November 15, 2026 through [PR #31](https://github.com/code0monkey1/invoice-dispute-agent/pull/31),
+functional merge `2008a7c886bf6f29492f0cfa79dcf1261fa94247`.
 
-The [refreshed Vercel preview](https://invoice-chaser-jqakb5z3k-code0monkey1s-projects.vercel.app)
-passed 25 checks on owned disposable fixtures: typed/contextual Legal requests,
-current figures, conditional previous delivery, explicit resend disclosure,
-attachment notes, hidden-history reopening, pending-card reuse and cross-owner
-denial, plus an informational answer without a draft. No approval/send endpoint
-was invoked. Test invoices, communication fixtures and their checkpoints were
-removed after verification.
+- Local backend: 761 passed, 13 environment-dependent skips. Frontend: 178 passed,
+  6 existing skips; lint/build and strict OpenSpec validation passed. Independent
+  reviews found no critical or important issues.
+- [Required live CI](https://github.com/code0monkey1/invoice-dispute-agent/actions/runs/43678832470):
+  35/36 cases passed (97.2%), every expected email card correct, 100% approval and
+  tone checks, zero pre-approval deliveries, judge mean 4.71/5. The remaining
+  Legal payment-report proposal miss is within the unchanged noncritical tolerance.
+  The agent was `openai/gpt-oss-120b`; the separate judge was `openai/gpt-oss-20b`.
+- [Final preview](https://invoice-chaser-6rcrqfa8l-code0monkey1s-projects.vercel.app):
+  13 checks passed on the exact tested revision. Earlier broad preview passed 25
+  checks, including contextual requests and informational answers.
+- [Production](https://invoice-chaser-chi.vercel.app): canonical alias and merged
+  SHA verified; PostgreSQL checkpointer healthy; all 13 card/access checks passed.
+  Both disposable invoices and their communication/checkpoint fixtures were removed.
+  The deployment error/fatal log scan returned zero records. No real email approval
+  or send endpoint was invoked, and the referenced real invoice remained read-only.
 
-Release requires the protected backend, frontend, golden-set and
-summary-golden-set checks before merging; the summary prompt is unchanged.
-Production follows the merged main commit and is verified against its canonical
-alias, health and owned card fixtures. No schema migration or backfill is needed.
-The preceding application commit is `6c34e0d3557f543a00b68bbf89cf963ba3ce1902`
-and deployment is `dpl_7Zfb6rygUSqtXwUavMDD8zYxqK33`. For application rollback,
-redeploy that application commit from a clean checkout with the current production
-environment; retain invoice/communication/checkpoint data. Reusing the old
-deployment would also restore its obsolete Groq credential snapshot.
+The repairs remove conflicting advisory status checks from selected preparation,
+make card creation explicitly precede delivery approval, and remove copyable
+placeholders from tool instructions. The original 36 cases, quality thresholds,
+stage progression and level allowlists are unchanged. Protected backend, frontend,
+golden-set and summary-golden-set checks passed before merge; the summary prompt
+and its 85% gate are unchanged. No schema migration or backfill is needed.
+
+The preceding application commit is `6c34e0d3557f543a00b68bbf89cf963ba3ce1902`.
+For application rollback, redeploy that commit from a clean checkout with the
+current production environment, retaining invoice/communication/checkpoint data.
+Reusing the old deployment would also restore its obsolete Groq credential snapshot.
