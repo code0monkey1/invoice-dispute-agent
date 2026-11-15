@@ -102,7 +102,7 @@ class EvalHarness:
 
     def _signed_in(self) -> dict:
         self.db.users[EVAL_USER] = {"id": EVAL_USER, "email": "owner@example.com", "name": "Owner"}
-        return {"Authorization": f"Bearer {self._api.create_jwt(EVAL_USER, 'owner@example.com')}"}
+        return {"Authorization": f"Bearer {self._api.identity.create_jwt(EVAL_USER, 'owner@example.com')}"}
 
     async def run_case(self, case: Case, model: Any) -> CaseRun:
         from src.agent import build_agent

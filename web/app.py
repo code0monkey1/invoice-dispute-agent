@@ -102,9 +102,11 @@ def cors_origins() -> list[str]:
     return [origin.strip() for origin in configured.split(",") if origin.strip()]
 
 
-def create_app(deps: Deps) -> FastAPI:
+def create_app(deps: Deps, identity=None) -> FastAPI:
+    """*identity* (web.identity.Identity) answers who is calling, for routes that ask via Depends(get_caller)."""
     app = FastAPI(title="Invoice Dispute Agent API", default_response_class=SafeJSONResponse)
     app.state.deps = deps
+    app.state.identity = identity
 
     app.add_exception_handler(RequestValidationError, request_validation_error)
     app.add_exception_handler(InvoiceAlreadyExists, invoice_already_exists)

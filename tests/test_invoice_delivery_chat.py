@@ -163,8 +163,7 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
     }
     fake_db.storage["generated/user-123/abc/invoice.pdf"] = b"pdf-content"
 
-    monkeypatch.setattr(api_index, "get_current_user", lambda authorization: fake_db.users[user_id])
-    monkeypatch.setattr(api_index, "_current_caller_id", lambda request, authorization: user_id)
+    signed_in = {"Authorization": f"Bearer {api_index.identity.create_jwt(user_id, 'owner@example.com')}"}
     monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda uid: ("access", "refresh"))
     monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, download_invoice_file=lambda bucket, path: fake_db.storage[path]))
     monkeypatch.setattr(api_index.deps.agent, "update_state", lambda *args, **kwargs: None)
@@ -215,7 +214,7 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
 
     response = await client.post(
         f"/api/invoices/{storage_id}/resume",
-        headers={"Authorization": "Bearer test"},
+        headers=signed_in,
         json={
             "decision": "approve",
             "message": "Subject: Edited Invoice Subject\n\nEdited invoice body.",

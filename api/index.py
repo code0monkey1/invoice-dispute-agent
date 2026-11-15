@@ -25,7 +25,9 @@ from langgraph.types import Command
 
 import logging
 from datetime import datetime, timedelta, timezone
-import jwt
+from web.identity import (
+    DEFAULT_SECRET_KEY, GUEST_COOKIE_NAME, Caller, Identity, assert_secret_configured, get_caller,
+)
 import json as json_lib
 import re
 from concurrent.futures import ThreadPoolExecutor
@@ -38,7 +40,7 @@ import urllib.error
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
-from fastapi import Header, HTTPException, Query
+from fastapi import Depends, Header, HTTPException, Query
 
 from langsmith import traceable
 
@@ -77,25 +79,8 @@ logger.setLevel(logging.INFO)
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "")
 GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5173/auth/google/callback")
-DEFAULT_SECRET_KEY = "dev-secret-key-change-in-production"
 SECRET_KEY = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
-
-
-def assert_secret_configured(secret: str, env) -> None:
-    """Refuse to run in production with the public default key.
-
-    SECRET_KEY signs login tokens and guest sessions; with the default,
-    anyone could forge them for any account.
-    """
-    if env.get("VERCEL") and (not secret or secret == DEFAULT_SECRET_KEY):
-        raise RuntimeError("SECRET_KEY must be set to a private value in production.")
-
-
 assert_secret_configured(SECRET_KEY, os.environ)
-
-# Guest session cookie
-GUEST_COOKIE_NAME = "ic_guest_session"
-GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 
 # Initialize database on startup
 init_db()
@@ -107,7 +92,8 @@ from web.app import (  # noqa: E402  (after env and database setup above)
 
 deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, gmail_client=GmailService,
             fetch_inbound_email=fetch_received_email, db=db_module)
-app = create_app(deps)
+identity = Identity(SECRET_KEY, store=lambda: deps.db)
+app = create_app(deps, identity)
 
 
 @app.get("/api/health")
@@ -172,14 +158,6 @@ SUMMARY_LIMIT_PER_MINUTE = 10
 PARSE_LIMIT_PER_MINUTE = 8
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 INVOICE_FILE_BUCKET = os.getenv("SUPABASE_INVOICE_FILE_BUCKET", "invoice-files")
-
-
-def _client_key(request: Request, authorization: str | None) -> str:
-    user = get_current_user(authorization)
-    if user:
-        return f"user:{user['id']}"
-    host = request.client.host if request.client else "unknown"
-    return f"ip:{host}"
 
 
 def enforce_rate_limit(key: str, action: str, limit: int) -> None:
@@ -738,134 +716,6 @@ def present_invoice(invoice: dict | None) -> dict | None:
 
 # --- JWT Helpers ---
 
-def create_jwt(user_id: str, email: str) -> str:
-    payload = {
-        "user_id": user_id,
-        "email": email,
-        "exp": datetime.now(timezone.utc).timestamp() + 86400 * 7,
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm="HS256")
-
-
-def get_current_user(authorization: str | None) -> dict | None:
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-    token = authorization.removeprefix("Bearer ")
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return deps.db.get_user(payload["user_id"])
-    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-        return None
-
-
-def _is_secure_request(request: Request) -> bool:
-    """Return True when the request is over HTTPS (incl. behind a TLS proxy)."""
-    if request.url.scheme == "https":
-        return True
-    forwarded = request.headers.get("x-forwarded-proto", "")
-    return "https" in forwarded.lower()
-
-
-GUEST_ID_PATTERN = re.compile(r"guest-[0-9a-f]{32}")
-
-
-def _sign_guest_id(guest_id: str) -> str:
-    """Cookie value for a guest: the ID plus an HMAC, so it can't be forged.
-
-    Guest IDs appear inside invoice IDs (URLs, API responses), so the bare
-    ID must never be enough to act as that guest.
-    """
-    sig = hmac.new(SECRET_KEY.encode(), guest_id.encode(), hashlib.sha256).hexdigest()[:32]
-    return f"{guest_id}.{sig}"
-
-
-def _guest_id_from_cookie(value: str | None) -> str | None:
-    """Return the guest ID from a signed cookie, or None if missing, unsigned or tampered."""
-    if not value or "." not in value:
-        return None
-    guest_id, _, _sig = value.rpartition(".")
-    if not GUEST_ID_PATTERN.fullmatch(guest_id):
-        return None
-    return guest_id if hmac.compare_digest(value, _sign_guest_id(guest_id)) else None
-
-
-def get_guest_id(request: Request, response: Response) -> str:
-    """Return the per-session guest_id from the cookie, minting one if absent.
-
-    Each anonymous visitor gets a unique ``guest-<hex>`` ID stored in an
-    HTTP-only cookie. Guest IDs are isolated: visitor A never sees visitor B's
-    invoices. On Google sign-in, the cookie's guest data is migrated to the
-    real user and the cookie is cleared.
-    """
-    existing = _guest_id_from_cookie(request.cookies.get(GUEST_COOKIE_NAME))
-    if existing:
-        return existing
-
-    guest_id = f"guest-{secrets.token_hex(16)}"
-    deps.db.ensure_guest_user(guest_id)
-    response.set_cookie(
-        key=GUEST_COOKIE_NAME,
-        value=_sign_guest_id(guest_id),
-        max_age=GUEST_COOKIE_MAX_AGE,
-        httponly=True,
-        samesite="lax",
-        secure=_is_secure_request(request),
-        path="/",
-    )
-    return guest_id
-
-
-def resolve_user_id(
-    request: Request,
-    response: Response,
-    authorization: str | None,
-) -> tuple[dict | None, str]:
-    """Return ``(user_or_none, user_id)`` — falls back to a per-session guest_id."""
-    user = get_current_user(authorization)
-    if user:
-        return user, user["id"]
-    return None, get_guest_id(request, response)
-
-
-def _current_caller_id(
-    request: Request,
-    authorization: str | None,
-) -> str | None:
-    """Return the caller's user_id (authed or guest) WITHOUT minting a new guest cookie.
-
-    Used for read-only ownership checks where we shouldn't be creating identities.
-    """
-    user = get_current_user(authorization)
-    if user:
-        return user["id"]
-    return _guest_id_from_cookie(request.cookies.get(GUEST_COOKIE_NAME))
-
-
-INVOICE_ID_PATTERN = re.compile(r"[A-Za-z0-9_.@ -]{1,300}")
-
-
-def authorize_invoice_access(
-    invoice_id: str,
-    request: Request,
-    authorization: str | None,
-) -> dict:
-    """Return the invoice row only if the caller owns it; otherwise raise 404.
-
-    404 (not 403) so we don't leak the existence of invoices belonging to others.
-    IDs outside our own format never reach the database: SQL-looking text made
-    Supabase's firewall return an error page, which surfaced as a 500.
-    """
-    if not INVOICE_ID_PATTERN.fullmatch(invoice_id or ""):
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    caller_id = _current_caller_id(request, authorization)
-    invoice = deps.db.get_invoice(invoice_id)
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    if invoice.get("user_id") != caller_id:
-        raise HTTPException(status_code=404, detail="Invoice not found")
-    return invoice
-
-
 INVOICE_CHAT_KEYWORDS = {
     "invoice", "invoices", "payment", "paid", "pay", "payer", "balance", "due",
     "overdue", "client", "customer", "email", "mail", "draft", "send", "sent",
@@ -966,12 +816,12 @@ def google_auth_url():
 
 
 @app.get("/api/auth/gmail/connect-url")
-def gmail_connect_url(authorization: str | None = Header(None)):
+def gmail_connect_url(caller: Caller = Depends(get_caller)):
     """Connect Gmail link: adds send-only access for a signed-in user.
 
     Offline access with consent so Google returns a refresh token we can keep.
     """
-    user = get_current_user(authorization)
+    user = caller.user()
     if not user:
         raise HTTPException(status_code=401, detail="Sign in before connecting Gmail.")
     url = _google_auth_url(
@@ -1050,7 +900,7 @@ def google_callback(req: GoogleCallbackRequest, request: Request, response: Resp
         raise HTTPException(status_code=500, detail="Google sign-in succeeded, but saving the user failed.") from exc
 
     # Promote any anonymous guest data created in this browser to the real user.
-    guest_id = _guest_id_from_cookie(request.cookies.get(GUEST_COOKIE_NAME))
+    guest_id = identity.guest_id_from_cookie(request.cookies.get(GUEST_COOKIE_NAME))
     if guest_id and guest_id != user_id:
         try:
             deps.db.migrate_guest_to_user(guest_id, user_id)
@@ -1058,7 +908,7 @@ def google_callback(req: GoogleCallbackRequest, request: Request, response: Resp
             logger.exception("Failed to migrate guest %s -> %s", guest_id, user_id)
         response.delete_cookie(GUEST_COOKIE_NAME, path="/")
 
-    token = create_jwt(user_id, email)
+    token = identity.create_jwt(user_id, email)
     return {
         "token": token,
         "user": {
@@ -1069,8 +919,8 @@ def google_callback(req: GoogleCallbackRequest, request: Request, response: Resp
 
 
 @app.get("/api/auth/me")
-def get_me_route(authorization: str | None = Header(None)):
-    user = get_current_user(authorization)
+def get_me_route(caller: Caller = Depends(get_caller)):
+    user = caller.user()
     if not user:
         raise HTTPException(status_code=401, detail="Not authenticated")
     return {
@@ -1103,9 +953,9 @@ _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 def get_sender_profile_route(
     request: Request,
     response: Response,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
-    _user, user_id = resolve_user_id(request, response, authorization)
+    _user, user_id = caller.resolve()
     user = deps.db.get_user(user_id) or {}
     return user.get("sender_profile") or {}
 
@@ -1115,9 +965,9 @@ def patch_sender_profile_route(
     payload: SenderProfilePayload,
     request: Request,
     response: Response,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
-    _user, user_id = resolve_user_id(request, response, authorization)
+    _user, user_id = caller.resolve()
 
     incoming = payload.model_dump(exclude_unset=True)
     if "your_email" in incoming and incoming["your_email"]:
@@ -1139,7 +989,7 @@ class SummaryRefreshRequest(BaseModel):
     model_config = {"extra": "forbid"}
 
 
-def compact_conversation(invoice: dict, authorization: str | None) -> dict:
+def compact_conversation(invoice: dict, caller: Caller) -> dict:
     """Invoice/approval metadata for summary-first pages; no prior message bodies."""
     config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
     snapshot = deps.agent.get_state(config)
@@ -1150,7 +1000,7 @@ def compact_conversation(invoice: dict, authorization: str | None) -> dict:
         for task in (getattr(snapshot, "tasks", None) or []):
             if getattr(task, "interrupts", None):
                 action = task.interrupts[0].value["action_requests"][0]
-                ctx = get_context_for_invoice(invoice['id'], get_current_user(authorization))
+                ctx = get_context_for_invoice(invoice['id'], caller.user())
                 interrupt = action_card(action, values, ctx, invoice)
                 break
     flags = deps.db.communication_flags(invoice['id'])
@@ -1174,24 +1024,24 @@ def trim_action_response(result: dict, before: int, include_history: bool) -> di
 
 
 @app.get("/api/invoices/{invoice_id}/summary")
-def get_conversation_summary(invoice_id: str, request: Request, authorization: str | None = Header(None)):
-    invoice = authorize_invoice_access(invoice_id, request, authorization)
-    return {**conversation_summary.read(invoice_id, deps.agent), **compact_conversation(invoice, authorization)}
+def get_conversation_summary(invoice_id: str, request: Request, caller: Caller = Depends(get_caller)):
+    invoice = caller.authorize(invoice_id)
+    return {**conversation_summary.read(invoice_id, deps.agent), **compact_conversation(invoice, caller)}
 
 
 @app.post("/api/invoices/{invoice_id}/summary")
 def refresh_conversation_summary(
     invoice_id: str, request: Request, response: Response,
     payload: SummaryRefreshRequest | None = Body(None),
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
     """Explicit invoice opening only; history reads and source writes never generate."""
-    invoice = authorize_invoice_access(invoice_id, request, authorization)
-    enforce_rate_limit(_client_key(request, authorization), "summary", SUMMARY_LIMIT_PER_MINUTE)
+    invoice = caller.authorize(invoice_id)
+    enforce_rate_limit(caller.rate_key(), "summary", SUMMARY_LIMIT_PER_MINUTE)
     result = conversation_summary.refresh(invoice_id, deps.agent)
     if result["status"] not in ("current", "empty"):
         response.status_code = 202
-    return {**result, **compact_conversation(invoice, authorization)}
+    return {**result, **compact_conversation(invoice, caller)}
 
 
 def history_summary_fields(invoice_id: str) -> dict:
@@ -1205,10 +1055,10 @@ def history_summary_fields(invoice_id: str) -> dict:
 def get_invoice_history(
     invoice_id: str,
     request: Request,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
     """Retrieve the full conversation history and state for an existing thread."""
-    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    invoice = caller.authorize(invoice_id)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
     # Reading must never lose a waiting approval card: any agent state write
     # empties it. With a card waiting, show the database values without
@@ -1234,7 +1084,7 @@ def get_invoice_history(
 
     # Check for pending interrupt
     interrupt_data = None
-    user = get_current_user(authorization)
+    user = caller.user()
     settled = (persisted_state or {}).get("status") == "paid"
     if snapshot.tasks and not settled:
         for task in snapshot.tasks:
@@ -1260,10 +1110,10 @@ def update_invoice_details_route(
     invoice_id: str,
     req: UpdateDetailsRequest,
     request: Request,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
     """Update client name and/or email in the agent state and DB."""
-    authorize_invoice_access(invoice_id, request, authorization)
+    caller.authorize(invoice_id)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
 
     updates = {}
@@ -1290,9 +1140,9 @@ def update_invoice_details_route(
 async def parse_invoice_upload(
     request: Request,
     file: UploadFile = File(...),
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
-    enforce_rate_limit(_client_key(request, authorization), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
+    enforce_rate_limit(caller.rate_key(), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
     try:
         file_type = validate_invoice_upload(file.filename or "", file.content_type)
     except ValueError as exc:
@@ -1328,10 +1178,10 @@ async def upload_invoice_and_create(
     response: Response,
     file: UploadFile = File(...),
     metadata: str = Form(...),
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
-    enforce_rate_limit(_client_key(request, authorization), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
-    user, user_id = resolve_user_id(request, response, authorization)
+    enforce_rate_limit(caller.rate_key(), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
+    user, user_id = caller.resolve()
     try:
         validate_invoice_upload(file.filename or "", file.content_type)
         req = InvoiceUploadMetadata(**json_lib.loads(metadata))
@@ -1392,14 +1242,14 @@ async def upload_generated_invoice_pdf(
     response: Response,
     file: UploadFile = File(...),
     invoice_id: str = Form(...),
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
     """Upload a generated PDF blob to Supabase Storage under generated/{user_id}/...
 
     Returns the storage path which the frontend then passes to POST /api/invoices/generated.
     """
-    enforce_rate_limit(_client_key(request, authorization), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
-    _user, user_id = resolve_user_id(request, response, authorization)
+    enforce_rate_limit(caller.rate_key(), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
+    _user, user_id = caller.resolve()
 
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
@@ -1429,15 +1279,15 @@ def create_generated_invoice(
     payload: GenerateInvoicePayload,
     request: Request,
     response: Response,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
     """Create an invoices row for a PDF already uploaded via /api/invoices/generated/upload.
 
     The chase agent is NOT started here (escalation_level=0). The invoice
     appears in /dashboard and the agent kicks in when the user opens chat.
     """
-    enforce_rate_limit(_client_key(request, authorization), "generated_invoice", PARSE_LIMIT_PER_MINUTE)
-    _user, user_id = resolve_user_id(request, response, authorization)
+    enforce_rate_limit(caller.rate_key(), "generated_invoice", PARSE_LIMIT_PER_MINUTE)
+    _user, user_id = caller.resolve()
 
     # Storage path ownership check.
     #
@@ -1509,9 +1359,9 @@ def pending_approval_action(invoice_id: str) -> str | None:
 def list_invoices(
     request: Request,
     response: Response,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
-    _user, user_id = resolve_user_id(request, response, authorization)
+    _user, user_id = caller.resolve()
     invoices = deps.db.get_invoices_by_user(user_id)
     # Aggregate metadata only; email bodies require an explicit history request.
     communications = deps.db.get_communication_overviews([inv["id"] for inv in invoices])
@@ -1534,9 +1384,9 @@ def create_invoice(
     req: InvoiceCreateRequest,
     request: Request,
     response: Response,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
-    user, user_id = resolve_user_id(request, response, authorization)
+    user, user_id = caller.resolve()
     return create_invoice_and_start_agent(req, user=user, user_id=user_id)
 
 
@@ -1544,11 +1394,11 @@ def create_invoice(
 def get_sender(
     invoice_id: str,
     request: Request,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
     """Get current sender details for an invoice."""
-    authorize_invoice_access(invoice_id, request, authorization)
-    user = get_current_user(authorization)
+    caller.authorize(invoice_id)
+    user = caller.user()
     ctx = get_context_for_invoice(invoice_id, user)
     return {
         "freelancer_name": ctx.freelancer_name,
@@ -1562,11 +1412,11 @@ def update_sender(
     invoice_id: str,
     req: UpdateSenderRequest,
     request: Request,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
     """Update sender/freelancer details for an invoice — persisted to DB."""
-    authorize_invoice_access(invoice_id, request, authorization)
-    user = get_current_user(authorization)
+    caller.authorize(invoice_id)
+    user = caller.user()
 
     # Build DB updates
     db_updates = {}
@@ -1646,11 +1496,11 @@ def prepare_chat_email(req, invoice, context, config, snapshot, intent, before, 
 
 
 @app.post("/api/chat")
-def chat(req: ChatRequest, request: Request, authorization: str | None = Header(None), include_history: bool = Query(True)):
-    enforce_rate_limit(_client_key(request, authorization), "chat", CHAT_LIMIT_PER_MINUTE)
+def chat(req: ChatRequest, request: Request, caller: Caller = Depends(get_caller), include_history: bool = Query(True)):
+    enforce_rate_limit(caller.rate_key(), "chat", CHAT_LIMIT_PER_MINUTE)
     # thread_id format is "invoice-{invoice_id}"
     inv_id = req.thread_id.removeprefix("invoice-")
-    invoice = authorize_invoice_access(inv_id, request, authorization)
+    invoice = caller.authorize(inv_id)
     before = prior_message_count({"configurable": {"thread_id": req.thread_id}}, include_history)
     config = {"configurable": {"thread_id": req.thread_id}}
     try:
@@ -1675,7 +1525,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
             "interrupt": None,
             "state": persisted_state or invoice_state_from_db(invoice),
         }
-    user = get_current_user(authorization)
+    user = caller.user()
     context = get_context_for_invoice(inv_id, user)
     context.suppress_email_drafts = intent is None and is_email_information(req.message)
     config = {"configurable": {"thread_id": req.thread_id}}
@@ -1731,15 +1581,15 @@ ESCALATION_LEVEL_NAMES = {1: "Friendly", 2: "Formal", 3: "Legal"}
 
 
 @app.post("/api/invoices/{invoice_id}/escalate")
-def escalate_invoice(invoice_id: str, request: Request, authorization: str | None = Header(None), include_history: bool = Query(True)):
+def escalate_invoice(invoice_id: str, request: Request, caller: Caller = Depends(get_caller), include_history: bool = Query(True)):
     """Move an invoice to the next escalation level, then ask the agent for a draft.
 
     Escalating is the user's decision, so the level changes here directly
     instead of depending on the model choosing to call its escalate tool.
     The new draft still waits for the user's approval like any other.
     """
-    enforce_rate_limit(_client_key(request, authorization), "chat", CHAT_LIMIT_PER_MINUTE)
-    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    enforce_rate_limit(caller.rate_key(), "chat", CHAT_LIMIT_PER_MINUTE)
+    invoice = caller.authorize(invoice_id)
     before = prior_message_count({"configurable": {"thread_id": f"invoice-{invoice_id}"}}, include_history)
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="This invoice is paid, so there's nothing to escalate.")
@@ -1754,7 +1604,7 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
     persisted_state = sync_agent_state_from_invoice(invoice_id, config)
 
-    user = get_current_user(authorization)
+    user = caller.user()
     context = get_context_for_invoice(invoice_id, user)
     public_id = parse_public_invoice_id(invoice_id)
     prompt = (
@@ -1793,13 +1643,13 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
 
 
 @app.post("/api/invoices/{invoice_id}/settle")
-def settle_invoice(invoice_id: str, request: Request, authorization: str | None = Header(None)):
+def settle_invoice(invoice_id: str, request: Request, caller: Caller = Depends(get_caller)):
     """Mark an invoice as settled: the agent stops all work on it.
 
     Settled uses the "paid" status, which chat, escalation, approvals and
     client replies all respect. A draft waiting for approval is dropped.
     """
-    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    invoice = caller.authorize(invoice_id)
     if invoice_service.settle(invoice_id, invoice.get("user_id")):
         sync_agent_state_from_invoice(invoice_id, {"configurable": {"thread_id": f"invoice-{invoice_id}"}})
     updated = deps.db.get_invoice(invoice_id)
@@ -1973,14 +1823,14 @@ def invoice_traces(
     request: Request,
     limit: int = Query(20, ge=1, le=TRACE_RUNS_MAX_LIMIT),
     before: datetime | None = Query(None, description="started_at cursor from next_before"),
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
 ):
     """The invoice's agent runs, newest first, each with its steps in order.
 
     Access goes through the invoice: a run is visible to whoever owns the
     invoice now, which also covers a guest who has since signed in.
     """
-    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    invoice = caller.authorize(invoice_id)
     runs = deps.db.list_agent_runs(invoice["id"], limit=limit, before=before.isoformat() if before else None)
     steps = deps.db.get_trace_steps([run["id"] for run in runs])
     for run in runs:
@@ -1994,15 +1844,15 @@ def resume(
     invoice_id: str,
     req: ResumeRequest,
     request: Request,
-    authorization: str | None = Header(None),
+    caller: Caller = Depends(get_caller),
     include_history: bool = Query(True),
 ):
-    invoice = authorize_invoice_access(invoice_id, request, authorization)
+    invoice = caller.authorize(invoice_id)
     if invoice.get("status") == "paid":
         raise HTTPException(status_code=400, detail="This invoice is settled, so nothing will be sent.")
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
     before = prior_message_count(config, include_history)
-    user = get_current_user(authorization)
+    user = caller.user()
     context = get_context_for_invoice(invoice_id, user)
     # Read the pending draft BEFORE syncing state from the DB. LangGraph's
     # update_state() keeps a pending task but empties its interrupts (resume

@@ -67,7 +67,7 @@ def sent(monkeypatch):
 def signed_in(fake_db, user_id="user-1"):
     import api.index as api_index
     fake_db.users[user_id] = {"id": user_id, "email": "owner@example.com", "name": "Owner"}
-    return {"Authorization": f"Bearer {api_index.create_jwt(user_id, 'owner@example.com')}"}
+    return {"Authorization": f"Bearer {api_index.identity.create_jwt(user_id, 'owner@example.com')}"}
 
 
 async def create_invoice(client, headers=None, invoice_id="INV-SEND-1"):

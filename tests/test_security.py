@@ -78,23 +78,23 @@ async def test_signed_guest_session_keeps_working(client, fake_db):
 
 def test_unsigned_or_tampered_guest_cookies_are_rejected():
     import api.index as api_index
-    good = api_index._sign_guest_id("guest-" + "a" * 32)
-    assert api_index._guest_id_from_cookie(good) == "guest-" + "a" * 32
-    assert api_index._guest_id_from_cookie("guest-" + "a" * 32) is None           # unsigned (legacy)
-    assert api_index._guest_id_from_cookie(good[:-1] + ("0" if good[-1] != "0" else "1")) is None  # tampered
-    assert api_index._guest_id_from_cookie("guest-" + "b" * 32 + good[good.index("."):]) is None  # signature from another id
-    assert api_index._guest_id_from_cookie(None) is None
+    good = api_index.identity.sign_guest_id("guest-" + "a" * 32)
+    assert api_index.identity.guest_id_from_cookie(good) == "guest-" + "a" * 32
+    assert api_index.identity.guest_id_from_cookie("guest-" + "a" * 32) is None           # unsigned (legacy)
+    assert api_index.identity.guest_id_from_cookie(good[:-1] + ("0" if good[-1] != "0" else "1")) is None  # tampered
+    assert api_index.identity.guest_id_from_cookie("guest-" + "b" * 32 + good[good.index("."):]) is None  # signature from another id
+    assert api_index.identity.guest_id_from_cookie(None) is None
 
 
 # ─── Secret key ──────────────────────────────────────────────────────────────
 
 def test_default_secret_key_is_refused_in_production():
     """Attack: if SECRET_KEY falls back to the public default, anyone can forge login tokens."""
-    import api.index as api_index
+    from web.identity import assert_secret_configured
     with pytest.raises(RuntimeError):
-        api_index.assert_secret_configured("dev-secret-key-change-in-production", {"VERCEL": "1"})
-    api_index.assert_secret_configured("dev-secret-key-change-in-production", {})  # local dev is fine
-    api_index.assert_secret_configured("a-real-secret", {"VERCEL": "1"})
+        assert_secret_configured("dev-secret-key-change-in-production", {"VERCEL": "1"})
+    assert_secret_configured("dev-secret-key-change-in-production", {})  # local dev is fine
+    assert_secret_configured("a-real-secret", {"VERCEL": "1"})
 
 
 # ─── Inbound email abuse ─────────────────────────────────────────────────────
