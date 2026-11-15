@@ -267,3 +267,16 @@ def test_guard_still_blocks_off_topic_questions(message, monkeypatch):
     import api.index as api_index
     monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda _uid: []))
     assert not api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
+
+
+@pytest.mark.parametrize("message,lookups", [
+    ("yes", 0),                                     # short reply
+    ("what is the status of this one?", 0),         # invoice keyword
+    ("what happened with northwind lately?", 1),    # only a lookup can tell
+])
+def test_guard_reads_the_owners_invoices_only_when_it_must(message, lookups, monkeypatch):
+    import api.index as api_index
+    calls = []
+    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda uid: calls.append(uid) or []))
+    api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
+    assert len(calls) == lookups

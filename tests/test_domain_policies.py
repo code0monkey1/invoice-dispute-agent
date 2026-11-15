@@ -46,3 +46,19 @@ def test_chat_guard_accepts_short_replies_keywords_and_known_invoice_facts():
     assert is_invoice_chat_message("make the reminder firmer", current)
     assert is_invoice_chat_message("What happened with Northwind?", current, [other])
     assert not is_invoice_chat_message("Who won the football match last night?", current, [other])
+
+
+def test_chat_guard_loads_other_invoices_only_when_the_quick_checks_fail():
+    """Short replies and invoice words need no lookup; only unclear text pays for one."""
+    current = {"id": "owner__inv__SU5WLTE", "client_name": "Acme", "client_email": "ap@acme.example"}
+    loads = []
+
+    def load_others():
+        loads.append(1)
+        return [{"id": "owner__inv__SU5WLTk5", "client_name": "Northwind", "client_email": ""}]
+
+    assert is_invoice_chat_message("yes", current, load_others)
+    assert is_invoice_chat_message("make the reminder firmer", current, load_others)
+    assert loads == []
+    assert is_invoice_chat_message("What happened with Northwind?", current, load_others)
+    assert loads == [1]

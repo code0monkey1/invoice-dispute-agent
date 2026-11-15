@@ -96,7 +96,7 @@ init_db()
 
 from web.app import (  # noqa: E402  (after env and database setup above)
     AI_UNAVAILABLE_DETAIL, DATABASE_UNAVAILABLE_DETAIL, UNEXPECTED_ERROR_DETAIL,
-    Deps, SafeJSONResponse, _json_safe, create_app,
+    Deps, Live, SafeJSONResponse, _json_safe, create_app,
 )
 from web.routers.health import create_health_router
 from web.routers.traces import create_traces_router
@@ -106,6 +106,7 @@ deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, gmail_
             fetch_inbound_email=fetch_received_email, db=db_module)
 deps.agent_session = LangGraphAgentSession(lambda: deps.agent)
 identity = Identity(SECRET_KEY, store=lambda: deps.db)
+live_db = Live(lambda: deps.db)  # use cases built here still see a database swapped later
 app = create_app(deps, identity)
 app.include_router(create_health_router(
     checkpointer_status=lambda: agent_module.checkpointer_status,
@@ -113,8 +114,8 @@ app.include_router(create_health_router(
     langsmith_status=langsmith_status,
 ))
 app.include_router(create_accounts_router(
-    auth=AuthUseCases(deps.db, gmail_tokens=lambda user_id: deps.gmail_tokens(user_id)),
-    sender_profiles=SenderProfileUseCases(deps.db),
+    auth=AuthUseCases(live_db, gmail_tokens=lambda user_id: deps.gmail_tokens(user_id)),
+    sender_profiles=SenderProfileUseCases(live_db),
     identity=identity,
     caller_dependency=get_caller,
     client_id=GOOGLE_CLIENT_ID,
@@ -617,12 +618,13 @@ def present_invoice(invoice: dict | None) -> dict | None:
 # --- JWT Helpers ---
 
 def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -> bool:
-    """Load the owner's other invoices, then apply the framework-free chat policy."""
-    try:
-        other_invoices = deps.db.get_invoices_by_user(user_id)
-    except Exception:
-        logger.exception("Failed to load invoices for chat guard")
-        other_invoices = []
+    """The framework-free chat policy, loading the owner's other invoices only if it needs them."""
+    def other_invoices() -> list:
+        try:
+            return deps.db.get_invoices_by_user(user_id)
+        except Exception:
+            logger.exception("Failed to load invoices for chat guard")
+            return []
     return invoice_chat_policy(message, current_invoice, other_invoices)
 
 
