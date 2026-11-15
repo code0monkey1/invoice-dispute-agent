@@ -26,11 +26,11 @@ from langgraph.types import Command
 import logging
 from datetime import datetime, timezone
 from web.schemas import (  # noqa: E402
-    ChatRequest, GenerateInvoicePayload, GoogleCallbackRequest, InvoiceCreateRequest, InvoiceUploadMetadata,
-    ResumeRequest, SenderProfilePayload, SummaryRefreshRequest, UpdateDetailsRequest, UpdateSenderRequest,
+    ChatRequest, GenerateInvoicePayload, InvoiceCreateRequest, InvoiceUploadMetadata,
+    ResumeRequest, SummaryRefreshRequest, UpdateDetailsRequest, UpdateSenderRequest,
 )
 from web.identity import (
-    DEFAULT_SECRET_KEY, GUEST_COOKIE_NAME, Caller, Identity, assert_secret_configured, get_caller,
+    DEFAULT_SECRET_KEY, Caller, Identity, assert_secret_configured, get_caller,
 )
 import json as json_lib
 import re
@@ -40,7 +40,6 @@ from difflib import SequenceMatcher
 import time
 import uuid
 from email.utils import parseaddr
-import urllib.error
 from google_auth_oauthlib.flow import Flow
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
@@ -59,6 +58,8 @@ from src.domain.chat import is_invoice_chat_message as invoice_chat_policy
 from src.domain.communication import was_sent_recently
 from src.domain.invoice import escalation_name, next_escalation_level
 from src.adapters.agent_session import LangGraphAgentSession
+from src.usecases.auth import AuthUseCases
+from src.usecases.sender_profile import SenderProfileUseCases
 from src import db as db_module
 from src.db import (
     TRACE_RUNS_MAX_LIMIT, DatabaseUnavailable, InvoiceAlreadyExists, init_db, get_user_gmail_tokens,
@@ -99,6 +100,7 @@ from web.app import (  # noqa: E402  (after env and database setup above)
 )
 from web.routers.health import create_health_router
 from web.routers.traces import create_traces_router
+from web.routers.accounts import create_accounts_router
 
 deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, gmail_client=GmailService,
             fetch_inbound_email=fetch_received_email, db=db_module)
@@ -109,6 +111,18 @@ app.include_router(create_health_router(
     checkpointer_status=lambda: agent_module.checkpointer_status,
     trace_stats=tracer.stats,
     langsmith_status=langsmith_status,
+))
+app.include_router(create_accounts_router(
+    auth=AuthUseCases(deps.db, gmail_tokens=lambda user_id: deps.gmail_tokens(user_id)),
+    sender_profiles=SenderProfileUseCases(deps.db),
+    identity=identity,
+    caller_dependency=get_caller,
+    client_id=GOOGLE_CLIENT_ID,
+    client_secret=GOOGLE_CLIENT_SECRET,
+    redirect_uri=GOOGLE_REDIRECT_URI,
+    sign_in_scopes=SIGN_IN_SCOPES,
+    gmail_scopes=SCOPES,
+    gmail_send_scope=GMAIL_SEND_SCOPE,
 ))
 
 
@@ -612,201 +626,7 @@ def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -
     return invoice_chat_policy(message, current_invoice, other_invoices)
 
 
-def _parse_google_http_error(exc: urllib.error.HTTPError) -> tuple[str, str]:
-    """Return (error_code, user_message) for Google OAuth/userinfo failures."""
-    raw_body = exc.read().decode("utf-8", errors="replace")
-    error_code = f"http_{exc.code}"
-    message = raw_body or str(exc)
-
-    try:
-        payload = json_lib.loads(raw_body) if raw_body else {}
-        error_code = payload.get("error") or error_code
-        message = payload.get("error_description") or payload.get("error") or message
-    except Exception:
-        pass
-
-    logger.error("Google OAuth HTTP error %s: %s", error_code, raw_body or str(exc))
-    return error_code, message
-
-
 # --- Routes ---
-
-
-def _google_auth_url(scopes: list[str], **extra: str) -> str:
-    """Build a Google OAuth URL manually (no PKCE)."""
-    import urllib.parse
-    if not GOOGLE_CLIENT_ID or not GOOGLE_REDIRECT_URI:
-        raise HTTPException(status_code=500, detail="Google OAuth is not configured on the server.")
-    params = {
-        "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "response_type": "code",
-        "scope": " ".join(scopes),
-        "include_granted_scopes": "true",
-        **extra,
-    }
-    return f"https://accounts.google.com/o/oauth2/auth?{urllib.parse.urlencode(params)}"
-
-
-@app.get("/api/auth/google/url")
-def google_auth_url():
-    """Sign-in link: basic profile access only, so Google shows no warning."""
-    return {"url": _google_auth_url(SIGN_IN_SCOPES, access_type="online", prompt="select_account")}
-
-
-@app.get("/api/auth/gmail/connect-url")
-def gmail_connect_url(caller: Caller = Depends(get_caller)):
-    """Connect Gmail link: adds send-only access for a signed-in user.
-
-    Offline access with consent so Google returns a refresh token we can keep.
-    """
-    user = caller.user()
-    if not user:
-        raise HTTPException(status_code=401, detail="Sign in before connecting Gmail.")
-    url = _google_auth_url(
-        SCOPES,
-        access_type="offline",
-        prompt="consent",
-        login_hint=user.get("email") or "",
-        state="connect_gmail",
-    )
-    return {"url": url}
-
-
-@app.post("/api/auth/google/callback")
-def google_callback(req: GoogleCallbackRequest, request: Request, response: Response):
-    import urllib.request
-    import urllib.parse
-
-    if not GOOGLE_CLIENT_ID or not GOOGLE_CLIENT_SECRET or not GOOGLE_REDIRECT_URI:
-        raise HTTPException(status_code=500, detail="Google OAuth is not fully configured on the server.")
-
-    # Exchange auth code for tokens directly (bypass Flow PKCE issues)
-    token_data = urllib.parse.urlencode({
-        "code": req.code,
-        "client_id": GOOGLE_CLIENT_ID,
-        "client_secret": GOOGLE_CLIENT_SECRET,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "grant_type": "authorization_code",
-    }).encode()
-    token_req = urllib.request.Request(
-        "https://oauth2.googleapis.com/token",
-        data=token_data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
-    )
-    try:
-        with urllib.request.urlopen(token_req) as resp:
-            token_response = json_lib.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        error_code, message = _parse_google_http_error(exc)
-        raise HTTPException(status_code=400, detail=f"Google sign-in failed ({error_code}): {message}") from exc
-
-    access_token = token_response["access_token"]
-    refresh_token = token_response.get("refresh_token", "")
-    # Only a Connect Gmail consent grants send access; a plain sign-in must
-    # not overwrite a Gmail connection the user already made.
-    send_granted = GMAIL_SEND_SCOPE in (token_response.get("scope") or "").split()
-
-    # Get user info from Google
-    user_info_req = urllib.request.Request(
-        "https://www.googleapis.com/oauth2/v2/userinfo",
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
-    try:
-        with urllib.request.urlopen(user_info_req) as resp:
-            user_info = json_lib.loads(resp.read())
-    except urllib.error.HTTPError as exc:
-        error_code, message = _parse_google_http_error(exc)
-        raise HTTPException(status_code=400, detail=f"Google profile lookup failed ({error_code}): {message}") from exc
-
-    user_id = user_info["id"]
-    email = user_info["email"]
-    name = user_info.get("name", "")
-    picture = user_info.get("picture", "")
-
-    try:
-        deps.db.upsert_user(
-            user_id=user_id, email=email, name=name, picture=picture,
-            access_token=access_token if send_granted and refresh_token else None,
-            refresh_token=refresh_token if send_granted and refresh_token else None,
-        )
-    except Exception as exc:
-        logger.exception("Failed to persist Google user %s", email)
-        raise HTTPException(status_code=500, detail="Google sign-in succeeded, but saving the user failed.") from exc
-
-    # Promote any anonymous guest data created in this browser to the real user.
-    guest_id = identity.guest_id_from_cookie(request.cookies.get(GUEST_COOKIE_NAME))
-    if guest_id and guest_id != user_id:
-        try:
-            deps.db.migrate_guest_to_user(guest_id, user_id)
-        except Exception:
-            logger.exception("Failed to migrate guest %s -> %s", guest_id, user_id)
-        response.delete_cookie(GUEST_COOKIE_NAME, path="/")
-
-    token = identity.create_jwt(user_id, email)
-    return {
-        "token": token,
-        "user": {
-            "id": user_id, "email": email, "name": name, "picture": picture,
-            "gmail_connected": deps.gmail_tokens(user_id) is not None,
-        },
-    }
-
-
-@app.get("/api/auth/me")
-def get_me_route(caller: Caller = Depends(get_caller)):
-    user = caller.user()
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return {
-        "user": {
-            "id": user["id"], "email": user["email"],
-            "name": user.get("name", ""), "picture": user.get("picture", ""),
-            "gmail_connected": deps.gmail_tokens(user["id"]) is not None,
-        }
-    }
-
-
-# ─── Sender profile (Invoice Generator) ──────────────────────────────────────
-
-
-_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
-
-
-@app.get("/api/users/me/sender-profile")
-def get_sender_profile_route(
-    request: Request,
-    response: Response,
-    caller: Caller = Depends(get_caller),
-):
-    _user, user_id = caller.resolve()
-    user = deps.db.get_user(user_id) or {}
-    return user.get("sender_profile") or {}
-
-
-@app.patch("/api/users/me/sender-profile")
-def patch_sender_profile_route(
-    payload: SenderProfilePayload,
-    request: Request,
-    response: Response,
-    caller: Caller = Depends(get_caller),
-):
-    _user, user_id = caller.resolve()
-
-    incoming = payload.model_dump(exclude_unset=True)
-    if "your_email" in incoming and incoming["your_email"]:
-        if not _EMAIL_RE.match(incoming["your_email"]):
-            raise HTTPException(status_code=422, detail="Invalid email format")
-
-    if "logo_url" in incoming and incoming["logo_url"]:
-        import urllib.parse
-        parsed = urllib.parse.urlparse(incoming["logo_url"])
-        if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            raise HTTPException(status_code=422, detail="logo_url must be an http(s) URL")
-
-    existing = (deps.db.get_user(user_id) or {}).get("sender_profile") or {}
-    merged = {**existing, **incoming}
-    return deps.db.update_user_sender_profile(user_id, merged)
 
 
 def compact_conversation(invoice: dict, caller: Caller) -> dict:
