@@ -22,18 +22,34 @@ Read this first if you are a new session continuing the work. Update the "State"
 
 ## State
 
-- Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`.
+- Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`. Nothing pushed; no pull request.
 - Baseline before any change: backend 761 passed, 13 skipped; frontend 178 passed, 6 skipped.
-- Done: task groups 1 (regression net), 2 (injection seam), 3 (domain policy) and 4 (ports/adapters). Backend is 908 passed, 13 skipped; frontend is 178 passed, 6 skipped. `api/index.py` is 1,933 lines (from 2,388).
-- What group 2 left in place:
-  - `web/app.py`: `create_app(deps, identity)` and the `Deps` container. Fields: `agent`, `agent_session`, `run_agent`, `send_email`, `gmail_tokens`, `gmail_client`, `fetch_inbound_email`, `db`. Code reads them at call time.
-  - `web/identity.py`: `Identity` (tokens, guest cookies, ownership) and the lazy `Caller`, which routes get with `Depends(get_caller)`.
-  - `web/schemas.py`: the ten request models.
-  - Tests replace collaborators with `monkeypatch.setattr(api_index.deps, ...)`, and single members with `tests.fakes.Overrides`. `tests/test_architecture.py` fails on any patch of `api.index` itself.
-- Group 3 moved invoice rules, all email wording, escalation sequencing, duplicate-send detection and the chat-topic guard into `src/domain/`; the architecture test now explicitly permits only stdlib and other domain imports there.
-- Group 4 added application ports, moved Supabase to `src/adapters/supabase/`, injected Gmail token persistence and tracing storage, and centralized LangGraph checkpoint/interrupt access in `src/adapters/agent_session.py`. Adapters may not import other adapters.
-- Next: task 5.1 (extract health and traces to `web/routers/`).
-- Nothing has been pushed and no pull request is open.
+- Now: backend 951 passed, 13 skipped; frontend 178 passed, 6 skipped. `api/index.py` is 1,325 lines (from 2,388).
+- Done: groups 1-4, and 5.1-5.3. Last commit of 5.3: `7838130`.
+- Next: 5.4 (summary and history), then 5.5 escalate and chat, 5.6 inbound reply, 5.7 approve/resume, 5.8.
+- Not yet run: the live eval (`python -m evals.run`) for groups 3-4. It changed what the draft tools return to the model (now the sent-email text) and the agent wiring. Ask the user first which Groq key to use (see "Live eval" below).
+
+### Layout so far
+
+- `src/domain/`: invoice rules, email templates, chat-topic guard, duplicate-send window. Standard library only.
+- `src/ports.py`: the Protocols. `src/adapters/supabase/` (the whole former `db.py`; `src/db.py` aliases it in `sys.modules` until 5.8), `src/adapters/agent_session.py` (thread config, interrupt walk, read-before-sync).
+- `src/usecases/`: `auth.py`, `sender_profile.py`, `invoices.py`. They depend on ports only; `src/services/invoice_service.py` still holds `apply_approved_outcome` and `set_escalation_level` until 5.5/5.7.
+- `web/`: `app.py` (factory, `Deps`, `Live`), `identity.py`, `schemas.py`, `routers/` (health, traces, accounts, invoices).
+
+### How use cases are wired
+
+- Build them in `api/index.py` with `Live(lambda: deps.db)` / `Live(lambda: deps.agent_session)`, never with `deps.db` itself: a use case built at import must see a database a test swaps later (`tests/test_wiring.py`).
+- Routers get the app's helpers as arguments and keep the original handler names and docstrings: `tests/test_openapi_contract.py` compares the schema with `tests/contract/openapi.json`.
+
+### Review of the other session's commits (`086e343`..`46846ca`)
+
+Ten commits were made by a different tool between this file's previous update and now. Reviewed against the original code on 2026-11-15; fixed with tests:
+- `d5f6e3f`: the chat guard loaded all the owner's invoices before its quick checks (an extra database read per chat message).
+- `86fcd5e`: history skipped the sync only for well-formed approval interrupts; it used to skip it for any interrupt.
+- `3213fac`: the account use cases held the import-time `deps.db`.
+- `a42c2b5`: five renamed handlers and three dropped docstrings changed the OpenAPI schema.
+- `7838130`: its unwired 5.3 draft had five differences from the original handlers (listed in that commit).
+Accepted as-is: `src/db.py` was moved whole, not split, into one adapter module; chat now always uses the `invoice-{id}` thread (only an unprefixed thread id behaves differently, and it now reaches the invoice's real conversation).
 
 ## Things learned that the tasks do not say
 
@@ -46,4 +62,5 @@ Read this first if you are a new session continuing the work. Update the "State"
 - **Already covered, no new tests needed:** the chat email preflight (`tests/test_email_card_routing.py`), the chat topic guard (`tests/test_invoice_delivery_chat.py`), the top escalation level (`tests/test_escalate_invoice.py`).
 - **Possibly stale docs:** `CLAUDE.md` describes a Gmail push webhook and Telegram routes; `api/index.py` has neither. Check the rest of the repo in task 7.2.
 - **Dead code to remove in group 5 or 7:** the second `/api/health` (shadowed, never reached), unused imports in `api/index.py` (`Flow`, `id_token`, `google_requests`, `StaticFiles`, `update_user_history_id`, `get_user_by_email`), and `build_initial_invoice_message` once a search confirms no caller.
-- **Live eval** (`python -m evals.run`) is due after groups 3 and 5, because templates and tools move. It uses the Groq API and is rate-limited.
+- **Live eval** (`python -m evals.run`) is due after groups 3 and 5, because templates and tools move. Never run it with production's Groq key or organisation: that once used up production's daily quota (user's memory note `agent-evals-setup`). Use `--pace 8`, `DATABASE_URL=`, a fake `SUPABASE_URL`, and `--out-dir` in the scratchpad with `--baseline evals/results/baseline.json`, so the user's uncommitted `evals/results/latest.*` aren't overwritten.
+- **Review another tool's commits before building on them.** Tests passing wasn't enough: of the regressions above, only the draft's would have failed a test. Compare each moved function with the original (AST-normalised diff) and check what a use case captures at import.
