@@ -105,8 +105,8 @@ from web.app import (  # noqa: E402  (after env and database setup above)
     Deps, SafeJSONResponse, _json_safe, create_app,
 )
 
-deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, fetch_inbound_email=fetch_received_email,
-            db=db_module)
+deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, gmail_client=GmailService,
+            fetch_inbound_email=fetch_received_email, db=db_module)
 app = create_app(deps)
 
 
@@ -534,7 +534,7 @@ def send_email_via_gmail(
         logger.warning(f"No Gmail tokens for user {user_id} — skipping email send")
         return None
     try:
-        gmail = GmailService(user_id, tokens[0], tokens[1])
+        gmail = deps.gmail_client(user_id, tokens[0], tokens[1])
         result = gmail.send_email(to_email, subject, body, thread_id, attachments=attachments, reply_to=reply_to)
         logger.info(f"Email sent via Gmail: {result}")
         return result

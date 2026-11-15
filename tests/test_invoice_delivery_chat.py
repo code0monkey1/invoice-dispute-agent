@@ -211,7 +211,7 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
             })
             return {"id": "msg-1", "threadId": "thread-1"}
 
-    monkeypatch.setattr(api_index, "GmailService", FakeGmailService)
+    monkeypatch.setattr(api_index.deps, "gmail_client", FakeGmailService)
 
     response = await client.post(
         f"/api/invoices/{storage_id}/resume",
