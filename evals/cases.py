@@ -7,6 +7,7 @@ fails loading instead.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,10 @@ TOOL_NAMES = {
 }
 RUBRICS = {"delivery", "friendly", "formal", "final", "advice"}
 MENTION_KEYS = {"invoice_id", "client_name", "balance", "amount", "jurisdiction"}
+EMAIL_DRAFT_TOOLS = {
+    "draft_invoice_delivery_email", "draft_polite_reminder",
+    "draft_formal_demand_letter", "draft_final_notice",
+}
 
 # Unset expectations are distinguished from "expect no interrupt" (None).
 UNSET = object()
@@ -66,6 +71,8 @@ class Case:
     scripted: list[dict]
     invoice: dict
     source: str
+    history: list[dict] = field(default_factory=list)
+    prior_deliveries: list[dict] = field(default_factory=list)
 
     @property
     def invoice_number(self) -> str:
@@ -80,6 +87,34 @@ def _names(case_id: str, key: str, value: Any) -> list[str]:
     return names
 
 
+def _prior_fixtures(raw: dict, case_id: str, turn: dict) -> tuple[list[dict], list[dict]]:
+    """Accept only sanitized text history and successful email records we can replay."""
+    history = raw.get("history", [])
+    deliveries = raw.get("prior_deliveries", [])
+    for key, value in (("history", history), ("prior_deliveries", deliveries)):
+        if not isinstance(value, list):
+            raise CaseError(f"case {case_id}: {key} must be a list")
+    if (history or deliveries) and ("chat" not in turn or "client_reply" in turn):
+        raise CaseError(f"case {case_id}: prior fixtures require an owner chat turn")
+    for entry in history:
+        if (not isinstance(entry, dict) or set(entry) != {"role", "content"}
+                or entry["role"] not in ("user", "assistant")
+                or not isinstance(entry["content"], str) or not entry["content"].strip()):
+            raise CaseError(f"case {case_id}: history entries need role user|assistant and nonempty content only")
+    for entry in deliveries:
+        if (not isinstance(entry, dict) or set(entry) != {"tool", "subject", "content", "timestamp"}
+                or any(not isinstance(entry[key], str) or not entry[key].strip() for key in entry)
+                or entry["tool"] not in EMAIL_DRAFT_TOOLS):
+            raise CaseError(f"case {case_id}: prior_deliveries need an email draft tool, subject, content and timestamp only")
+        try:
+            timestamp = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+            if timestamp.utcoffset() is None:
+                raise ValueError("timezone required")
+        except ValueError as exc:
+            raise CaseError(f"case {case_id}: prior_deliveries timestamp must be ISO 8601 with a timezone") from exc
+    return [dict(entry) for entry in history], [dict(entry) for entry in deliveries]
+
+
 def _parse_case(raw: dict, level: int, source: str) -> Case:
     case_id = raw.get("id")
     if not case_id:
@@ -87,6 +122,7 @@ def _parse_case(raw: dict, level: int, source: str) -> Case:
     turn = raw.get("turn")
     if not isinstance(turn, dict) or not ({"chat", "client_reply"} & set(turn)):
         raise CaseError(f"case {case_id}: turn must have 'chat' or 'client_reply'")
+    history, prior_deliveries = _prior_fixtures(raw, case_id, turn)
 
     exp = raw.get("expect") or {}
     tone_raw = exp.get("tone") or {}
@@ -119,6 +155,7 @@ def _parse_case(raw: dict, level: int, source: str) -> Case:
     return Case(
         id=case_id, level=level, description=raw.get("description", ""), turn=turn,
         expect=expect, scripted=scripted, invoice=invoice, source=source,
+        history=history, prior_deliveries=prior_deliveries,
     )
 
 

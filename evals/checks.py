@@ -17,7 +17,7 @@ from typing import Any, Callable
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from evals.cases import UNSET, Case, Expect
+from evals.cases import EMAIL_DRAFT_TOOLS, UNSET, Case, Expect
 from src.agent import APPROVAL_REQUIRED
 
 APPROVING_DECISIONS = ("approve", "approved_with_edits")
@@ -36,6 +36,10 @@ class CaseResult:
     level: int
     tool_violations: list[str] = field(default_factory=list)
     hitl_violations: list[str] = field(default_factory=list)
+    card_violations: list[str] = field(default_factory=list)
+    expected_email_tool: str | None = None
+    actual_interrupt_tool: str | None = None
+    pre_approval_outbox_count: int | None = None
     rule_violations: list[str] = field(default_factory=list)
     judge_score: int | None = None
     judge_reasons: str | None = None
@@ -60,14 +64,19 @@ class CaseResult:
         return not self.rule_violations
 
     @property
+    def card_ok(self) -> bool:
+        return not self.card_violations and not (self.expected_email_tool and self.error)
+
+    @property
     def passed(self) -> bool:
         judge_ok = self.judge_error is None and (self.judge_score is None or self.judge_score >= 3)
-        return self.tools_ok and self.hitl_ok and self.rules_ok and judge_ok
+        return self.tools_ok and self.hitl_ok and self.card_ok and self.rules_ok and judge_ok
 
     def failures(self) -> list[str]:
         out = [f"error: {self.error}"] if self.error else []
         out += [f"tools: {v}" for v in self.tool_violations]
         out += [f"approval: {v}" for v in self.hitl_violations]
+        out += [f"card: {v}" for v in self.card_violations]
         out += [f"tone rule: {v}" for v in self.rule_violations]
         if self.judge_error:
             out.append(f"judge: {self.judge_error}")
@@ -217,7 +226,17 @@ def _invoice_facts(case: Case) -> dict:
 def evaluate(case: Case, run: Any, judge_model: Any = None) -> CaseResult:
     """Grade one case run. The judge only runs when a model is given (tier 2)."""
     result = CaseResult(case_id=case.id, level=case.level, error=run.error)
-    result.tool_violations = check_tools(case.expect, attempted_tools(run.runs), (run.interrupt or {}).get("tool"))
+    result.actual_interrupt_tool = (run.interrupt or {}).get("tool")
+    result.pre_approval_outbox_count = getattr(run, "pre_approval_outbox_count", None)
+    if case.expect.interrupt_tool in EMAIL_DRAFT_TOOLS:
+        result.expected_email_tool = case.expect.interrupt_tool
+        if run.error:
+            result.card_violations.append(f"email card preparation failed: {run.error}")
+        if result.actual_interrupt_tool != result.expected_email_tool:
+            result.card_violations.append(f"expected email card {result.expected_email_tool}, got {result.actual_interrupt_tool or 'none'}")
+        if type(result.pre_approval_outbox_count) is not int or result.pre_approval_outbox_count != 0:
+            result.card_violations.append(f"email card requires zero pre-approval deliveries, got {result.pre_approval_outbox_count!r}")
+    result.tool_violations = check_tools(case.expect, attempted_tools(run.runs), result.actual_interrupt_tool)
     result.hitl_violations = check_hitl_invariant(run.runs, run.outbox)
     text = run.draft_text or run.reply_text
     result.rule_violations = check_tone_rules(text, case.expect.tone, _invoice_facts(case))

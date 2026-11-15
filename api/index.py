@@ -46,9 +46,12 @@ from src.agent import agent
 from src.observability import tracer
 from src.observability.tracer import RunRecorder, langsmith_config, langsmith_status, note_run_outcome, trace_run
 from src.state import FreelancerContext
-from src.tools.drafting import fill_draft_from_context
+from src.email_drafts import DRAFT_LABELS, DraftPreparationError, is_email_information, resolve_email_request
+from src.middleware.dynamic_tools import tools_for_level
+from src.tools.drafting import invoice_delivery_draft
 from src.db import (
     TRACE_RUNS_MAX_LIMIT, get_trace_steps, list_agent_runs,
+    get_last_outbound_delivery,
     get_communications_for, get_summary_communications, communication_flags, get_communication_overviews,
     DatabaseUnavailable,
     InvoiceAlreadyExists,
@@ -524,20 +527,7 @@ def generate_draft_preview(
         jurisdiction = state.get("jurisdiction", "")
 
         if tool_name == "draft_invoice_delivery_email":
-            subject = str(action_args.get("subject") or f"Invoice #{invoice_id} from {context.business_name}").strip()
-            body = str(action_args.get("body") or "").strip()
-            if not body:
-                body = (
-                    f"Hi {client_name},\n\n"
-                    f"Please find Invoice #{invoice_id} attached for ${invoice_amount:,.2f}. "
-                    f"The remaining balance due is ${balance_due:,.2f}.\n\n"
-                    f"Please review it when you have a chance and let me know if you have any questions.\n\n"
-                    f"Best regards,\n"
-                    f"{context.freelancer_name}\n"
-                    f"{context.business_name}\n"
-                    f"{context.freelancer_email}"
-                )
-            return fill_draft_from_context(f"Subject: {subject}\n\n{body}", state, context)
+            return invoice_delivery_draft(state, context)
         if tool_name == "draft_polite_reminder":
             return (
                 f"Subject: Friendly Reminder - Invoice #{invoice_id} Payment\n\n"
@@ -744,41 +734,52 @@ def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> Freela
     return FreelancerContext(user_id=owner_id, invoice_context_summary=invoice_context_summary)
 
 
-def extract_interrupt(response, ctx: FreelancerContext | None = None):
+def action_card(action, state, ctx, invoice=None):
+    """One preview contract for chat, compact reads and explicit history."""
+    state = {**state, **(invoice_state_from_db(invoice) if invoice else {})}
+    tool = action['name']
+    card = {'tool':tool, 'args':action.get('args', {}),
+            'description':generate_draft_preview(tool, state, ctx, action.get('args', {})) or action.get('description', '')}
+    if invoice and tool in DRAFT_LABELS:
+        notes = []
+        try:
+            last = get_last_outbound_delivery(invoice['id'], DRAFT_LABELS[tool])
+            if last:
+                notes.append(f"A {DRAFT_LABELS[tool]} was previously sent on {last.get('timestamp') or 'a recorded earlier date'}. Sending another requires your approval.")
+        except Exception:
+            logger.warning('Previous email delivery could not be checked')
+            notes.append('Previous delivery could not be checked. Review the conversation before sending again.')
+        notes.append(attachment_note(invoice, tool))
+        card['notes'] = notes
+    return card
+
+
+def attachment_note(invoice, tool):
+    if not invoice.get('invoice_file_path'):
+        return 'No invoice file is uploaded. This email has no invoice attachment.'
+    if tool != 'draft_invoice_delivery_email':
+        return 'The uploaded invoice is not attached to this email type.'
+    return f"Invoice attachment: {safe_filename(invoice.get('invoice_file_name') or 'invoice.pdf')}."
+
+
+def pending_action(snapshot):
+    for task in getattr(snapshot, 'tasks', None) or []:
+        for intr in getattr(task, 'interrupts', None) or []:
+            if isinstance(intr.value, dict):
+                actions = intr.value.get('action_requests') or []
+                if actions:
+                    return actions[0]
+    return None
+
+
+def extract_interrupt(response, ctx: FreelancerContext | None = None, invoice=None):
     """Extract HITL interrupt info from agent response, including a preview of the draft."""
     interrupts = response.get("__interrupt__", [])
     if not interrupts:
         return None
     interrupt = interrupts[0]
     action = interrupt.value["action_requests"][0]
-    tool_name = action["name"]
-
-    # Generate the actual draft so the user can review real content
-    state = {
-        "client_name": response.get("client_name", ""),
-        "client_email": response.get("client_email", ""),
-        "invoice_id": response.get("invoice_id", ""),
-        "invoice_amount": response.get("invoice_amount", 0),
-        "amount_paid": response.get("amount_paid", 0),
-        "balance_due": response.get("balance_due", 0),
-        "days_overdue": response.get("days_overdue", 0),
-        "jurisdiction": response.get("jurisdiction", ""),
-        "escalation_level": response.get("escalation_level", 0),
-        "status": response.get("status", "active"),
-        "communication_history": response.get("communication_history", []),
-    }
-    draft_preview = generate_draft_preview(
-        tool_name,
-        state,
-        ctx or FreelancerContext(),
-        action.get("args", {}),
-    )
-
-    return {
-        "tool": tool_name,
-        "args": action.get("args", {}),
-        "description": draft_preview or action.get("description", ""),
-    }
+    return action_card(action, response, ctx or FreelancerContext(), invoice)
 
 
 def extract_state(response):
@@ -1230,10 +1231,7 @@ def compact_conversation(invoice: dict, authorization: str | None) -> dict:
             if getattr(task, "interrupts", None):
                 action = task.interrupts[0].value["action_requests"][0]
                 ctx = get_context_for_invoice(invoice['id'], get_current_user(authorization))
-                interrupt = {
-                    "tool": action["name"], "args": action.get("args", {}),
-                    "description": generate_draft_preview(action["name"], {**values, **state}, ctx, action.get("args", {})) or action.get("description", ""),
-                }
+                interrupt = action_card(action, values, ctx, invoice)
                 break
     flags = communication_flags(invoice['id'])
     return {"state": state, "interrupt": interrupt,
@@ -1325,12 +1323,7 @@ def get_invoice_history(
                 action = intr.value["action_requests"][0]
                 tool_name = action["name"]
                 ctx = get_context_for_invoice(invoice_id, user)
-                draft_preview = generate_draft_preview(tool_name, state, ctx, action.get("args", {}))
-                interrupt_data = {
-                    "tool": tool_name,
-                    "args": action.get("args", {}),
-                    "description": draft_preview or action.get("description", ""),
-                }
+                interrupt_data = action_card(action, state, ctx, invoice)
                 break
 
     return {
@@ -1675,6 +1668,63 @@ def update_sender(
     }
 
 
+def prepare_chat_email(req, invoice, context, config, snapshot, intent, before, request):
+    """Preflight a current owner action, leaving real delivery behind /resume."""
+    waiting = pending_action(snapshot)
+    if not intent and not waiting:
+        return None
+    if invoice.get('status') == 'paid':
+        return None  # existing settled-invoice response remains authoritative
+    reply = None
+    card = None
+    outcome = None
+    if waiting:
+        card = action_card(waiting, getattr(snapshot, 'values', None) or {}, context, invoice)
+        reply = 'Please approve or reject the existing review card before preparing another action.'
+        outcome = 'pending_reused'
+    elif intent.clarification:
+        reply, outcome = intent.clarification, 'clarification'
+    else:
+        tool = intent.tool_name
+        allowed = {t.name for t in tools_for_level(invoice_state_from_db(invoice)['escalation_level'])}
+        if tool not in allowed:
+            reply = 'Final notices are available at Legal level.' if tool == 'draft_final_notice' else 'That email is not available at the current escalation level.'
+            outcome = 'unavailable_level'
+        else:
+            missing = [label for key,label in [('client_name','client name'),('client_email','client email')] if not str(invoice.get(key) or '').strip()]
+            if not invoice.get('invoice_amount'):
+                missing.append('invoice amount')
+            if tool == 'draft_final_notice' and not invoice.get('jurisdiction'):
+                missing.append('jurisdiction')
+            if missing:
+                reply = 'Please provide the ' + ', '.join(missing) + ' before I prepare this email.'
+                outcome = 'missing_details'
+            elif intent.only_if_unsent:
+                try:
+                    last = get_last_outbound_delivery(invoice['id'], DRAFT_LABELS[tool])
+                except Exception:
+                    raise HTTPException(status_code=503, detail='Previous delivery could not be verified. Please try again.')
+                if last:
+                    reply = f"The {DRAFT_LABELS[tool]} was already sent on {last.get('timestamp') or 'a recorded earlier date'}. I have not prepared or sent a duplicate. Ask me to prepare another draft if you want to resend it."
+                    outcome = 'already_delivered'
+        if reply is None:
+            context.required_draft_tool = tool
+            context.invoice_context_summary += '\nCurrent email attachment status: ' + attachment_note(invoice, tool)
+            return None
+    with traced_run('chat', invoice['id'], context, request, level=invoice.get('escalation_level')) as run:
+        run.add('email_preparation', (waiting or {}).get('name') or getattr(intent, 'tool_name', None), {'outcome':outcome})
+        extra = [HumanMessage(content=req.message), AIMessage(content=reply)]
+        if waiting:
+            messages = list((getattr(snapshot, 'values', None) or {}).get('messages', [])) + extra
+            run.status = 'interrupted'
+        else:
+            sync_agent_state_from_invoice(invoice['id'], config)
+            agent.update_state(config, {'messages':extra})
+            messages = (agent.get_state(config).values or {}).get('messages', [])
+        return {'messages':serialize_messages(messages)[before:], 'interrupt':card,
+                'state':{**invoice_state_from_db(invoice), 'communication_history':[]}}
+
+
 @app.post("/api/chat")
 def chat(req: ChatRequest, request: Request, authorization: str | None = Header(None), include_history: bool = Query(True)):
     enforce_rate_limit(_client_key(request, authorization), "chat", CHAT_LIMIT_PER_MINUTE)
@@ -1682,7 +1732,13 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
     inv_id = req.thread_id.removeprefix("invoice-")
     invoice = authorize_invoice_access(inv_id, request, authorization)
     before = prior_message_count({"configurable": {"thread_id": req.thread_id}}, include_history)
-    if not is_invoice_chat_message(req.message, invoice, invoice.get("user_id", "")):
+    config = {"configurable": {"thread_id": req.thread_id}}
+    try:
+        snapshot = agent.get_state(config)
+    except Exception:
+        raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
+    intent = resolve_email_request(req.message, (getattr(snapshot, 'values', None) or {}).get('messages', []))
+    if not intent and not pending_action(snapshot) and not is_invoice_chat_message(req.message, invoice, invoice.get("user_id", "")):
         config = {"configurable": {"thread_id": req.thread_id}}
         persisted_state = sync_agent_state_from_invoice(inv_id, config)
         try:
@@ -1701,7 +1757,11 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
         }
     user = get_current_user(authorization)
     context = get_context_for_invoice(inv_id, user)
+    context.suppress_email_drafts = intent is None and is_email_information(req.message)
     config = {"configurable": {"thread_id": req.thread_id}}
+    prepared = prepare_chat_email(req, invoice, context, config, snapshot, intent, before, request)
+    if prepared is not None:
+        return prepared
     persisted_state = sync_agent_state_from_invoice(inv_id, config)
 
     if persisted_state and persisted_state.get("status") == "paid":
@@ -1729,6 +1789,8 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
             )
             note_run_outcome(run, response)
     except Exception as e:
+        if isinstance(e, DraftPreparationError) or (context.required_draft_tool and 'tool_use_failed' in str(e)):
+            raise HTTPException(status_code=503, detail='Could not prepare the email review card. Please try again.')
         error_msg = str(e)
         if "rate_limit" in error_msg.lower() or "429" in error_msg:
             raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
@@ -1740,7 +1802,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
 
     return {
         "messages": serialize_messages(response["messages"])[before:],
-        "interrupt": extract_interrupt(response, context),
+        "interrupt": extract_interrupt(response, context, invoice),
         "state": {**extract_state(response), **({"communication_history": []} if not include_history else {})},
     }
 
@@ -1805,7 +1867,7 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     state["escalation_level"] = max(new_level, int(state.get("escalation_level") or 0))
     return {
         "messages": serialize_messages(response["messages"])[before:],
-        "interrupt": extract_interrupt(response, context),
+        "interrupt": extract_interrupt(response, context, invoice),
         "state": state,
     }
 
@@ -1825,12 +1887,7 @@ def settle_invoice(invoice_id: str, request: Request, authorization: str | None 
     return {"invoice": present_invoice(updated)}
 
 
-EMAIL_DRAFT_TOOLS = {
-    "draft_invoice_delivery_email",
-    "draft_polite_reminder",
-    "draft_formal_demand_letter",
-    "draft_final_notice",
-}
+EMAIL_DRAFT_TOOLS = set(DRAFT_LABELS)
 
 EMAIL_STATUS_NOTES = {
     "sent": "Sent from your Gmail.",
@@ -1841,10 +1898,7 @@ EMAIL_STATUS_NOTES = {
 }
 EMAIL_SENT_STATUSES = {"sent", "already_sent"}
 EMAIL_LOG_LABELS = {
-    "draft_invoice_delivery_email": "Invoice Delivery",
-    "draft_polite_reminder": "Polite Reminder",
-    "draft_formal_demand_letter": "Formal Demand",
-    "draft_final_notice": "Final Notice",
+    **DRAFT_LABELS,
     "record_partial_payment": "Partial Payment",
     "mark_invoice_pending": "Payment Pending",
     "mark_invoice_paid": "Invoice Paid",
@@ -2096,6 +2150,8 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
     # happened": the user would approve again (a duplicate is blocked by
     # already_sent_recently, but they still deserve the truth).
     email_went_out = email_status in EMAIL_SENT_STATUSES
+    if req.decision == 'approve' and approved_tool_name in EMAIL_DRAFT_TOOLS:
+        context.suppress_email_drafts = True
     try:
         response = agent.invoke(
             Command(resume={"decisions": decisions}),
@@ -2126,7 +2182,7 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
     note_run_outcome(run, response)
     result = {
         "messages": serialize_messages(response["messages"]),
-        "interrupt": extract_interrupt(response, context),
+        "interrupt": extract_interrupt(response, context, get_invoice(invoice_id)),
         "state": extract_state(response),
     }
     return with_email_status(result, approved_tool_name, email_status, email_result)

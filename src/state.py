@@ -38,3 +38,7 @@ class FreelancerContext:
     # True for runs started by text from outside the app (a client's reply).
     # Such runs can't use tools that change state without an approval step.
     untrusted_input: bool = False
+    # Set only by the authorized current owner chat request, never persisted.
+    required_draft_tool: str | None = None
+    # Informational owner turns and completed email approvals cannot redraft.
+    suppress_email_drafts: bool = False

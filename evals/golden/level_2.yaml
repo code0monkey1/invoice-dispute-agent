@@ -45,3 +45,30 @@ cases:
       must_not_call: [update_invoice_details, mark_invoice_paid]
     scripted:
       - text: "The client asked to change their email address. Please confirm it before I update anything."
+
+  - id: l2-send-demand-in-chat
+    description: A direct formal-demand send request opens its existing approval card.
+    turn: {chat: "Send the formal demand letter for this invoice through chat."}
+    expect:
+      must_call: [draft_formal_demand_letter]
+      interrupt_tool: draft_formal_demand_letter
+      tone: {rubric: formal, must_mention: [invoice_id, balance], forbid: [lawsuit]}
+    scripted:
+      - tool: draft_formal_demand_letter
+        args: {}
+      - text: "The demand is ready for your approval."
+
+  - id: l2-contextual-demand
+    description: A follow-up to a prose formal demand produces its review card.
+    history:
+      - {role: user, content: "Draft the formal demand letter for this invoice."}
+      - {role: assistant, content: "Subject: FORMAL DEMAND - Invoice INV-EVAL-2\nDear Acme Corp, the balance is $1,200.00. Copy this letter to an email client."}
+    turn: {chat: "Let's send it as a mail."}
+    expect:
+      must_call: [draft_formal_demand_letter]
+      interrupt_tool: draft_formal_demand_letter
+      tone: {rubric: formal, must_mention: [invoice_id, balance], forbid: [lawsuit]}
+    scripted:
+      - tool: draft_formal_demand_letter
+        args: {}
+      - text: "The demand is ready for your approval."

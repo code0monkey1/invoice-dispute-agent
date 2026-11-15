@@ -173,13 +173,13 @@ def test_promote_reports_a_missing_run(monkeypatch, capsys):
 
 
 def test_a_case_hit_by_provider_rate_limits_is_retried_then_graded(monkeypatch):
-    """A 429/503 from the provider is capacity, not behaviour: retry after a wait, and report it if it persists."""
+    """Explicit provider capacity errors are retried and reported if they persist."""
     import asyncio
     import evals.run as runner
     from evals.harness import CaseRun
 
     case = load_cases(level=1)[0]
-    outcomes = [CaseRun(case_id=case.id, error='RuntimeError: chat failed: 503 {"detail":"..."}'), None, None]
+    outcomes = [CaseRun(case_id=case.id, error='RuntimeError: chat failed: 503 {"detail":"Model provider overloaded"}'), None, None]
     calls = []
 
     class Harness:

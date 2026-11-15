@@ -53,6 +53,8 @@ export interface Interrupt {
   tool: string;
   args: Record<string, unknown>;
   description: string;
+  /** Read-only delivery context, excluded from the email draft. */
+  notes?: string[];
 }
 
 export interface AgentState {

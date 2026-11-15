@@ -35,6 +35,7 @@ for _key, _value in {
 os.environ["LANGSMITH_TRACING"] = os.getenv("EVAL_LANGSMITH_TRACING") or "false"
 
 from httpx import ASGITransport, AsyncClient  # noqa: E402
+from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 from langgraph.checkpoint.memory import MemorySaver  # noqa: E402
 
 from evals.cases import Case  # noqa: E402
@@ -55,6 +56,8 @@ class CaseRun:
     draft_text: str | None = None
     reply_text: str | None = None
     approved: bool = False
+    # None means no measurement was supplied (e.g. a hand-written/error fixture).
+    pre_approval_outbox_count: int | None = None
     outbox: list[dict] = field(default_factory=list)
     runs: list[dict] = field(default_factory=list)
     trace_ids: list[str] = field(default_factory=list)
@@ -117,6 +120,10 @@ class EvalHarness:
                     raise
                 except Exception as exc:  # a failed case is reported, not fatal to the whole run
                     result.error = f"{type(exc).__name__}: {exc}"
+        if result.pre_approval_outbox_count is None:
+            # A failed chat can still have sent something before returning its
+            # error. No approval was attempted, so retain that actual count too.
+            result.pre_approval_outbox_count = len(self.outbox)
         result.outbox = list(self.outbox)
         result.runs = self._traced_runs()
         return result
@@ -128,6 +135,7 @@ class EvalHarness:
             raise RuntimeError(f"creating the invoice failed: {r.status_code} {r.text[:200]}")
         invoice_id = r.json()["invoice"]["id"]
         self.db.invoices[invoice_id]["escalation_level"] = case.level
+        self._seed_prior_state(case, invoice_id)
 
         if "chat" in case.turn:
             r = await client.post("/api/chat", headers=headers,
@@ -144,6 +152,7 @@ class EvalHarness:
             r = await client.get(f"/api/invoices/{invoice_id}/history", headers=headers)
             body = r.json()
 
+        result.pre_approval_outbox_count = len(self.outbox)
         result.interrupt = body.get("interrupt")
         result.reply_text = _last_ai_text(body.get("messages") or [])
         if result.interrupt:
@@ -152,6 +161,19 @@ class EvalHarness:
             if r.status_code != 200:
                 raise RuntimeError(f"approving failed: {r.status_code} {r.text[:200]}")
             result.approved = True
+
+    def _seed_prior_state(self, case: Case, invoice_id: str) -> None:
+        if case.history:
+            messages = [(HumanMessage if entry["role"] == "user" else AIMessage)(content=entry["content"])
+                        for entry in case.history]
+            self._api.agent.update_state({"configurable": {"thread_id": f"invoice-{invoice_id}"}},
+                                         {"messages": messages})
+        for entry in case.prior_deliveries:
+            self.db.communications.append({
+                "id": len(self.db.communications) + 1, "invoice_id": invoice_id, "user_id": EVAL_USER,
+                "direction": "outbound", "type": self._api.EMAIL_LOG_LABELS[entry["tool"]],
+                "subject": entry["subject"], "content": entry["content"], "timestamp": entry["timestamp"],
+            })
 
     def _traced_runs(self) -> list[dict]:
         runs = sorted((dict(r) for r in self.db.agent_runs), key=lambda r: r.get("started_at") or "")

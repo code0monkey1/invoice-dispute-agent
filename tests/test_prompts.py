@@ -15,3 +15,11 @@ def test_no_prompt_shows_a_placeholder_to_copy():
     for state in ({"escalation_level": 0}, {"escalation_level": 0, "invoice_id": "I"},
                   *({"escalation_level": n, "invoice_id": "I"} for n in (1, 2, 3))):
         assert "[" not in prompt_for_state(state, CTX).replace("[INCOMING CLIENT REPLY]", "")
+
+
+def test_tool_descriptions_do_not_demonstrate_placeholders():
+    """Tool descriptions are prompt input too, including in reply analysis."""
+    from src.middleware.dynamic_tools import tools_for_level
+    for tool in tools_for_level(3):
+        assert '[Client Name]' not in tool.description, tool.name
+        assert '[Your Name]' not in tool.description, tool.name

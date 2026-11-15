@@ -400,6 +400,29 @@ describe('ChatPanel trace tab', () => {
 
 
 describe('summary first with optional conversation history', () => {
+  it('keeps a pending email card and its notes actionable while full history is hidden', async () => {
+    const draft = 'Subject: Final notice for INV-1\n\nPlease pay the outstanding balance.';
+    const pending = {
+      tool: 'draft_final_notice',
+      args: {},
+      description: draft,
+      notes: ['No invoice attachment is included because no invoice file is uploaded.'],
+    };
+    mocks.hookState.interrupt = pending;
+    mocks.hookState.hasHistory = true;
+    mocks.hookState.fullHistoryVisible = false;
+    renderChat();
+
+    expect(screen.getByRole('button', { name: 'View conversation history' })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText(pending.notes[0])).toBeVisible();
+    expect(screen.getByRole('button', { name: /edit draft/i })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /^reject$/i })).toBeEnabled();
+    await userEvent.click(screen.getByRole('button', { name: /approve & send/i }));
+
+    expect(mocks.approve).toHaveBeenCalledExactlyOnceWith(draft);
+    expect(mocks.viewHistory).not.toHaveBeenCalled();
+  });
+
   it('shows the saved summary and only requests history when selected', async () => {
     mocks.hookState.summary = 'The client **promised payment** tomorrow.';
     mocks.hookState.hasHistory = true;

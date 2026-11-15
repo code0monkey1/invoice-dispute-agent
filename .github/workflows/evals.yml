@@ -41,7 +41,7 @@ jobs:
               ['git','diff','--name-only',os.environ['BASE'],os.environ['HEAD']],text=True).splitlines()
           summary_files = {'src/services/conversation_summary.py','src/prompts/v1/conversation_summary.txt','evals/summary.py','evals/summary_cases.json','evals/summary_sequences.json'}
           def agent_file(path):
-              return (path in {'src/agent.py','src/prompts.py'} or path.startswith(('src/middleware/','src/tools/'))
+              return (path in {'src/agent.py','src/prompts.py','src/email_drafts.py','src/state.py','src/db.py','api/index.py'} or path.startswith(('src/middleware/','src/tools/'))
                   or (path.startswith('src/prompts/') and path not in summary_files)
                   or (path.startswith('evals/') and not path.startswith(('evals/summary','evals/results/summary'))))
           dispatch = os.environ['EVENT'] == 'workflow_dispatch'
@@ -55,7 +55,7 @@ jobs:
     # Fork PRs can't read secrets (pull_request, not pull_request_target, on purpose).
     if: needs.changes.outputs.agent == 'true' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 60
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       GROQ_MODEL: ${{ vars.GROQ_MODEL }}
@@ -72,7 +72,7 @@ jobs:
         id: eval
         run: |
           set +e
-          python -m evals.run --out-dir eval-out --baseline evals/results/baseline.json
+          python -m evals.run --out-dir eval-out --baseline evals/results/baseline.json --pace 20
           echo "code=$?" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4

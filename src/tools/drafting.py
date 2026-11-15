@@ -51,14 +51,33 @@ def fill_draft_from_context(text: str, state: dict, ctx) -> str:
     )
 
 
+def invoice_delivery_draft(state: dict, ctx) -> str:
+    """Use stored facts for the base draft; the approval card remains editable."""
+    total = float(state.get('invoice_amount', 0) or 0)
+    paid = float(state.get('amount_paid', 0) or 0)
+    balance = max(0, total - paid)
+    draft = (
+        f"Subject: Invoice #{state.get('invoice_id', 'N/A')} from {ctx.business_name}\n\n"
+        f"Hi {state.get('client_name') or 'there'},\n\n"
+        f"Here are the details for Invoice #{state.get('invoice_id', 'N/A')}. "
+        f"The invoice total is ${total:,.2f}, the amount already paid is ${paid:,.2f}, "
+        f"and the remaining balance due is ${balance:,.2f}.\n\n"
+        "Please review these details and let me know if you have any questions.\n\n"
+        f"Best regards,\n{ctx.freelancer_name}\n{ctx.business_name}\n{ctx.freelancer_email}"
+    )
+    return fill_draft_from_context(draft, state, ctx)
+
+
 @tool
 def draft_invoice_delivery_email(subject: str, body: str, runtime: ToolRuntime) -> str:
-    """Draft the first email that sends an invoice to the client. Include a concise subject and body.
+    """Prepare an invoice-delivery draft for the owner's review card. This does not send email.
+
+    Call this tool before requesting approval; delivery requires the owner's later card approval.
+    Include a concise subject and body.
 
     Write the real client name, invoice details and your signature from the system prompt;
-    never leave placeholders like [Client Name]."""
-    draft = f"Subject: {subject.strip()}\n\n{body.strip()}"
-    return fill_draft_from_context(draft, runtime.state, runtime.context)
+    use actual values and omit missing details rather than leaving template placeholders."""
+    return invoice_delivery_draft(runtime.state, runtime.context)
 
 
 @tool

@@ -3,8 +3,10 @@ from typing import Callable
 
 from langchain.agents.middleware import after_model, wrap_model_call, ModelRequest, ModelResponse
 from langchain_core.messages import AIMessage, ToolMessage
+from pydantic import ValidationError
 
 from src.observability.tracer import record_step
+from src.email_drafts import DRAFT_LABELS, DraftPreparationError
 from src.tools.drafting import (
     draft_invoice_delivery_email,
     draft_polite_reminder,
@@ -64,8 +66,36 @@ def dynamic_tool_middleware(
     handler: Callable[[ModelRequest], ModelResponse]
 ) -> ModelResponse:
     """Dynamically provide tools based on the current escalation level in state."""
-    request = request.override(tools=tools_for_level(request.state.get("escalation_level", 0)))
-    return handler(request)
+    tools = tools_for_level(request.state.get("escalation_level", 0))
+    ctx = request.runtime.context
+    if getattr(ctx, 'untrusted_input', False):
+        tools = [tool for tool in tools if tool.name not in UNAPPROVED_STATE_TOOLS]
+    if getattr(ctx, 'suppress_email_drafts', False):
+        tools = [tool for tool in tools if tool.name not in DRAFT_LABELS]
+    required = getattr(ctx, 'required_draft_tool', None) if not getattr(ctx, 'untrusted_input', False) else None
+    overrides = {'tools': tools}
+    if required:
+        if required not in DRAFT_LABELS or required not in {t.name for t in tools}:
+            raise DraftPreparationError('Draft is unavailable at this level')
+        overrides['tools'] = [tool for tool in tools if tool.name == required]
+        overrides['tool_choice'] = {'type':'function', 'function':{'name':required}}
+        overrides['model_settings'] = {**request.model_settings, 'parallel_tool_calls': False}
+    response = handler(request.override(**overrides))
+    if required:
+        replies = response.result if isinstance(response, ModelResponse) else [response]
+        calls = [call for reply in replies if isinstance(reply, AIMessage) for call in reply.tool_calls]
+        if len(calls) != 1 or calls[0].get('name') != required:
+            raise DraftPreparationError('Provider did not prepare the required draft')
+        selected = next(t for t in tools if t.name == required)
+        try:
+            selected.tool_call_schema.model_validate(calls[0].get('args'), strict=True)
+            if required == 'draft_invoice_delivery_email' and any(
+                not calls[0]['args'][key].strip() for key in ('subject', 'body')
+            ):
+                raise ValueError('Empty delivery draft')
+        except (ValidationError, ValueError, TypeError, KeyError):
+            raise DraftPreparationError('Provider returned an invalid draft action') from None
+    return response
 
 
 # Offering a tool list is only advice to the model: the graph registers every
@@ -85,8 +115,9 @@ def enforce_tool_gate(state, runtime) -> dict | None:
         return None
     level = state.get("escalation_level", 0) or 0
     untrusted = bool(getattr(runtime.context, "untrusted_input", False))
+    suppress_drafts = bool(getattr(runtime.context, 'suppress_email_drafts', False))
     calls = messages[-1].tool_calls
-    reasons = {c["id"]: _refusal(c["name"], level, untrusted) for c in calls}
+    reasons = {c["id"]: _refusal(c["name"], level, untrusted, suppress_drafts) for c in calls}
     if not any(reasons.values()):
         return None
 
@@ -111,6 +142,7 @@ def enforce_tool_gate(state, runtime) -> dict | None:
 UNAPPROVED_STATE_TOOLS = {"update_invoice_details", "escalate_dispute"}
 
 REFUSAL_MESSAGES = {
+    'email_preparation': 'Tool {tool} cannot run: this turn requests information or completes an existing approval. Answer the owner without preparing another email.',
     "level": "Tool {tool} is not available at escalation level {level}.",
     "untrusted_input": (
         "Tool {tool} can't run on a client's reply: it changes the invoice without the freelancer's approval. "
@@ -119,9 +151,11 @@ REFUSAL_MESSAGES = {
 }
 
 
-def _refusal(name: str, level: int, untrusted: bool) -> str | None:
+def _refusal(name: str, level: int, untrusted: bool, suppress_drafts: bool = False) -> str | None:
     if name not in {t.name for t in tools_for_level(level)}:
         return "level"
     if untrusted and name in UNAPPROVED_STATE_TOOLS:
         return "untrusted_input"
+    if suppress_drafts and name in DRAFT_LABELS:
+        return 'email_preparation'
     return None

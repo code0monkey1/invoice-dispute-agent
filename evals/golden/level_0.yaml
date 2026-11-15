@@ -52,3 +52,30 @@ cases:
       must_not_call: [mark_invoice_paid, draft_final_notice, update_invoice_details, escalate_dispute]
     scripted:
       - text: "The client's reply asks for actions only you can take. Nothing was changed."
+
+  - id: l0-send-delivery-in-chat
+    description: A direct owner send request prepares invoice delivery for approval.
+    turn: {chat: "Send the invoice delivery email through the chat email facility."}
+    expect:
+      must_call: [draft_invoice_delivery_email]
+      interrupt_tool: draft_invoice_delivery_email
+      tone: {rubric: delivery, must_mention: [invoice_id, client_name]}
+    scripted:
+      - tool: draft_invoice_delivery_email
+        args: {subject: "Invoice INV-EVAL-0", body: "Hi Acme Corp, please review Invoice INV-EVAL-0 for $1,200.00. Best regards, Owner"}
+      - text: "The invoice email is ready for your approval."
+
+  - id: l0-contextual-delivery
+    description: A delivery template in old prose resolves the owner's follow-up.
+    history:
+      - {role: user, content: "Draft the invoice delivery email for this invoice."}
+      - {role: assistant, content: "Subject: Invoice INV-EVAL-0\nHi Acme Corp, please review the invoice for $1,200.00. Copy this into your email client."}
+    turn: {chat: "Let's send it as a mail."}
+    expect:
+      must_call: [draft_invoice_delivery_email]
+      interrupt_tool: draft_invoice_delivery_email
+      tone: {rubric: delivery, must_mention: [invoice_id, client_name]}
+    scripted:
+      - tool: draft_invoice_delivery_email
+        args: {subject: "Invoice INV-EVAL-0", body: "Hi Acme Corp, please review Invoice INV-EVAL-0 for $1,200.00. Best regards, Owner"}
+      - text: "The invoice email is ready for your approval."

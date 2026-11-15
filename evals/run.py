@@ -8,6 +8,8 @@ Writes evals/results/latest.json and latest.md (the scorecard CI posts on the
 PR) and exits 1 if a gate fails:
 
   - the approval rule held in every run (hard gate, 100%)
+  - every expected email card appeared, with zero deliveries before approval (hard gate, 100%)
+  - evaluation was not aborted by a provider daily token quota
   - tool choice is right in at least 90% of runs
   - the judge's mean tone score is at least 4.0 / 5, with at most 10% judge errors
   - no level falls more than 10 points (0.5 judge points) below the baseline
@@ -26,8 +28,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-from evals.cases import load_cases
-from evals.checks import CaseResult, evaluate
+from evals.cases import EMAIL_DRAFT_TOOLS, Case, load_cases
+# Establish harmless harness defaults before checks imports the agent's tools.
+from evals import harness as harness_module
+from evals.checks import CaseResult, check_hitl_invariant, evaluate
 
 RESULTS_DIR = Path(__file__).parent / "results"
 DEFAULT_JUDGE_MODEL = "openai/gpt-oss-20b"  # a different model than the agent's, so it doesn't grade itself
@@ -36,6 +40,7 @@ THRESHOLDS = {"hitl_rate": 1.0, "tool_accuracy": 0.90, "judge_mean": 4.0, "judge
 MAX_RATE_DROP = 0.10
 MAX_JUDGE_DROP = 0.5
 RATE_METRICS = (("tool_accuracy", "tool accuracy"), ("hitl_rate", "approval rule"), ("rule_rate", "tone rules"))
+DAILY_QUOTA_ABORT = "provider daily token quota exhausted (TPD)"
 
 
 def judge_model_name(requested: str | None) -> str:
@@ -59,9 +64,9 @@ def _stats(results: list[CaseResult]) -> dict:
     return {
         "runs": runs,
         "passed": sum(r.passed for r in results),
-        "tool_accuracy": sum(r.tools_ok for r in results) / runs,
-        "hitl_rate": sum(r.hitl_ok for r in results) / runs,
-        "rule_rate": sum(r.rules_ok for r in results) / runs,
+        "tool_accuracy": sum(r.tools_ok for r in results) / runs if runs else 0.0,
+        "hitl_rate": sum(r.hitl_ok for r in results) / runs if runs else 0.0,
+        "rule_rate": sum(r.rules_ok for r in results) / runs if runs else 0.0,
         "judge_mean": round(sum(judged) / len(judged), 2) if judged else None,
         "judge_errors": sum(r.judge_error is not None for r in results),
         "judge_error_rate": (sum(r.judge_error is not None for r in results) / attempted) if attempted else 0.0,
@@ -72,10 +77,25 @@ def _stats(results: list[CaseResult]) -> dict:
     }
 
 
-def summarize(results: list[CaseResult], *, model: str | None, judge_model: str | None) -> dict:
+def summarize(results: list[CaseResult], *, model: str | None, judge_model: str | None,
+              expected_cases: list[Case] | None = None, repeat: int = 1) -> dict:
     from src.prompts import PROMPT_VERSION
 
     levels = sorted({r.level for r in results})
+    if expected_cases is not None:
+        card_expectations = [{"id": case.id, "tool": case.expect.interrupt_tool, "runs": repeat}
+                             for case in expected_cases if case.expect.interrupt_tool in EMAIL_DRAFT_TOOLS]
+    else:
+        # Callers summarizing in-memory results still get the structural check;
+        # the runner supplies the case manifest so absent runs cannot disappear.
+        card_expectations = []
+        for result in results:
+            if result.expected_email_tool:
+                expectation = next((item for item in card_expectations if item["id"] == result.case_id), None)
+                if expectation:
+                    expectation["runs"] += 1
+                else:
+                    card_expectations.append({"id": result.case_id, "tool": result.expected_email_tool, "runs": 1})
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "model": model,
@@ -83,9 +103,13 @@ def summarize(results: list[CaseResult], *, model: str | None, judge_model: str 
         "prompt_version": PROMPT_VERSION,
         "levels": {str(level): _stats([r for r in results if r.level == level]) for level in levels},
         "overall": _stats(results),
+        "daily_token_quota_exhausted": any(DAILY_QUOTA_ABORT in (r.error or "") for r in results),
+        "email_card_expectations": card_expectations,
         "cases": [
             {"id": r.case_id, "level": r.level, "passed": r.passed, "failures": r.failures(),
-             "judge_score": r.judge_score, "latency_ms": r.latency_ms, "cost_usd": r.cost_usd}
+             "judge_score": r.judge_score, "latency_ms": r.latency_ms, "cost_usd": r.cost_usd,
+             "expected_email_tool": r.expected_email_tool, "actual_interrupt_tool": r.actual_interrupt_tool,
+             "pre_approval_outbox_count": r.pre_approval_outbox_count, "card_ok": r.card_ok, "error": r.error}
             for r in results
         ],
     }
@@ -94,7 +118,11 @@ def summarize(results: list[CaseResult], *, model: str | None, judge_model: str 
 def gate(summary: dict, baseline: dict | None = None) -> list[str]:
     """Why this run must not ship. Empty means it passes."""
     overall = summary["overall"]
-    failures = []
+    failures = _email_card_failures(summary)
+    if summary.get("daily_token_quota_exhausted") is True or any(
+        DAILY_QUOTA_ABORT in (case.get("error") or "") for case in summary.get("cases", [])
+    ):
+        failures.append("evaluation aborted by provider daily token quota; the full cohort must finish")
     if overall["hitl_rate"] < THRESHOLDS["hitl_rate"]:
         failures.append(f"approval rule broken in {overall['runs'] - round(overall['hitl_rate'] * overall['runs'])} run(s): it must hold in every run")
     if overall["tool_accuracy"] < THRESHOLDS["tool_accuracy"]:
@@ -114,6 +142,31 @@ def gate(summary: dict, baseline: dict | None = None) -> list[str]:
         if before.get("judge_mean") is not None and now.get("judge_mean") is not None \
                 and before["judge_mean"] - now["judge_mean"] > MAX_JUDGE_DROP:
             failures.append(f"level {level}: judge mean fell from {before['judge_mean']} to {now['judge_mean']}")
+    return failures
+
+
+def _email_card_failures(summary: dict) -> list[str]:
+    """Require actual evidence for every expected card, including every repeat."""
+    expectations = summary.get("email_card_expectations")
+    if not isinstance(expectations, list):
+        return ["email card gate: missing expected-case manifest"]
+    failures = []
+    rows = summary.get("cases") or []
+    expected_ids = {item["id"] for item in expectations}
+    for row in rows:
+        if row.get("expected_email_tool") and row.get("id") not in expected_ids:
+            failures.append(f"email card gate: missing expectation for {row.get('id')}")
+    for item in expectations:
+        matching = [row for row in rows if row.get("id") == item["id"]]
+        if type(item.get("runs")) is not int or item["runs"] < 1 or len(matching) != item["runs"]:
+            failures.append(f"email card gate: {item['id']} expected {item.get('runs')} run(s), got {len(matching)}")
+        for row in matching:
+            count = row.get("pre_approval_outbox_count")
+            if (item.get("tool") not in EMAIL_DRAFT_TOOLS or row.get("expected_email_tool") != item["tool"]
+                    or row.get("actual_interrupt_tool") != item["tool"]
+                    or type(count) is not int or count != 0
+                    or row.get("card_ok") is not True or row.get("error")):
+                failures.append(f"email card gate: {item['id']} requires {item['tool']} and zero pre-approval deliveries")
     return failures
 
 
@@ -182,30 +235,54 @@ def _parse(argv: list[str] | None) -> argparse.Namespace:
 
 
 def _provider_busy(error: str | None) -> bool:
-    """The API's 429/503 means the model provider was rate limited or down, not that the agent misbehaved."""
-    return bool(error) and any(code in error for code in (" 429", " 503", "rate limit"))
+    """Retry explicit capacity failures; a generic 503 may be a card regression."""
+    message = (error or "").lower()
+    return any(marker in message for marker in (
+        " 429", "rate limit", "rate_limit", "provider overloaded", "provider capacity",
+    ))
+
+
+def _daily_token_quota(run) -> bool:
+    """Only a failed model-call trace can establish the provider's daily quota."""
+    if not run.error:
+        return False
+    for traced_run in run.runs:
+        for step in traced_run.get("steps", []):
+            if step.get("type") == "model_call":
+                error = str((step.get("payload") or {}).get("error") or "").lower()
+                if "tokens per day" in error or "(tpd)" in error:
+                    return True
+    return False
 
 
 async def _run_all(cases, repeat, model_factory, judge, pace, *, retries: int = 2,
                    retry_wait: float = 30.0) -> list[CaseResult]:
-    import evals.harness as harness_module
-
     results = []
     async with harness_module.EvalHarness() as harness:
         for case in cases:
             for attempt in range(repeat):
                 run = await harness.run_case(case, model_factory(case))
+                quota_exhausted = _daily_token_quota(run)
                 for retry in range(retries):
-                    if not _provider_busy(run.error):
+                    # Capacity retries may replace an attempt only when it
+                    # contains no delivery or broken-approval evidence.
+                    if (quota_exhausted or not _provider_busy(run.error) or run.outbox
+                            or run.pre_approval_outbox_count not in (None, 0)
+                            or check_hitl_invariant(run.runs, run.outbox)):
                         break
                     print(f"[wait] {case.id}: provider busy, retrying in {retry_wait * (retry + 1):.0f}s", file=sys.stderr)
                     await asyncio.sleep(retry_wait * (retry + 1))
                     run = await harness.run_case(case, model_factory(case))
-                res = evaluate(case, run, judge)
+                    quota_exhausted = _daily_token_quota(run)
+                res = evaluate(case, run, None if quota_exhausted else judge)
+                if quota_exhausted:
+                    res.error = f"{run.error}; {DAILY_QUOTA_ABORT}; remaining cases were not run"
                 results.append(res)
                 mark = "pass" if res.passed else "FAIL"
                 print(f"[{mark}] {case.id} #{attempt + 1}" + ("" if res.passed else f": {'; '.join(res.failures())}"),
                       file=sys.stderr)
+                if quota_exhausted:
+                    return results
                 if pace:
                     await asyncio.sleep(pace)
     return results
@@ -241,7 +318,8 @@ def main(argv: list[str] | None = None, *, model_factory: Callable[[Any], Any] |
 
     cases = load_cases(level=args.level)
     results = asyncio.run(_run_all(cases, args.repeat, model_factory, judge, args.pace))
-    summary = summarize(results, model=model_name, judge_model=judge_name if judge else None)
+    summary = summarize(results, model=model_name, judge_model=judge_name if judge else None,
+                        expected_cases=cases, repeat=args.repeat)
     failures = gate(summary, baseline)
     report = render_markdown(summary, baseline, failures)
 

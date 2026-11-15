@@ -124,7 +124,9 @@ async def test_a_refused_tool_is_traced_as_gate_blocked(client, fake_db, scripte
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     scripted.replies = [tool_call("draft_final_notice"), AIMessage(content="That isn't available yet.")]
-    await post_chat(client, headers, invoice, "Send the final notice for this invoice now")
+    # Hallucinated unavailable call during an informational turn still reaches
+    # the tool gate. Explicit send requests are now rejected by owner preflight.
+    await post_chat(client, headers, invoice, "What is the status of this invoice?")
 
     [run] = runs(fake_db, "chat")
     order = types(fake_db, run["id"])
