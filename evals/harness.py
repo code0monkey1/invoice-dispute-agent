@@ -111,7 +111,7 @@ class EvalHarness:
         self.outbox.clear()
         self._api.RATE_LIMITS.clear()
         result = CaseRun(case_id=case.id)
-        with patch.object(self._api, "agent", build_agent(model, MemorySaver())):
+        with patch.object(self._api.deps, "agent", build_agent(model, MemorySaver())):
             transport = ASGITransport(app=self._api.app)
             async with AsyncClient(transport=transport, base_url="http://eval") as client:
                 try:
@@ -166,7 +166,7 @@ class EvalHarness:
         if case.history:
             messages = [(HumanMessage if entry["role"] == "user" else AIMessage)(content=entry["content"])
                         for entry in case.history]
-            self._api.agent.update_state({"configurable": {"thread_id": f"invoice-{invoice_id}"}},
+            self._api.deps.agent.update_state({"configurable": {"thread_id": f"invoice-{invoice_id}"}},
                                          {"messages": messages})
         for entry in case.prior_deliveries:
             self.db.communications.append({

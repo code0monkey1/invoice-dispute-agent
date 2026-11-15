@@ -162,7 +162,7 @@ async def test_tokens_and_cost_are_recorded_when_the_model_reports_usage(client,
 
     model = PricedModel()
     model.replies = [AIMessage(content="It's overdue.", usage_metadata={"input_tokens": 1000, "output_tokens": 50, "total_tokens": 1050})]
-    monkeypatch.setattr(api_index, "agent", build_agent(model, MemorySaver()))
+    monkeypatch.setattr(api_index.deps, "agent", build_agent(model, MemorySaver()))
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     await post_chat(client, headers, invoice, "How overdue is this invoice?")
@@ -218,7 +218,7 @@ async def test_a_failed_model_call_is_traced_as_an_error_and_still_identified(cl
         def _generate(self, messages, stop=None, run_manager=None, **kwargs):
             raise ConnectionError("groq is down")
 
-    monkeypatch.setattr(api_index, "agent", build_agent(BrokenModel(), MemorySaver()))
+    monkeypatch.setattr(api_index.deps, "agent", build_agent(BrokenModel(), MemorySaver()))
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     r = await post_chat(client, headers, invoice, "What is the status of this invoice?")

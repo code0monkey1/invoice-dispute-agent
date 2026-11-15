@@ -32,7 +32,7 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
     monkeypatch.setenv("RESEND_WEBHOOK_SECRET", "whsec_" + base64.b64encode(SECRET_RAW).decode())
 
     agent = FakeAgent()
-    monkeypatch.setattr(api_index, "agent", agent)
+    monkeypatch.setattr(api_index.deps, "agent", agent)
     sent = []
     monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda uid: ("access", "refresh"))
     monkeypatch.setattr(api_index, "send_email_via_gmail",

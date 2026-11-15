@@ -35,7 +35,7 @@ async def test_information_turn_does_not_offer_email_drafts(client, fake_db, mon
     import api.index as api
     from src.agent import build_agent
     model = OfferedDraftModel()
-    monkeypatch.setattr(api, 'agent', build_agent(model, MemorySaver()))
+    monkeypatch.setattr(api.deps, 'agent', build_agent(model, MemorySaver()))
     invoice, headers = await legal_invoice(client, fake_db)
     response = await post_chat(client, invoice, headers, text)
     assert response.status_code == 200 and response.json()['interrupt'] is None
@@ -48,7 +48,7 @@ async def test_completed_email_approval_does_not_offer_second_email(client, fake
     import api.index as api
     from src.agent import build_agent
     model = OfferedDraftModel()
-    monkeypatch.setattr(api, 'agent', build_agent(model, MemorySaver()))
+    monkeypatch.setattr(api.deps, 'agent', build_agent(model, MemorySaver()))
     invoice, headers = await legal_invoice(client, fake_db)
     prepared = await post_chat(client, invoice, headers, 'Draft the final notice')
     assert prepared.json()['interrupt']['tool'] == 'draft_final_notice'
@@ -99,7 +99,7 @@ async def test_provider_rejecting_required_action_is_a_preparation_error(client,
         def _generate(self, messages, **kwargs):
             raise RuntimeError('tool_use_failed: required tool was not called')
 
-    monkeypatch.setattr(api, 'agent', build_agent(RejectedChoice(), MemorySaver()))
+    monkeypatch.setattr(api.deps, 'agent', build_agent(RejectedChoice(), MemorySaver()))
     invoice, headers = await legal_invoice(client, fake_db)
     response = await post_chat(client, invoice, headers, 'Draft the invoice delivery email')
     assert response.status_code == 503 and 'review card' in response.json()['detail']

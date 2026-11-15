@@ -35,7 +35,7 @@ async def test_invoice_list_flags_invoices_waiting_for_approval(client, fake_db,
             return _snapshot_with_draft("draft_polite_reminder")
         return SimpleNamespace(values={"messages": []}, tasks=[])
 
-    monkeypatch.setattr(api_index.agent, "get_state", fake_get_state)
+    monkeypatch.setattr(api_index.deps.agent, "get_state", fake_get_state)
 
     r = await client.get("/api/invoices")
     assert r.status_code == 200, r.text
@@ -56,7 +56,7 @@ async def test_invoice_list_still_loads_when_agent_state_is_unavailable(client, 
     def broken_get_state(config):
         raise RuntimeError("checkpointer down")
 
-    monkeypatch.setattr(api_index.agent, "get_state", broken_get_state)
+    monkeypatch.setattr(api_index.deps.agent, "get_state", broken_get_state)
 
     r = await client.get("/api/invoices")
     assert r.status_code == 200, r.text

@@ -46,7 +46,7 @@ class FakeAgent:
 def fake_agent(monkeypatch):
     import api.index as api_index
     agent = FakeAgent()
-    monkeypatch.setattr(api_index, "agent", agent)
+    monkeypatch.setattr(api_index.deps, "agent", agent)
     return agent
 
 

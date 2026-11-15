@@ -32,7 +32,7 @@ def choice_model(monkeypatch):
     import api.index as api
     from src.agent import build_agent
     model = ChoiceModel()
-    monkeypatch.setattr(api, 'agent', build_agent(model, MemorySaver()))
+    monkeypatch.setattr(api.deps, 'agent', build_agent(model, MemorySaver()))
     return model
 
 
@@ -42,7 +42,7 @@ async def legal_invoice(client, fake_db, history=True):
     invoice = await create_invoice(client, headers)
     fake_db.invoices[invoice['id']].update(escalation_level=3, amount_paid=100)
     if history:
-        api.agent.update_state({'configurable': {'thread_id': 'invoice-' + invoice['id']}}, {'messages': [
+        api.deps.agent.update_state({'configurable': {'thread_id': 'invoice-' + invoice['id']}}, {'messages': [
             HumanMessage(content='Please prepare the final notice.'),
             AIMessage(content='Subject: FINAL NOTICE BEFORE LEGAL ACTION\n\nDear Acme, please pay. Copy this into your email client.'),
         ]})
@@ -166,7 +166,7 @@ async def test_malformed_required_draft_is_bounded_failure(client, fake_db, monk
     import api.index as api
     from src.agent import build_agent
     invoice, headers = await legal_invoice(client, fake_db)
-    monkeypatch.setattr(api, 'agent', build_agent(ScriptedModel(replies=[
+    monkeypatch.setattr(api.deps, 'agent', build_agent(ScriptedModel(replies=[
         tool_call('draft_invoice_delivery_email', **args)]), MemorySaver()))
     r = await post_chat(client, invoice, headers, 'Send the invoice')
     assert r.status_code == 503 and 'review card' in r.json()['detail']

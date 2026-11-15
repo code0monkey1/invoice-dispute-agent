@@ -34,7 +34,7 @@ async def test_preflighted_reminder_offers_only_selected_tool(client, fake_db, m
     invoice=await create_invoice(client,headers)
     fake_db.invoices[invoice['id']]['escalation_level']=level
     model=StatusFirstModel()
-    monkeypatch.setattr(api,'agent',build_agent(model,MemorySaver()))
+    monkeypatch.setattr(api.deps,'agent',build_agent(model,MemorySaver()))
     response=await client.post('/api/chat',headers=headers,json={
         'thread_id':'invoice-'+invoice['id'],'message':'Please draft a polite reminder for this invoice.'})
     assert response.status_code==200,response.text

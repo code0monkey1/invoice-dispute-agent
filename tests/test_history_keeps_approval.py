@@ -57,7 +57,7 @@ def test_sync_does_not_treat_empty_values_as_changes():
 
     with patch.object(api_index, "get_invoice", return_value={"id": "x"}), \
          patch.object(api_index, "invoice_state_from_db", return_value={"follow_up_date": "", "status": "active", "client_name": "Acme"}), \
-         patch.object(api_index.agent, "get_state", return_value=Snapshot()), \
-         patch.object(api_index.agent, "update_state") as update_state:
+         patch.object(api_index.deps.agent, "get_state", return_value=Snapshot()), \
+         patch.object(api_index.deps.agent, "update_state") as update_state:
         api_index.sync_agent_state_from_invoice("x", {"configurable": {"thread_id": "invoice-x"}})
     update_state.assert_not_called()

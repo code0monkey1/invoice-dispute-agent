@@ -19,7 +19,7 @@ def scripted(monkeypatch):
     import api.index as api_index
     from src.agent import build_agent
     model = ScriptedModel()
-    monkeypatch.setattr(api_index, "agent", build_agent(model, MemorySaver()))
+    monkeypatch.setattr(api_index.deps, "agent", build_agent(model, MemorySaver()))
     return model
 
 

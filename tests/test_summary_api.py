@@ -128,7 +128,7 @@ async def test_no_transcript_returns_empty_without_model(client, fake_db, script
     from types import SimpleNamespace
     headers = signed_in(fake_db)
     inv = await create_invoice(client, headers)
-    monkeypatch.setattr(api.agent, 'get_state', lambda config: SimpleNamespace(values={}, tasks=[]))
+    monkeypatch.setattr(api.deps.agent, 'get_state', lambda config: SimpleNamespace(values={}, tasks=[]))
     r = await client.post(f"/api/invoices/{inv['id']}/summary", headers=headers)
     assert r.status_code == 200 and r.json()['status'] == 'empty'
     assert r.json()['summary'] is None and summarizer.call_count == 0

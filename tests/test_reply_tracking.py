@@ -173,7 +173,7 @@ async def test_approved_email_carries_the_tracking_reply_to(client, fake_db, mon
     import api.index as api_index
 
     agent = FakeAgent()
-    monkeypatch.setattr(api_index, "agent", agent)
+    monkeypatch.setattr(api_index.deps, "agent", agent)
     sent = []
     monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh"))
     monkeypatch.setattr(api_index, "send_email_via_gmail",

@@ -166,7 +166,7 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
     monkeypatch.setattr(api_index, "_current_caller_id", lambda request, authorization: user_id)
     monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda uid: ("access", "refresh"))
     monkeypatch.setattr(api_index, "download_invoice_file", lambda bucket, path: fake_db.storage[path])
-    monkeypatch.setattr(api_index.agent, "update_state", lambda *args, **kwargs: None)
+    monkeypatch.setattr(api_index.deps.agent, "update_state", lambda *args, **kwargs: None)
 
     state = {
         "messages": [AIMessage(content="Draft ready")],
@@ -192,8 +192,8 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
         }]
     })
     task = SimpleNamespace(interrupts=[interrupt])
-    monkeypatch.setattr(api_index.agent, "get_state", lambda config: SimpleNamespace(values=state, tasks=[task]))
-    monkeypatch.setattr(api_index.agent, "invoke", lambda *args, **kwargs: state)
+    monkeypatch.setattr(api_index.deps.agent, "get_state", lambda config: SimpleNamespace(values=state, tasks=[task]))
+    monkeypatch.setattr(api_index.deps.agent, "invoke", lambda *args, **kwargs: state)
 
     sent = {}
 

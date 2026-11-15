@@ -32,8 +32,8 @@ class Spy:
 @pytest.fixture
 def spy(monkeypatch, scripted):
     import api.index as api_index
-    wrapped = Spy(api_index.agent)
-    monkeypatch.setattr(api_index, "agent", wrapped)
+    wrapped = Spy(api_index.deps.agent)
+    monkeypatch.setattr(api_index.deps, "agent", wrapped)
     return wrapped
 
 

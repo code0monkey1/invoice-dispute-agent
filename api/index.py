@@ -42,7 +42,7 @@ from fastapi import Header, HTTPException, Query
 
 from langsmith import traceable
 
-from src.agent import agent
+from src import agent as agent_module
 from src.observability import tracer
 from src.observability.tracer import RunRecorder, langsmith_config, langsmith_status, note_run_outcome, trace_run
 from src.state import FreelancerContext
@@ -115,14 +115,13 @@ from web.app import (  # noqa: E402  (after env and database setup above)
     Deps, SafeJSONResponse, _json_safe, create_app,
 )
 
-deps = Deps(agent=agent)
+deps = Deps(agent=agent_module.agent)
 app = create_app(deps)
 
 
 @app.get("/api/health")
 def health():
     import sys, os
-    from src import agent as agent_module
     store = agent_module.checkpointer_status
     # Memory loses conversations on every restart: degraded in production, and
     # anywhere a configured database failed (not just never configured).
@@ -218,11 +217,11 @@ def sync_agent_state_from_invoice(invoice_id: str, config: dict) -> dict | None:
         # Only write fields that differ: every update_state() call empties a
         # pending draft's interrupt, and this sync runs whenever the invoice
         # is opened or chatted with.
-        snapshot = agent.get_state(config)
+        snapshot = deps.agent.get_state(config)
         current = dict(getattr(snapshot, "values", None) or {})
         changes = {k: v for k, v in persisted_state.items() if not _same_value(current.get(k), v)}
         if changes:
-            agent.update_state(config, changes)
+            deps.agent.update_state(config, changes)
     except Exception:
         logger.exception("Failed to sync agent state for invoice %s", invoice_id)
     return persisted_state
@@ -295,7 +294,7 @@ def invoke_agent_with_retry(payload, *, context: FreelancerContext, config: dict
     last_error = None
     for attempt in range(3):
         try:
-            return agent.invoke(payload, context=context, config=config)
+            return deps.agent.invoke(payload, context=context, config=config)
         except Exception as exc:
             last_error = exc
             message = str(exc).lower()
@@ -365,7 +364,7 @@ def create_invoice_and_start_agent(
     }
 
     try:
-        agent.update_state(config, initial_state)
+        deps.agent.update_state(config, initial_state)
     except Exception:
         logger.exception("Failed to initialize agent state for invoice %s", storage_invoice_id)
         return {
@@ -1146,7 +1145,7 @@ class SummaryRefreshRequest(BaseModel):
 def compact_conversation(invoice: dict, authorization: str | None) -> dict:
     """Invoice/approval metadata for summary-first pages; no prior message bodies."""
     config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
-    snapshot = agent.get_state(config)
+    snapshot = deps.agent.get_state(config)
     values = (getattr(snapshot, "values", None) or {})
     state = {**invoice_state_from_db(invoice), "communication_history": []}
     interrupt = None
@@ -1166,7 +1165,7 @@ def compact_conversation(invoice: dict, authorization: str | None) -> dict:
 def prior_message_count(config: dict, include_history: bool) -> int:
     if include_history:
         return 0
-    snapshot = agent.get_state(config)
+    snapshot = deps.agent.get_state(config)
     return len((getattr(snapshot, "values", None) or {}).get("messages", []))
 
 
@@ -1180,7 +1179,7 @@ def trim_action_response(result: dict, before: int, include_history: bool) -> di
 @app.get("/api/invoices/{invoice_id}/summary")
 def get_conversation_summary(invoice_id: str, request: Request, authorization: str | None = Header(None)):
     invoice = authorize_invoice_access(invoice_id, request, authorization)
-    return {**conversation_summary.read(invoice_id, agent), **compact_conversation(invoice, authorization)}
+    return {**conversation_summary.read(invoice_id, deps.agent), **compact_conversation(invoice, authorization)}
 
 
 @app.post("/api/invoices/{invoice_id}/summary")
@@ -1192,14 +1191,14 @@ def refresh_conversation_summary(
     """Explicit invoice opening only; history reads and source writes never generate."""
     invoice = authorize_invoice_access(invoice_id, request, authorization)
     enforce_rate_limit(_client_key(request, authorization), "summary", SUMMARY_LIMIT_PER_MINUTE)
-    result = conversation_summary.refresh(invoice_id, agent)
+    result = conversation_summary.refresh(invoice_id, deps.agent)
     if result["status"] not in ("current", "empty"):
         response.status_code = 202
     return {**result, **compact_conversation(invoice, authorization)}
 
 
 def history_summary_fields(invoice_id: str) -> dict:
-    result = conversation_summary.read(invoice_id, agent)
+    result = conversation_summary.read(invoice_id, deps.agent)
     return {"summary": result["summary"], "summary_metadata": {
         key: result[key] for key in ("source_version", "generated_at", "status", "is_stale")
     }}
@@ -1218,7 +1217,7 @@ def get_invoice_history(
     # empties it. With a card waiting, show the database values without
     # syncing; the next chat or decision syncs as usual.
     try:
-        pending = has_pending_interrupt(agent.get_state(config))
+        pending = has_pending_interrupt(deps.agent.get_state(config))
     except Exception:
         pending = False
     if pending:
@@ -1226,7 +1225,7 @@ def get_invoice_history(
     else:
         persisted_state = sync_agent_state_from_invoice(invoice_id, config)
     try:
-        snapshot = agent.get_state(config)
+        snapshot = deps.agent.get_state(config)
     except Exception:
         return {"messages": [], "interrupt": None, "state": persisted_state, **history_summary_fields(invoice_id)}
 
@@ -1283,10 +1282,10 @@ def update_invoice_details_route(
         saved = invoice_service.update_client_details(invoice_id, updates)
     except invoice_service.InvalidClientDetails as e:
         raise HTTPException(status_code=422, detail=str(e))
-    agent.update_state(config, saved)
+    deps.agent.update_state(config, saved)
 
     # Return refreshed state
-    snapshot = agent.get_state(config)
+    snapshot = deps.agent.get_state(config)
     return {"state": extract_state(snapshot.values)}
 
 
@@ -1495,7 +1494,7 @@ def pending_approval_action(invoice_id: str) -> str | None:
     so the dashboard can list every invoice that needs the user.
     """
     try:
-        snapshot = agent.get_state({"configurable": {"thread_id": f"invoice-{invoice_id}"}})
+        snapshot = deps.agent.get_state({"configurable": {"thread_id": f"invoice-{invoice_id}"}})
     except Exception:
         logger.exception("Could not read agent state for invoice %s", invoice_id)
         return None
@@ -1643,8 +1642,8 @@ def prepare_chat_email(req, invoice, context, config, snapshot, intent, before, 
             run.status = 'interrupted'
         else:
             sync_agent_state_from_invoice(invoice['id'], config)
-            agent.update_state(config, {'messages':extra})
-            messages = (agent.get_state(config).values or {}).get('messages', [])
+            deps.agent.update_state(config, {'messages':extra})
+            messages = (deps.agent.get_state(config).values or {}).get('messages', [])
         return {'messages':serialize_messages(messages)[before:], 'interrupt':card,
                 'state':{**invoice_state_from_db(invoice), 'communication_history':[]}}
 
@@ -1658,7 +1657,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
     before = prior_message_count({"configurable": {"thread_id": req.thread_id}}, include_history)
     config = {"configurable": {"thread_id": req.thread_id}}
     try:
-        snapshot = agent.get_state(config)
+        snapshot = deps.agent.get_state(config)
     except Exception:
         raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
     intent = resolve_email_request(req.message, (getattr(snapshot, 'values', None) or {}).get('messages', []))
@@ -1666,7 +1665,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
         config = {"configurable": {"thread_id": req.thread_id}}
         persisted_state = sync_agent_state_from_invoice(inv_id, config)
         try:
-            snapshot = agent.get_state(config)
+            snapshot = deps.agent.get_state(config)
             messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
         except Exception:
             messages = []
@@ -1690,7 +1689,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
 
     if persisted_state and persisted_state.get("status") == "paid":
         try:
-            snapshot = agent.get_state(config)
+            snapshot = deps.agent.get_state(config)
             messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
         except Exception:
             messages = []
@@ -1774,7 +1773,7 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     except Exception:
         logger.exception("Agent could not draft after escalating invoice %s run_id=%s", invoice_id, run_id_of(request))
         try:
-            snapshot = agent.get_state(config)
+            snapshot = deps.agent.get_state(config)
             messages = serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
         except Exception:
             messages = []
@@ -2015,7 +2014,7 @@ def resume(
     pending_action = None
     pending_state: dict = {}
     try:
-        snapshot = agent.get_state(config)
+        snapshot = deps.agent.get_state(config)
         for task in (getattr(snapshot, "tasks", None) or []):
             if getattr(task, "interrupts", None):
                 pending_action = task.interrupts[0].value["action_requests"][0]
@@ -2077,7 +2076,7 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
     if req.decision == 'approve' and approved_tool_name in EMAIL_DRAFT_TOOLS:
         context.suppress_email_drafts = True
     try:
-        response = agent.invoke(
+        response = deps.agent.invoke(
             Command(resume={"decisions": decisions}),
             context=context,
             config=langsmith_config(config, run, decision=req.decision),
@@ -2125,7 +2124,7 @@ def record_resume_outcome(invoice_id, config, decision, approved_tool_name, appr
             # draft the resumed run is waiting on.
             changes = {k: v for k, v in persisted_state.items() if response.get(k) != v}
             if changes:
-                agent.update_state(config, changes)
+                deps.agent.update_state(config, changes)
                 response.update(changes)
 
     # Log the approved action into agent state. The outbound email itself was
@@ -2138,7 +2137,7 @@ def record_resume_outcome(invoice_id, config, decision, approved_tool_name, appr
         }
         history = response.get("communication_history", [])
         history.append(entry)
-        agent.update_state(config, {"communication_history": history})
+        deps.agent.update_state(config, {"communication_history": history})
         response["communication_history"] = history
 
     invoice_service.set_escalation_level(invoice_id, response.get("escalation_level"))
@@ -2156,7 +2155,7 @@ def current_state(invoice_id: str, fallback: dict) -> dict:
 
 def current_messages(config: dict) -> list:
     try:
-        snapshot = agent.get_state(config)
+        snapshot = deps.agent.get_state(config)
         return serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
     except Exception:
         return []
