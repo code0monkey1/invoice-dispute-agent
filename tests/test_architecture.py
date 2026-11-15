@@ -30,8 +30,6 @@ INNER_LAYERS = {
 KNOWN_VIOLATIONS = {
     ("src/services/invoice_service.py", "src.db"),
     ("src/services/conversation_summary.py", "src.db"),
-    ("src/services/gmail_service.py", "src.db"),
-    ("src/observability/tracer.py", "src.db"),
 }
 DATABASE_MODULE = "src.db"
 MAY_IMPORT_DATABASE = ("src/db.py", "src/adapters/")

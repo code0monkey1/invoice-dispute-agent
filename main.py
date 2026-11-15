@@ -5,6 +5,7 @@ load_dotenv()
 from langchain_core.messages import HumanMessage
 from langgraph.types import Command
 from src.agent import agent
+from src.adapters import supabase
 from src.observability.tracer import langsmith_config, note_run_outcome, trace_run
 from src.state import FreelancerContext
 
@@ -26,7 +27,12 @@ def print_interrupt(response):
 
 def run_traced(payload, context, config, decision=None):
     """One traced agent run. Resumes pass the context too: the system prompt is built from it."""
-    with trace_run("cli", user_id=context.user_id or None, invoice_id=None) as run:
+    with trace_run(
+        "cli",
+        user_id=context.user_id or None,
+        invoice_id=None,
+        sink=supabase,
+    ) as run:
         context.trace_run_id = run.id
         try:
             if decision is not None:

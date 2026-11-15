@@ -31,7 +31,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Iterator
 
-from src import db
+from src.ports import TraceSink
 from src.prompts import PROMPT_VERSION
 
 logger = logging.getLogger("invoicechaser")
@@ -252,12 +252,12 @@ def stats() -> dict:
         return {**_counters, "runs_open": len(_active)}
 
 
-def flush(recorder: RunRecorder) -> bool:
+def flush(recorder: RunRecorder, sink: TraceSink) -> bool:
     """Write a finished run and its steps. Returns False (and logs) if it couldn't."""
     t0 = time.monotonic()
     try:
-        db.insert_agent_run(recorder.run_row())
-        db.insert_trace_steps(recorder.steps)
+        sink.insert_agent_run(recorder.run_row())
+        sink.insert_trace_steps(recorder.steps)
     except (RuntimeError, TypeError, ValueError) as exc:
         # RuntimeError covers the DB layer: DatabaseUnavailable, Conflict, and
         # other PostgREST errors (e.g. the trace tables not created yet).
@@ -343,7 +343,8 @@ def note_run_outcome(run: RunRecorder, response: dict) -> None:
 
 @contextmanager
 def trace_run(kind: str, *, user_id: str | None, invoice_id: str | None,
-              level: int | None = None, model: str | None = None) -> Iterator[RunRecorder]:
+              sink: TraceSink, level: int | None = None,
+              model: str | None = None) -> Iterator[RunRecorder]:
     """Record one agent run. Errors inside are recorded on the run and re-raised."""
     recorder = RunRecorder(kind=kind, user_id=user_id, invoice_id=invoice_id, model=model, level_start=level)
     with _active_lock:
@@ -357,4 +358,4 @@ def trace_run(kind: str, *, user_id: str | None, invoice_id: str | None,
         with _active_lock:
             _active.pop(recorder.id, None)
         recorder.finish()
-        flush(recorder)
+        flush(recorder, sink)

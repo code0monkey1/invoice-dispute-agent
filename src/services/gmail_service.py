@@ -2,6 +2,7 @@ import os
 import base64
 import html
 import logging
+from collections.abc import Callable
 from email import encoders
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
@@ -10,8 +11,6 @@ from email.mime.text import MIMEText
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-
-from src.db import update_user_gmail_tokens
 
 logger = logging.getLogger("invoicechaser")
 
@@ -33,8 +32,15 @@ SCOPES = SIGN_IN_SCOPES + [GMAIL_SEND_SCOPE]
 class GmailService:
     """Wrapper around the Gmail API for sending email from the user's account."""
 
-    def __init__(self, user_id: str, access_token: str, refresh_token: str | None = None):
+    def __init__(
+        self,
+        user_id: str,
+        access_token: str,
+        refresh_token: str | None = None,
+        persist_tokens: Callable[[str, str, str | None], None] | None = None,
+    ):
         self.user_id = user_id
+        self.persist_tokens = persist_tokens
         self.creds = Credentials(
             token=access_token,
             refresh_token=refresh_token,
@@ -49,7 +55,8 @@ class GmailService:
     def _refresh_if_needed(self):
         if self.creds.expired and self.creds.refresh_token:
             self.creds.refresh(Request())
-            update_user_gmail_tokens(self.user_id, self.creds.token, self.creds.refresh_token)
+            if self.persist_tokens is not None:
+                self.persist_tokens(self.user_id, self.creds.token, self.creds.refresh_token)
             logger.info(f"Refreshed Gmail token for user {self.user_id}")
 
     def send_email(

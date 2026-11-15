@@ -32,7 +32,7 @@ class Deps:
     run_agent: Any = None            # (payload, *, context, config) -> agent response
     send_email: Any = None           # (user_id, to_email, subject, body, ...) -> provider result or None
     gmail_tokens: Any = None         # (user_id) -> (access, refresh) or None
-    gmail_client: Any = None         # (user_id, access, refresh) -> object with send_email(...)
+    gmail_client: Any = None         # (user_id, access, refresh, persist_tokens) -> Gmail adapter
     fetch_inbound_email: Any = None  # (email_id) -> the received email
     db: Any = None                   # users, invoices, communications, traces and invoice files
 

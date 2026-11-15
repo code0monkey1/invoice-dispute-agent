@@ -64,6 +64,28 @@ class FakeDB:
             return self._communications(method, params, payload)
         return None
 
+    def insert_agent_run(self, row: dict) -> None:
+        self.handle("POST", ["agent_runs"], payload=row)
+
+    def insert_trace_steps(self, steps: list[dict]) -> None:
+        if steps:
+            self.handle("POST", ["agent_trace_steps"], payload=steps)
+
+    def list_agent_runs(self, invoice_id: str, limit: int = 20, before: str | None = None) -> list[dict]:
+        query = [("invoice_id", f"eq.{invoice_id}"), ("order", "started_at.desc"), ("limit", str(limit))]
+        if before:
+            query.append(("started_at", f"lt.{before}"))
+        return self.handle("GET", ["agent_runs"], query=query) or []
+
+    def get_trace_steps(self, run_ids: list[str]) -> dict[str, list[dict]]:
+        grouped = {run_id: [] for run_id in run_ids}
+        if not run_ids:
+            return grouped
+        query = [("run_id", f"in.({','.join(run_ids)})"), ("order", "seq.asc")]
+        for row in self.handle("GET", ["agent_trace_steps"], query=query) or []:
+            grouped.setdefault(row["run_id"], []).append(row)
+        return grouped
+
     def _summary_rpc(self, name, p):
         from copy import deepcopy
         from datetime import datetime, timedelta, timezone

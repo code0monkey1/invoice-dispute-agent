@@ -174,7 +174,13 @@ def has_pending_interrupt(snapshot) -> bool:
 def traced_run(kind: str, invoice_id: str, context: FreelancerContext,
                request: Request | None = None, level: int | None = None):
     """Trace one agent run. Middleware finds the run through context.trace_run_id."""
-    with trace_run(kind, user_id=context.user_id or None, invoice_id=invoice_id, level=level) as run:
+    with trace_run(
+        kind,
+        user_id=context.user_id or None,
+        invoice_id=invoice_id,
+        sink=deps.db,
+        level=level,
+    ) as run:
         context.trace_run_id = run.id
         if request is not None:
             trace_ids = getattr(request.state, "trace_ids", None)
@@ -410,7 +416,12 @@ def send_email_via_gmail(
         logger.warning(f"No Gmail tokens for user {user_id} — skipping email send")
         return None
     try:
-        gmail = deps.gmail_client(user_id, tokens[0], tokens[1])
+        gmail = deps.gmail_client(
+            user_id,
+            tokens[0],
+            tokens[1],
+            deps.db.update_user_gmail_tokens,
+        )
         result = gmail.send_email(to_email, subject, body, thread_id, attachments=attachments, reply_to=reply_to)
         logger.info(f"Email sent via Gmail: {result}")
         return result
