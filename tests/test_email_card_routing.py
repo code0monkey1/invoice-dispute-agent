@@ -1,4 +1,5 @@
 """An owner email action must reach real HITL, never a prose-only fake composer."""
+from tests.fakes import Overrides
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -188,7 +189,7 @@ def test_delivery_preview_uses_current_facts_instead_of_model_claims():
 async def test_conditional_delivery_lookup_failure_is_not_assumed_unsent(client, fake_db, choice_model, monkeypatch):
     import api.index as api
     invoice, headers = await legal_invoice(client, fake_db)
-    monkeypatch.setattr(api, 'get_last_outbound_delivery', lambda *a: (_ for _ in ()).throw(RuntimeError('private database error')))
+    monkeypatch.setattr(api.deps, "db", Overrides(api.deps.db, get_last_outbound_delivery=lambda *a: (_ for _ in ()).throw(RuntimeError('private database error'))))
     r = await post_chat(client, invoice, headers, 'Send the final notice if not already sent')
     assert r.status_code == 503 and choice_model.choices == []
     assert 'private database error' not in r.text

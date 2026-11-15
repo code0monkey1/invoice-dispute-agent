@@ -122,10 +122,10 @@ async def test_sent_email_is_logged_and_thread_saved(client, fake_db, fake_agent
     await approve(client, invoice, headers)
 
     import api.index as api_index
-    outbound = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
+    outbound = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
     assert len(outbound) == 1
     assert outbound[0]["subject"] == "A reminder about invoice INV-SEND-1"
-    assert api_index.get_invoice(invoice["id"])["gmail_thread_id"] == "thread-1"
+    assert api_index.deps.db.get_invoice(invoice["id"])["gmail_thread_id"] == "thread-1"
 
 
 @pytest.mark.asyncio
@@ -133,7 +133,7 @@ async def test_sends_to_the_client_email_saved_on_the_invoice(client, fake_db, f
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     import api.index as api_index
-    api_index.update_invoice(invoice["id"], client_email="billing@acme.example")
+    api_index.deps.db.update_invoice(invoice["id"], client_email="billing@acme.example")
     fake_agent.ask_for_approval()
 
     await approve(client, invoice, headers)
@@ -184,7 +184,7 @@ async def test_gmail_failure_is_reported_and_not_logged_as_sent(client, fake_db,
 
     assert body["email_sent"] is False
     assert body["email_status"] == "failed"
-    assert not [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
+    assert not [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
 
 
 @pytest.mark.asyncio
@@ -211,7 +211,7 @@ async def test_opening_the_invoice_before_approving_still_sends(client, fake_db,
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     import api.index as api_index
-    fake_agent.state = api_index.invoice_state_from_db(api_index.get_invoice(invoice["id"]))
+    fake_agent.state = api_index.invoice_state_from_db(api_index.deps.db.get_invoice(invoice["id"]))
     fake_agent.ask_for_approval()
 
     history = await client.get(f"/api/invoices/{invoice['id']}/history", headers=headers)

@@ -2,6 +2,7 @@
 
 Each test names the attack it guards against.
 """
+from tests.fakes import Overrides
 import base64
 import hashlib
 import hmac
@@ -139,7 +140,7 @@ async def test_reply_from_a_stranger_is_kept_but_not_acted_on(client, fake_db, i
 
     assert r.status_code == 200 and r.json()["status"] == "stored_unverified"
     assert inbound == []  # the agent never saw it
-    stored = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
+    stored = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
     assert len(stored) == 1 and stored[0]["type"] == "client_reply_unverified"
 
 
@@ -257,7 +258,7 @@ async def test_inbound_subjects_never_reach_the_agent_context(client, fake_db, i
     raw = json.dumps(raw).encode()
     await client.post("/api/email/inbound", content=raw, headers=signed(raw))
 
-    owner = api_index.get_invoice(invoice["id"]).get("user_id") or guest_id_of(invoice)
+    owner = api_index.deps.db.get_invoice(invoice["id"]).get("user_id") or guest_id_of(invoice)
     context_text = api_index.build_user_invoice_context(invoice["id"], owner)
     assert "Acme" in context_text  # the context was actually built
     assert "escalate to legal now" not in context_text
@@ -281,7 +282,7 @@ async def test_malformed_invoice_ids_get_404_without_reaching_the_database(clien
     def db_must_not_be_called(invoice_id):
         raise RuntimeError("upstream firewall rejected the request")
 
-    monkeypatch.setattr(api_index, "get_invoice", db_must_not_be_called)
+    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoice=db_must_not_be_called))
     quoted = urllib.parse.quote(bad_id, safe="")
     for method, path in [("get", f"/api/invoices/{quoted}/history"),
                          ("post", f"/api/invoices/{quoted}/settle"),

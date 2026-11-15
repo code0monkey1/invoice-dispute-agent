@@ -4,6 +4,7 @@ and a retry after a failure must never email the client twice.
 Found when the database became unreachable mid-session: every request
 returned a plain-text 500 with no explanation.
 """
+from tests.fakes import Overrides
 import socket
 import urllib.error
 from io import BytesIO
@@ -109,7 +110,7 @@ def test_network_and_server_failures_become_database_unavailable(monkeypatch, er
 @pytest.mark.asyncio
 async def test_unexpected_errors_are_json_without_internals(lenient_client, fake_db, monkeypatch):
     import api.index as api_index
-    monkeypatch.setattr(api_index, "get_invoices_by_user", lambda uid: (_ for _ in ()).throw(ValueError("secret column xyz")))
+    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda uid: (_ for _ in ()).throw(ValueError("secret column xyz"))))
     r = await lenient_client.get("/api/invoices")
     assert r.status_code == 500
     assert r.headers["content-type"].startswith("application/json")
@@ -157,7 +158,7 @@ async def test_retrying_approve_after_a_failure_does_not_email_twice(client, fak
     assert second.json()["email_status"] == "already_sent"
     assert second.json()["email_sent"] is True
     import api.index as api_index
-    outbound = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
+    outbound = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
     assert len(outbound) == 1
 
 
@@ -244,11 +245,12 @@ async def test_email_sent_then_everything_fails_still_reports_sent(client, fake_
     fake_agent.ask_for_approval()
     import api.index as api_index
 
-    real_get_invoice = api_index.get_invoice
-    calls = {"after_send": False}
+    real_get_invoice = api_index.deps.db.get_invoice
+    calls = {"after_send": False, "db_failures": 0}
 
     def flaky_get_invoice(invoice_id):
         if calls["after_send"]:
+            calls["db_failures"] += 1
             raise DatabaseUnavailable("down")
         return real_get_invoice(invoice_id)
 
@@ -257,9 +259,10 @@ async def test_email_sent_then_everything_fails_still_reports_sent(client, fake_
         raise RuntimeError("AI down")
 
     fake_agent.invoke = invoke_then_db_dies
-    with patch.object(api_index, "get_invoice", flaky_get_invoice):
+    with patch.object(api_index.deps, "db", Overrides(api_index.deps.db, get_invoice=flaky_get_invoice)):
         r = await approve(client, invoice, headers)
 
+    assert calls["db_failures"] > 0  # the database really was down after the send
     assert len(sent) == 1
     assert r.status_code == 200, r.text
     assert r.json()["email_sent"] is True

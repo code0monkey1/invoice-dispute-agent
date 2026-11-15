@@ -56,7 +56,7 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
     })
     assert r.status_code == 200, r.text
     invoice = r.json()["invoice"]
-    agent.state = api_index.invoice_state_from_db(api_index.get_invoice(invoice["id"]))
+    agent.state = api_index.invoice_state_from_db(api_index.deps.db.get_invoice(invoice["id"]))
 
     # 2. The agent drafts a reminder; the dashboard shows it waiting for the user.
     agent.ask_for_approval("draft_polite_reminder")
@@ -69,7 +69,7 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
     r = await client.post(f"/api/invoices/{invoice['id']}/resume", headers=headers,
                           json={"decision": "approve", "message": DRAFT})
     assert r.json()["email_status"] == "sent"
-    token = api_index.get_invoice(invoice["id"])["reply_token"]
+    token = api_index.deps.db.get_invoice(invoice["id"])["reply_token"]
     assert sent[-1]["to"] == "sam@clientco.com"
     assert sent[-1]["reply_to"] == [f"inv-{token}@{INBOUND_DOMAIN}", "owner@example.com"]
 
@@ -79,14 +79,14 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
         "to": [f"inv-{token}@{INBOUND_DOMAIN}"], "subject": "Re: A reminder"}}).encode()
     r = await client.post("/api/email/inbound", content=body, headers=signed(body))
     assert r.json()["status"] == "stored"
-    replies = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
+    replies = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
     assert "paying on Friday" in replies[0]["content"]
     assert "<client_reply>" in agent_prompts[-1]
 
     # 5. The user escalates; the level changes and the agent is asked for a formal draft.
     r = await client.post(f"/api/invoices/{invoice['id']}/escalate", headers=headers)
     assert r.status_code == 200, r.text
-    assert api_index.get_invoice(invoice["id"])["escalation_level"] == 2
+    assert api_index.deps.db.get_invoice(invoice["id"])["escalation_level"] == 2
     assert "Formal" in agent_prompts[-1]
 
     # 6. A second escalation reaches Legal; a third is refused.

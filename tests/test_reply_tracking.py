@@ -137,11 +137,11 @@ async def test_inbound_reply_is_stored_on_the_matching_invoice(client, fake_db, 
 
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "stored"
-    replies = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
+    replies = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
     assert len(replies) == 1
     assert "Paying on Friday" in replies[0]["content"]
     # Separation: the other invoice is untouched.
-    assert not [c for c in api_index.get_communications(other["id"]) if c.get("direction") == "inbound"]
+    assert not [c for c in api_index.deps.db.get_communications(other["id"]) if c.get("direction") == "inbound"]
     # The agent was asked to analyse the reply on this invoice's thread.
     [config] = inbound_fakes
     assert config["configurable"] == {"thread_id": f"invoice-{invoice['id']}"}  # the invoice's own thread
@@ -191,7 +191,7 @@ async def test_approved_email_carries_the_tracking_reply_to(client, fake_db, mon
     await client.post(f"/api/invoices/{invoice['id']}/resume", headers=headers,
                       json={"decision": "approve", "message": DRAFT})
 
-    token = api_index.get_invoice(invoice["id"])["reply_token"]
+    token = api_index.deps.db.get_invoice(invoice["id"])["reply_token"]
     assert sent == [[f"inv-{token}@{INBOUND_DOMAIN}", "owner@example.com"]]
 
 

@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 from langchain_core.messages import AIMessage
 
+from tests.fakes import Overrides
 from tests.test_approve_sends_email import create_invoice, sent, signed_in  # noqa: F401
 from tests.test_real_graph_payments import scripted, tool_call  # noqa: F401
 
@@ -50,13 +51,17 @@ async def test_reloading_a_drafted_reminder_keeps_it_sendable(client, fake_db, s
 
 def test_sync_does_not_treat_empty_values_as_changes():
     import api.index as api_index
+    from src.services.invoice_service import invoice_state_from_db
+
+    row = {"id": "u::x", "client_name": "Acme", "status": "active", "follow_up_date": None, "jurisdiction": None}
+    persisted = invoice_state_from_db(row)
+    assert persisted["follow_up_date"] == "" and persisted["jurisdiction"] == ""  # the database's NULL, as ''
 
     class Snapshot:
-        values = {"follow_up_date": None, "status": "active", "client_name": "Acme"}
+        values = {**persisted, "follow_up_date": None, "jurisdiction": None}
         tasks = ()
 
-    with patch.object(api_index, "get_invoice", return_value={"id": "x"}), \
-         patch.object(api_index, "invoice_state_from_db", return_value={"follow_up_date": "", "status": "active", "client_name": "Acme"}), \
+    with patch.object(api_index.deps, "db", Overrides(api_index.deps.db, get_invoice=lambda invoice_id: row)), \
          patch.object(api_index.deps.agent, "get_state", return_value=Snapshot()), \
          patch.object(api_index.deps.agent, "update_state") as update_state:
         api_index.sync_agent_state_from_invoice("x", {"configurable": {"thread_id": "invoice-x"}})

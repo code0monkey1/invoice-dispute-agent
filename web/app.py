@@ -33,6 +33,7 @@ class Deps:
     send_email: Any = None           # (user_id, to_email, subject, body, ...) -> provider result or None
     gmail_tokens: Any = None         # (user_id) -> (access, refresh) or None
     fetch_inbound_email: Any = None  # (email_id) -> the received email
+    db: Any = None                   # users, invoices, communications, traces and invoice files
 
 
 def _json_safe(value):

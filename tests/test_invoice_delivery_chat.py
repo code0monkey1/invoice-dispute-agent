@@ -1,3 +1,4 @@
+from tests.fakes import Overrides
 from types import SimpleNamespace
 
 import pytest
@@ -165,7 +166,7 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
     monkeypatch.setattr(api_index, "get_current_user", lambda authorization: fake_db.users[user_id])
     monkeypatch.setattr(api_index, "_current_caller_id", lambda request, authorization: user_id)
     monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda uid: ("access", "refresh"))
-    monkeypatch.setattr(api_index, "download_invoice_file", lambda bucket, path: fake_db.storage[path])
+    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, download_invoice_file=lambda bucket, path: fake_db.storage[path]))
     monkeypatch.setattr(api_index.deps.agent, "update_state", lambda *args, **kwargs: None)
 
     state = {
@@ -254,7 +255,7 @@ GUARD_INVOICE = {"id": "guest-x__inv__SU5WLTE", "client_name": "Acme Corp", "cli
 ])
 def test_guard_lets_invoice_conversation_through(message, monkeypatch):
     import api.index as api_index
-    monkeypatch.setattr(api_index, "get_invoices_by_user", lambda _uid: [])
+    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda _uid: []))
     assert api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
 
 
@@ -265,5 +266,5 @@ def test_guard_lets_invoice_conversation_through(message, monkeypatch):
 ])
 def test_guard_still_blocks_off_topic_questions(message, monkeypatch):
     import api.index as api_index
-    monkeypatch.setattr(api_index, "get_invoices_by_user", lambda _uid: [])
+    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda _uid: []))
     assert not api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")

@@ -49,20 +49,10 @@ from src.state import FreelancerContext
 from src.email_drafts import DRAFT_LABELS, DraftPreparationError, is_email_information, resolve_email_request
 from src.middleware.dynamic_tools import tools_for_level
 from src.tools.drafting import invoice_delivery_draft
+from src import db as db_module
 from src.db import (
-    TRACE_RUNS_MAX_LIMIT, get_trace_steps, list_agent_runs,
-    get_last_outbound_delivery,
-    get_communications_for, get_summary_communications, communication_flags, get_communication_overviews,
-    DatabaseUnavailable,
-    InvoiceAlreadyExists,
-    init_db, upsert_user, get_user, get_user_gmail_tokens,
-    update_user_history_id, update_user_sender_profile, get_user_by_email,
-    create_invoice as db_create_invoice, get_invoice, get_invoices_by_user, get_invoice_by_reply_token,
-    update_invoice,
-    add_communication, get_communications,
-    build_invoice_storage_id, parse_public_invoice_id, upload_invoice_file,
-    download_invoice_file,
-    ensure_guest_user, migrate_guest_to_user,
+    TRACE_RUNS_MAX_LIMIT, DatabaseUnavailable, InvoiceAlreadyExists, init_db, get_user_gmail_tokens,
+    build_invoice_storage_id, parse_public_invoice_id,
 )
 from src.invoice_parser import (
     extract_text_from_invoice,
@@ -115,7 +105,8 @@ from web.app import (  # noqa: E402  (after env and database setup above)
     Deps, SafeJSONResponse, _json_safe, create_app,
 )
 
-deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, fetch_inbound_email=fetch_received_email)
+deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, fetch_inbound_email=fetch_received_email,
+            db=db_module)
 app = create_app(deps)
 
 
@@ -209,7 +200,7 @@ def safe_filename(filename: str) -> str:
 
 
 def sync_agent_state_from_invoice(invoice_id: str, config: dict) -> dict | None:
-    invoice = get_invoice(invoice_id)
+    invoice = deps.db.get_invoice(invoice_id)
     if not invoice:
         return None
     persisted_state = invoice_state_from_db(invoice)
@@ -329,11 +320,11 @@ def create_invoice_and_start_agent(
 ):
     storage_invoice_id = build_invoice_storage_id(user_id, req.invoice_id)
 
-    existing = get_invoice(storage_invoice_id)
+    existing = deps.db.get_invoice(storage_invoice_id)
     if existing:
         raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
 
-    invoice = present_invoice(db_create_invoice(
+    invoice = present_invoice(deps.db.create_invoice(
         invoice_id=storage_invoice_id,
         user_id=user_id,
         client_name=req.client_name,
@@ -517,7 +508,7 @@ def build_invoice_attachment(invoice: dict | None) -> dict | None:
     if not invoice or not invoice.get("invoice_file_path"):
         return None
     try:
-        content = download_invoice_file(INVOICE_FILE_BUCKET, invoice["invoice_file_path"])
+        content = deps.db.download_invoice_file(INVOICE_FILE_BUCKET, invoice["invoice_file_path"])
     except Exception:
         logger.exception("Failed to download invoice attachment for %s", invoice.get("id"))
         return None
@@ -577,7 +568,7 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
     if not user_id:
         return ""
     try:
-        invoices = get_invoices_by_user(user_id)
+        invoices = deps.db.get_invoices_by_user(user_id)
     except Exception:
         logger.exception("Failed to build invoice context for user %s", user_id)
         return ""
@@ -603,7 +594,7 @@ def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
 
     listed = invoices[:12]
     try:
-        communications = get_communications_for([inv["id"] for inv in listed])
+        communications = deps.db.get_communications_for([inv["id"] for inv in listed])
     except Exception:
         logger.exception("Failed to read communications for user %s", user_id)
         communications = {}
@@ -640,7 +631,7 @@ def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> Freela
     Always carries ``user_id`` so downstream tools can route per-user side-effects
     (e.g. notifications) without re-deriving identity.
     """
-    invoice = get_invoice(invoice_id)
+    invoice = deps.db.get_invoice(invoice_id)
     owner_id = (invoice or {}).get("user_id") or (user or {}).get("id", "")
     invoice_context_summary = build_user_invoice_context(invoice_id, owner_id)
 
@@ -672,7 +663,7 @@ def action_card(action, state, ctx, invoice=None):
     if invoice and tool in DRAFT_LABELS:
         notes = []
         try:
-            last = get_last_outbound_delivery(invoice['id'], DRAFT_LABELS[tool])
+            last = deps.db.get_last_outbound_delivery(invoice['id'], DRAFT_LABELS[tool])
             if last:
                 notes.append(f"A {DRAFT_LABELS[tool]} was previously sent on {last.get('timestamp') or 'a recorded earlier date'}. Sending another requires your approval.")
         except Exception:
@@ -762,7 +753,7 @@ def get_current_user(authorization: str | None) -> dict | None:
     token = authorization.removeprefix("Bearer ")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=["HS256"])
-        return get_user(payload["user_id"])
+        return deps.db.get_user(payload["user_id"])
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
 
@@ -811,7 +802,7 @@ def get_guest_id(request: Request, response: Response) -> str:
         return existing
 
     guest_id = f"guest-{secrets.token_hex(16)}"
-    ensure_guest_user(guest_id)
+    deps.db.ensure_guest_user(guest_id)
     response.set_cookie(
         key=GUEST_COOKIE_NAME,
         value=_sign_guest_id(guest_id),
@@ -867,7 +858,7 @@ def authorize_invoice_access(
     if not INVOICE_ID_PATTERN.fullmatch(invoice_id or ""):
         raise HTTPException(status_code=404, detail="Invoice not found")
     caller_id = _current_caller_id(request, authorization)
-    invoice = get_invoice(invoice_id)
+    invoice = deps.db.get_invoice(invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="Invoice not found")
     if invoice.get("user_id") != caller_id:
@@ -911,7 +902,7 @@ def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -
         current_invoice.get("client_email", ""),
     ]
     try:
-        for invoice in get_invoices_by_user(user_id):
+        for invoice in deps.db.get_invoices_by_user(user_id):
             candidates.extend([
                 parse_public_invoice_id(invoice["id"]),
                 invoice.get("client_name", ""),
@@ -1049,7 +1040,7 @@ def google_callback(req: GoogleCallbackRequest, request: Request, response: Resp
     picture = user_info.get("picture", "")
 
     try:
-        upsert_user(
+        deps.db.upsert_user(
             user_id=user_id, email=email, name=name, picture=picture,
             access_token=access_token if send_granted and refresh_token else None,
             refresh_token=refresh_token if send_granted and refresh_token else None,
@@ -1062,7 +1053,7 @@ def google_callback(req: GoogleCallbackRequest, request: Request, response: Resp
     guest_id = _guest_id_from_cookie(request.cookies.get(GUEST_COOKIE_NAME))
     if guest_id and guest_id != user_id:
         try:
-            migrate_guest_to_user(guest_id, user_id)
+            deps.db.migrate_guest_to_user(guest_id, user_id)
         except Exception:
             logger.exception("Failed to migrate guest %s -> %s", guest_id, user_id)
         response.delete_cookie(GUEST_COOKIE_NAME, path="/")
@@ -1115,7 +1106,7 @@ def get_sender_profile_route(
     authorization: str | None = Header(None),
 ):
     _user, user_id = resolve_user_id(request, response, authorization)
-    user = get_user(user_id) or {}
+    user = deps.db.get_user(user_id) or {}
     return user.get("sender_profile") or {}
 
 
@@ -1139,9 +1130,9 @@ def patch_sender_profile_route(
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise HTTPException(status_code=422, detail="logo_url must be an http(s) URL")
 
-    existing = (get_user(user_id) or {}).get("sender_profile") or {}
+    existing = (deps.db.get_user(user_id) or {}).get("sender_profile") or {}
     merged = {**existing, **incoming}
-    return update_user_sender_profile(user_id, merged)
+    return deps.db.update_user_sender_profile(user_id, merged)
 
 
 class SummaryRefreshRequest(BaseModel):
@@ -1162,7 +1153,7 @@ def compact_conversation(invoice: dict, authorization: str | None) -> dict:
                 ctx = get_context_for_invoice(invoice['id'], get_current_user(authorization))
                 interrupt = action_card(action, values, ctx, invoice)
                 break
-    flags = communication_flags(invoice['id'])
+    flags = deps.db.communication_flags(invoice['id'])
     return {"state": state, "interrupt": interrupt,
             "has_history": bool(values.get("messages")) or flags['has_history'],
             "has_outbound": flags['has_outbound']}
@@ -1259,7 +1250,7 @@ def get_invoice_history(
         "messages": messages,
         "interrupt": interrupt_data,
         "state": extract_state(state),
-        "communications": get_summary_communications(invoice_id),
+        "communications": deps.db.get_summary_communications(invoice_id),
         **history_summary_fields(invoice_id),
     }
 
@@ -1350,7 +1341,7 @@ async def upload_invoice_and_create(
         raise HTTPException(status_code=400, detail="Invalid confirmed invoice metadata.") from exc
 
     storage_invoice_id = build_invoice_storage_id(user_id, req.invoice_id)
-    if get_invoice(storage_invoice_id):
+    if deps.db.get_invoice(storage_invoice_id):
         raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
 
     content = await file.read()
@@ -1360,7 +1351,7 @@ async def upload_invoice_and_create(
     filename = safe_filename(file.filename or "invoice")
     object_path = f"{user_id}/{uuid.uuid4().hex}/{filename}"
     try:
-        stored_path = upload_invoice_file(INVOICE_FILE_BUCKET, object_path, content, file.content_type)
+        stored_path = deps.db.upload_invoice_file(INVOICE_FILE_BUCKET, object_path, content, file.content_type)
     except Exception as exc:
         logger.exception("Invoice file upload failed")
         raise HTTPException(status_code=500, detail="Could not store the invoice file. Check Supabase Storage bucket configuration.") from exc
@@ -1419,7 +1410,7 @@ async def upload_generated_invoice_pdf(
     filename = safe_filename(file.filename or f"{invoice_id}.pdf")
     object_path = f"generated/{user_id}/{uuid.uuid4().hex}/{filename}"
     try:
-        stored_path = upload_invoice_file(
+        stored_path = deps.db.upload_invoice_file(
             INVOICE_FILE_BUCKET, object_path, content, file.content_type
         )
     except Exception as exc:
@@ -1464,7 +1455,7 @@ def create_generated_invoice(
         )
 
     storage_invoice_id = build_invoice_storage_id(user_id, payload.invoice_id)
-    if get_invoice(storage_invoice_id):
+    if deps.db.get_invoice(storage_invoice_id):
         raise HTTPException(status_code=409, detail=f"Invoice '{payload.invoice_id}' already exists")
 
     # Compute days_overdue from due_date (negative becomes 0 — not overdue yet).
@@ -1475,7 +1466,7 @@ def create_generated_invoice(
     today = datetime.now(timezone.utc).date()
     days_overdue = max(0, (today - due).days)
 
-    invoice = db_create_invoice(
+    invoice = deps.db.create_invoice(
         invoice_id=storage_invoice_id,
         user_id=user_id,
         client_name=payload.client_name,
@@ -1521,9 +1512,9 @@ def list_invoices(
     authorization: str | None = Header(None),
 ):
     _user, user_id = resolve_user_id(request, response, authorization)
-    invoices = get_invoices_by_user(user_id)
+    invoices = deps.db.get_invoices_by_user(user_id)
     # Aggregate metadata only; email bodies require an explicit history request.
-    communications = get_communication_overviews([inv["id"] for inv in invoices])
+    communications = deps.db.get_communication_overviews([inv["id"] for inv in invoices])
     for inv in invoices:
         inv["communication_history"] = []
         inv.update(communications.get(inv["id"], {"communication_count": 0, "outbound_count": 0, "last_communication_direction": None}))
@@ -1587,7 +1578,7 @@ def update_sender(
         db_updates["sender_business"] = req.business_name
 
     if db_updates:
-        update_invoice(invoice_id, **db_updates)
+        deps.db.update_invoice(invoice_id, **db_updates)
 
     ctx = get_context_for_invoice(invoice_id, user)
     return {
@@ -1630,7 +1621,7 @@ def prepare_chat_email(req, invoice, context, config, snapshot, intent, before, 
                 outcome = 'missing_details'
             elif intent.only_if_unsent:
                 try:
-                    last = get_last_outbound_delivery(invoice['id'], DRAFT_LABELS[tool])
+                    last = deps.db.get_last_outbound_delivery(invoice['id'], DRAFT_LABELS[tool])
                 except Exception:
                     raise HTTPException(status_code=503, detail='Previous delivery could not be verified. Please try again.')
                 if last:
@@ -1811,7 +1802,7 @@ def settle_invoice(invoice_id: str, request: Request, authorization: str | None 
     invoice = authorize_invoice_access(invoice_id, request, authorization)
     if invoice_service.settle(invoice_id, invoice.get("user_id")):
         sync_agent_state_from_invoice(invoice_id, {"configurable": {"thread_id": f"invoice-{invoice_id}"}})
-    updated = get_invoice(invoice_id)
+    updated = deps.db.get_invoice(invoice_id)
     updated["communication_history"] = []
     return {"invoice": present_invoice(updated)}
 
@@ -1843,7 +1834,7 @@ def already_sent_recently(invoice_id: str, subject: str, body: str) -> bool:
     leaves the draft waiting, and must not email the client a second time.
     """
     cutoff = datetime.now(timezone.utc) - DUPLICATE_SEND_WINDOW
-    for entry in get_communications(invoice_id):
+    for entry in deps.db.get_communications(invoice_id):
         if entry.get("direction") != "outbound" or entry.get("subject") != subject or entry.get("content") != body:
             continue
         try:
@@ -1865,12 +1856,12 @@ def ensure_reply_token(invoice_id: str) -> str | None:
     """
     if not inbound_domain():
         return None
-    invoice = get_invoice(invoice_id) or {}
+    invoice = deps.db.get_invoice(invoice_id) or {}
     if invoice.get("reply_token"):
         return invoice["reply_token"]
     token = new_reply_token()
     try:
-        updated = update_invoice(invoice_id, reply_token=token)
+        updated = deps.db.update_invoice(invoice_id, reply_token=token)
     except Exception:
         logger.exception("Could not save a reply token for invoice %s (is the reply_token column missing?)", invoice_id)
         return None
@@ -1926,7 +1917,7 @@ def send_approved_draft(
     The invoice row is the source of truth for the recipient, so edits made
     on the invoice after the draft was written still reach the right address.
     """
-    invoice_data = get_invoice(invoice_id) or {}
+    invoice_data = deps.db.get_invoice(invoice_id) or {}
     state = {**agent_state, **invoice_state_from_db(invoice_data)} if invoice_data else agent_state
     client_email = invoice_data.get("client_email") or agent_state.get("client_email", "")
     draft = edited_draft or generate_draft_preview(tool_name, state, context, tool_args)
@@ -1961,7 +1952,7 @@ def send_approved_draft(
     # Record the send right away: if anything after this fails, a retry must
     # see that the email already went out.
     try:
-        add_communication(
+        deps.db.add_communication(
             invoice_id=invoice_id,
             comm_type=EMAIL_LOG_LABELS.get(tool_name, tool_name),
             subject=subject,
@@ -1970,7 +1961,7 @@ def send_approved_draft(
             user_id=invoice_data.get("user_id"),
         )
         if not gmail_thread_id and isinstance(result, dict) and result.get("threadId"):
-            update_invoice(invoice_id, gmail_thread_id=result["threadId"])
+            deps.db.update_invoice(invoice_id, gmail_thread_id=result["threadId"])
     except Exception:
         logger.exception("Email sent for invoice %s, but recording it failed", invoice_id)
     return "sent", result, subject, draft
@@ -1990,8 +1981,8 @@ def invoice_traces(
     invoice now, which also covers a guest who has since signed in.
     """
     invoice = authorize_invoice_access(invoice_id, request, authorization)
-    runs = list_agent_runs(invoice["id"], limit=limit, before=before.isoformat() if before else None)
-    steps = get_trace_steps([run["id"] for run in runs])
+    runs = deps.db.list_agent_runs(invoice["id"], limit=limit, before=before.isoformat() if before else None)
+    steps = deps.db.get_trace_steps([run["id"] for run in runs])
     for run in runs:
         run["steps"] = steps.get(run["id"], [])
     next_before = runs[-1]["started_at"] if len(runs) == limit else None
@@ -2111,7 +2102,7 @@ def _resume_run(invoice_id, req, user, context, config, pending_action, pending_
     note_run_outcome(run, response)
     result = {
         "messages": serialize_messages(response["messages"]),
-        "interrupt": extract_interrupt(response, context, get_invoice(invoice_id)),
+        "interrupt": extract_interrupt(response, context, deps.db.get_invoice(invoice_id)),
         "state": extract_state(response),
     }
     return with_email_status(result, approved_tool_name, email_status, email_result)
@@ -2153,7 +2144,7 @@ def current_state(invoice_id: str, fallback: dict) -> dict:
     # Best effort: the email is already out, so a database hiccup here must not
     # turn the response into an error.
     try:
-        invoice = get_invoice(invoice_id)
+        invoice = deps.db.get_invoice(invoice_id)
         return invoice_state_from_db(invoice) if invoice else extract_state(fallback)
     except Exception:
         return extract_state(fallback)
@@ -2199,7 +2190,7 @@ def handle_client_reply(invoice: dict, from_addr: str, subject: str, body: str) 
     The reply is untrusted text from outside the app, so it is fenced in tags
     and the agent is told not to follow instructions inside it.
     """
-    add_communication(
+    deps.db.add_communication(
         invoice_id=invoice["id"],
         comm_type="client_reply",
         subject=subject,
@@ -2211,7 +2202,7 @@ def handle_client_reply(invoice: dict, from_addr: str, subject: str, body: str) 
         return  # settled: keep the reply on record, take no action
     try:
         config = {"configurable": {"thread_id": f"invoice-{invoice['id']}"}}
-        invoice_owner = get_user(invoice["user_id"]) if invoice.get("user_id") else None
+        invoice_owner = deps.db.get_user(invoice["user_id"]) if invoice.get("user_id") else None
         context = get_context_for_invoice(invoice["id"], invoice_owner)
         context.untrusted_input = True  # the run is driven by the client's text
         agent_msg = (
@@ -2238,7 +2229,7 @@ def _process_inbound_event(event: dict) -> str:
     data = event.get("data") or {}
     recipients = list(data.get("to") or []) + list(data.get("cc") or []) + list(data.get("received_for") or [])
     token = parse_reply_token(recipients)
-    invoice = get_invoice_by_reply_token(token) if token else None
+    invoice = deps.db.get_invoice_by_reply_token(token) if token else None
     if not invoice:
         logger.info("Inbound email with no matching reply token; ignoring")
         return "ignored"
@@ -2254,7 +2245,7 @@ def _process_inbound_event(event: dict) -> str:
     # see, but never reaches the agent.
     sender = parseaddr(data.get("from", ""))[1].strip().lower()
     if not sender or sender != (invoice.get("client_email") or "").strip().lower():
-        add_communication(
+        deps.db.add_communication(
             invoice_id=invoice["id"],
             comm_type="client_reply_unverified",
             subject=data.get("subject", ""),

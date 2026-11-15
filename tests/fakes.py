@@ -224,3 +224,20 @@ class ScriptedModel(BaseChatModel):
 
 def tool_call(name, **args):
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": f"call-{uuid.uuid4().hex[:8]}"}])
+
+
+class Overrides:
+    """A collaborator with some members replaced, for one test.
+
+        monkeypatch.setattr(deps, "db", Overrides(deps.db, get_invoice=lambda invoice_id: None))
+
+    Everything not named falls through to the real one, looked up at call time.
+    """
+
+    def __init__(self, base, **members):
+        self._base = base
+        self._members = members
+
+    def __getattr__(self, name):
+        members = self.__dict__.get("_members", {})
+        return members[name] if name in members else getattr(self.__dict__["_base"], name)
