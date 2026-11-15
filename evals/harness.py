@@ -19,8 +19,13 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import patch
 
+from dotenv import load_dotenv
+
 # The API reads these at import time. Real values (from .env) win; these only
 # fill gaps so the harness runs on a laptop or in CI with just GROQ_API_KEY.
+# Load .env first: load_dotenv never overrides, so a placeholder set here first
+# would hide the real key and every model call would fail with 401.
+load_dotenv()
 for _key, _value in {
     "SUPABASE_URL": "http://supabase.invalid",
     "SUPABASE_KEY": "eval-harness",
