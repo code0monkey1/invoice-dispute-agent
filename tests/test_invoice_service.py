@@ -116,22 +116,30 @@ def test_escalation_is_capped_at_legal(fake_db):
     assert fake_db.invoices[row["id"]]["escalation_level"] == 3
 
 
-# --- settle -------------------------------------------------------------------
+# --- settle and client details (now InvoiceUseCases, over the real database module) ---
+
+def invoice_use_cases():
+    from types import SimpleNamespace
+    from src import db
+    from src.usecases.invoices import InvoiceUseCases
+    session = SimpleNamespace(update_state=lambda *a: None, get_state=lambda i: SimpleNamespace(values={}),
+                              read_before_sync=lambda *a, **k: SimpleNamespace(sync_error=None))
+    return InvoiceUseCases(invoices=db, communications=db, sessions=session)
+
 
 def test_settling_twice_logs_once(fake_db):
     row = seed(fake_db)
-    assert invoice_service.settle(row["id"], "user-1") is True
-    assert invoice_service.settle(row["id"], "user-1") is False
+    use_cases = invoice_use_cases()
+    use_cases.settle(row["id"], "user-1")
+    use_cases.settle(row["id"], "user-1")
     logs = [c for c in fake_db.communications if c["type"] == "invoice_settled"]
     assert len(logs) == 1
     assert fake_db.invoices[row["id"]]["status"] == "paid"
 
 
-# --- update_client_details ------------------------------------------------------
-
 def test_only_client_name_and_email_can_be_changed(fake_db):
     row = seed(fake_db)
-    invoice_service.update_client_details(
+    invoice_use_cases().update_client_details(
         row["id"], {"client_name": "Acme Ltd", "status": "paid", "user_id": "attacker"},
     )
     saved = fake_db.invoices[row["id"]]

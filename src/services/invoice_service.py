@@ -1,8 +1,11 @@
 """Invoice use cases: the one place invoice facts are written.
 
-Routes call these functions; tools never write the database. A tool that
-changes money or status is HITL-gated, so it only proposes the change in agent
-state. Once the user approves, the resume route hands the agent's response to
+Routes call these functions; tools never write the database. Creating,
+settling and editing invoices are in src/usecases/invoices.py; the approval
+and escalation writes below move there with their routes (tasks 5.5, 5.7).
+
+A tool that changes money or status is HITL-gated, so it only proposes the
+change in agent state. Once the user approves, the resume route hands the agent's response to
 apply_approved_outcome, which validates it and commits it.
 
     tool --(state)--> user approves --> resume route --> apply_approved_outcome --> db
@@ -16,19 +19,11 @@ import logging
 from typing import Optional
 
 from src import db
-from src.domain.invoice import (  # noqa: F401  (re-exported for existing callers)
-    COMMITTABLE_BY_TOOL,
-    MAX_CLIENT_NAME_LENGTH,
-    MAX_EMAIL_LENGTH,
-    MAX_ESCALATION_LEVEL,
-    InvalidClientDetails,
+from src.domain.invoice import (
     approved_changes,
-    clean_client_details,
-    compute_balance,
     escalation_target,
     invoice_state,
     is_escalation_level,
-    parse_follow_up_date,
 )
 
 logger = logging.getLogger("invoicechaser")
@@ -77,29 +72,3 @@ def set_escalation_level(invoice_id: str, new_level) -> bool:
         return False
     db.update_invoice(invoice_id, escalation_level=target)
     return True
-
-
-def settle(invoice_id: str, user_id: Optional[str]) -> bool:
-    """Mark the invoice paid and log it, exactly once. Returns True for the call that settled it."""
-    if not db.mark_invoice_settled(invoice_id):
-        return False
-    db.add_communication(
-        invoice_id=invoice_id,
-        comm_type="invoice_settled",
-        subject="Marked as settled",
-        content="Marked as settled. The agent will take no further action on this invoice.",
-        direction="internal",
-        user_id=user_id,
-    )
-    return True
-
-
-def update_client_details(invoice_id: str, updates: dict) -> dict:
-    """Save the client's name and email. Other fields are ignored. Returns what was saved.
-
-    Raises InvalidClientDetails, saving nothing, if either value is unusable.
-    """
-    allowed = clean_client_details(updates)
-    if allowed:
-        db.update_invoice(invoice_id, **allowed)
-    return allowed

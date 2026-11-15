@@ -60,6 +60,7 @@ from src.domain.invoice import escalation_name, next_escalation_level
 from src.adapters.agent_session import LangGraphAgentSession
 from src.usecases.auth import AuthUseCases
 from src.usecases.sender_profile import SenderProfileUseCases
+from src.usecases.invoices import InvoiceUseCases, present_invoice, safe_filename  # noqa: F401  (present_invoice re-exported)
 from src import db as db_module
 from src.db import (
     TRACE_RUNS_MAX_LIMIT, DatabaseUnavailable, InvoiceAlreadyExists, init_db, get_user_gmail_tokens,
@@ -72,7 +73,7 @@ from src.invoice_parser import (
     validate_invoice_upload,
 )
 from src.services import conversation_summary, invoice_service
-from src.services.invoice_service import compute_balance, invoice_state_from_db
+from src.domain.invoice import compute_balance, invoice_state as invoice_state_from_db
 from src.services.gmail_service import GmailService, SCOPES, SIGN_IN_SCOPES, GMAIL_SEND_SCOPE
 from src.services.resend_inbound import (
     new_reply_token, reply_address, inbound_domain, parse_reply_token,
@@ -101,12 +102,14 @@ from web.app import (  # noqa: E402  (after env and database setup above)
 from web.routers.health import create_health_router
 from web.routers.traces import create_traces_router
 from web.routers.accounts import create_accounts_router
+from web.routers.invoices import create_invoices_router
 
 deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, gmail_client=GmailService,
             fetch_inbound_email=fetch_received_email, db=db_module)
 deps.agent_session = LangGraphAgentSession(lambda: deps.agent)
 identity = Identity(SECRET_KEY, store=lambda: deps.db)
 live_db = Live(lambda: deps.db)  # use cases built here still see a database swapped later
+invoice_use_cases = InvoiceUseCases(invoices=live_db, communications=live_db, sessions=Live(lambda: deps.agent_session))
 app = create_app(deps, identity)
 app.include_router(create_health_router(
     checkpointer_status=lambda: agent_module.checkpointer_status,
@@ -148,24 +151,9 @@ def enforce_rate_limit(key: str, action: str, limit: int) -> None:
     RATE_LIMITS[bucket_key] = hits
 
 
-def safe_filename(filename: str) -> str:
-    base = filename.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
-    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "_", base).strip("._")
-    return cleaned or "invoice"
-
-
 def sync_agent_state_from_invoice(invoice_id: str, config: dict | None = None) -> dict | None:
-    invoice = deps.db.get_invoice(invoice_id)
-    if not invoice:
-        return None
-    persisted_state = invoice_state_from_db(invoice)
-    try:
-        read = deps.agent_session.read_before_sync(invoice_id, persisted_state)
-        if read.sync_error is not None:
-            raise read.sync_error
-    except Exception:
-        logger.exception("Failed to sync agent state for invoice %s", invoice_id)
-    return persisted_state
+    """Copy the saved invoice into the agent's state (see InvoiceUseCases.sync_session)."""
+    return invoice_use_cases.sync_session(invoice_id)
 
 
 @contextmanager
@@ -256,72 +244,6 @@ def build_initial_invoice_message(req: InvoiceCreateRequest) -> str:
         f"- {req.days_overdue} days overdue, jurisdiction: {req.jurisdiction}\n\n"
         f"Please draft a polite payment reminder email to the client."
     )
-
-
-def create_invoice_and_start_agent(
-    req: InvoiceCreateRequest,
-    *,
-    user: dict | None,
-    user_id: str,
-    file_metadata: dict | None = None,
-):
-    storage_invoice_id = build_invoice_storage_id(user_id, req.invoice_id)
-
-    existing = deps.db.get_invoice(storage_invoice_id)
-    if existing:
-        raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
-
-    invoice = present_invoice(deps.db.create_invoice(
-        invoice_id=storage_invoice_id,
-        user_id=user_id,
-        client_name=req.client_name,
-        client_email=req.client_email,
-        invoice_amount=req.invoice_amount,
-        amount_paid=req.amount_paid,
-        days_overdue=req.days_overdue,
-        jurisdiction=req.jurisdiction,
-        status="paid" if compute_balance(req.invoice_amount, req.amount_paid) <= 0 else "active",
-        invoice_file_path=(file_metadata or {}).get("path"),
-        invoice_file_name=(file_metadata or {}).get("name"),
-        invoice_file_mime=(file_metadata or {}).get("mime"),
-        invoice_file_size=(file_metadata or {}).get("size"),
-    ))
-
-    context = get_context_for_invoice(storage_invoice_id, user)
-    balance_due = compute_balance(req.invoice_amount, req.amount_paid)
-    initial_state = {
-        "client_name": req.client_name,
-        "client_email": req.client_email,
-        "invoice_id": req.invoice_id,
-        "invoice_amount": req.invoice_amount,
-        "amount_paid": req.amount_paid,
-        "balance_due": balance_due,
-        "days_overdue": req.days_overdue,
-        "jurisdiction": req.jurisdiction,
-        "escalation_level": 1,
-        "status": "paid" if balance_due <= 0 else "active",
-        "communication_history": [],
-    }
-
-    try:
-        deps.agent_session.update_state(storage_invoice_id, initial_state)
-    except Exception:
-        logger.exception("Failed to initialize agent state for invoice %s", storage_invoice_id)
-        return {
-            "invoice": invoice,
-            "messages": [],
-            "interrupt": None,
-            "state": initial_state,
-            "initialization_error": "The dispute was created, but the AI chat state could not be initialized yet.",
-        }
-
-    invoice["communication_history"] = []
-    return {
-        "invoice": invoice,
-        "messages": [],
-        "interrupt": None,
-        "state": initial_state,
-    }
 
 
 def serialize_message_content(content) -> str:
@@ -602,19 +524,6 @@ def extract_state(response):
     }
 
 
-def present_invoice(invoice: dict | None) -> dict | None:
-    """Add the user-facing invoice number to invoice payloads."""
-    if not invoice:
-        return None
-
-    payload = dict(invoice)
-    payload["invoice_id"] = parse_public_invoice_id(payload["id"])
-    payload["amount_paid"] = float(payload.get("amount_paid", 0) or 0)
-    payload["invoice_amount"] = float(payload.get("invoice_amount", 0) or 0)
-    payload["balance_due"] = compute_balance(payload["invoice_amount"], payload["amount_paid"])
-    return payload
-
-
 # --- JWT Helpers ---
 
 def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -> bool:
@@ -732,316 +641,6 @@ def get_invoice_history(
         "state": extract_state(state),
         "communications": deps.db.get_summary_communications(invoice_id),
         **history_summary_fields(invoice_id),
-    }
-
-
-@app.patch("/api/invoices/{invoice_id}/details")
-def update_invoice_details_route(
-    invoice_id: str,
-    req: UpdateDetailsRequest,
-    request: Request,
-    caller: Caller = Depends(get_caller),
-):
-    """Update client name and/or email in the agent state and DB."""
-    caller.authorize(invoice_id)
-    updates = {}
-    if req.client_name is not None:
-        updates["client_name"] = req.client_name
-    if req.client_email is not None:
-        updates["client_email"] = req.client_email
-
-    if not updates:
-        return {"error": "No fields to update"}
-
-    try:
-        saved = invoice_service.update_client_details(invoice_id, updates)
-    except invoice_service.InvalidClientDetails as e:
-        raise HTTPException(status_code=422, detail=str(e))
-    deps.agent_session.update_state(invoice_id, saved)
-
-    # Return refreshed state
-    snapshot = deps.agent_session.get_state(invoice_id)
-    return {"state": extract_state(snapshot.values)}
-
-
-@app.post("/api/invoices/parse")
-async def parse_invoice_upload(
-    request: Request,
-    file: UploadFile = File(...),
-    caller: Caller = Depends(get_caller),
-):
-    enforce_rate_limit(caller.rate_key(), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
-    try:
-        file_type = validate_invoice_upload(file.filename or "", file.content_type)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Invoice file is too large. Please upload a file under 10 MB.")
-    try:
-        text = extract_text_from_invoice(content, file_type)
-        parsed = parse_invoice_text(text)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        error_msg = str(exc)
-        if "429" in error_msg or "rate_limit" in error_msg.lower():
-            raise HTTPException(status_code=429, detail="AI extraction is rate limited. Please wait a few minutes and try again.") from exc
-        logger.exception("Invoice parsing failed")
-        raise HTTPException(status_code=500, detail="Could not parse this invoice.") from exc
-
-    payload = parsed_invoice_payload(parsed, text)
-    payload["file"] = {
-        "name": file.filename,
-        "mime": file.content_type,
-        "size": len(content),
-    }
-    return payload
-
-
-@app.post("/api/invoices/upload")
-async def upload_invoice_and_create(
-    request: Request,
-    response: Response,
-    file: UploadFile = File(...),
-    metadata: str = Form(...),
-    caller: Caller = Depends(get_caller),
-):
-    enforce_rate_limit(caller.rate_key(), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
-    user, user_id = caller.resolve()
-    try:
-        validate_invoice_upload(file.filename or "", file.content_type)
-        req = InvoiceUploadMetadata(**json_lib.loads(metadata))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail="Invalid confirmed invoice metadata.") from exc
-
-    storage_invoice_id = build_invoice_storage_id(user_id, req.invoice_id)
-    if deps.db.get_invoice(storage_invoice_id):
-        raise HTTPException(status_code=409, detail=f"Invoice '{req.invoice_id}' already exists")
-
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Invoice file is too large. Please upload a file under 10 MB.")
-
-    filename = safe_filename(file.filename or "invoice")
-    object_path = f"{user_id}/{uuid.uuid4().hex}/{filename}"
-    try:
-        stored_path = deps.db.upload_invoice_file(INVOICE_FILE_BUCKET, object_path, content, file.content_type)
-    except Exception as exc:
-        logger.exception("Invoice file upload failed")
-        raise HTTPException(status_code=500, detail="Could not store the invoice file. Check Supabase Storage bucket configuration.") from exc
-
-    return create_invoice_and_start_agent(
-        req,
-        user=user,
-        user_id=user_id,
-        file_metadata={
-            "path": stored_path,
-            "name": filename,
-            "mime": file.content_type,
-            "size": len(content),
-        },
-    )
-
-
-# ─── Invoice Generator endpoints ─────────────────────────────────────────────
-
-
-@app.post("/api/invoices/generated/upload")
-async def upload_generated_invoice_pdf(
-    request: Request,
-    response: Response,
-    file: UploadFile = File(...),
-    invoice_id: str = Form(...),
-    caller: Caller = Depends(get_caller),
-):
-    """Upload a generated PDF blob to Supabase Storage under generated/{user_id}/...
-
-    Returns the storage path which the frontend then passes to POST /api/invoices/generated.
-    """
-    enforce_rate_limit(caller.rate_key(), "parse_invoice", PARSE_LIMIT_PER_MINUTE)
-    _user, user_id = caller.resolve()
-
-    content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise HTTPException(status_code=413, detail="Generated PDF is too large.")
-    if file.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="Only application/pdf accepted")
-
-    filename = safe_filename(file.filename or f"{invoice_id}.pdf")
-    object_path = f"generated/{user_id}/{uuid.uuid4().hex}/{filename}"
-    try:
-        stored_path = deps.db.upload_invoice_file(
-            INVOICE_FILE_BUCKET, object_path, content, file.content_type
-        )
-    except Exception as exc:
-        logger.exception("Generated invoice PDF upload failed")
-        raise HTTPException(status_code=500, detail="Could not store the PDF.") from exc
-
-    return {
-        "storage_path": stored_path,
-        "file_name": filename,
-        "file_size": len(content),
-    }
-
-
-@app.post("/api/invoices/generated", status_code=201)
-def create_generated_invoice(
-    payload: GenerateInvoicePayload,
-    request: Request,
-    response: Response,
-    caller: Caller = Depends(get_caller),
-):
-    """Create an invoices row for a PDF already uploaded via /api/invoices/generated/upload.
-
-    The chase agent is NOT started here (escalation_level=0). The invoice
-    appears in /dashboard and the agent kicks in when the user opens chat.
-    """
-    enforce_rate_limit(caller.rate_key(), "generated_invoice", PARSE_LIMIT_PER_MINUTE)
-    _user, user_id = caller.resolve()
-
-    # Storage path ownership check.
-    #
-    # Use posixpath.normpath to collapse `..` and double-slashes BEFORE the
-    # prefix check — a raw startswith("generated/{user}/") would happily
-    # accept "generated/{user}/../victim/foo.pdf", letting an attacker
-    # register an invoice row pointing at someone else's stored file.
-    import posixpath
-    prefix = f"generated/{user_id}/"
-    normalized = posixpath.normpath(payload.storage_path)
-    if not normalized.startswith(prefix) or ".." in normalized.split("/"):
-        raise HTTPException(
-            status_code=403,
-            detail=f"Storage path must be under {prefix}",
-        )
-
-    storage_invoice_id = build_invoice_storage_id(user_id, payload.invoice_id)
-    if deps.db.get_invoice(storage_invoice_id):
-        raise HTTPException(status_code=409, detail=f"Invoice '{payload.invoice_id}' already exists")
-
-    # Compute days_overdue from due_date (negative becomes 0 — not overdue yet).
-    try:
-        due = datetime.strptime(payload.due_date, "%Y-%m-%d").date()
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid due_date")
-    today = datetime.now(timezone.utc).date()
-    days_overdue = max(0, (today - due).days)
-
-    invoice = deps.db.create_invoice(
-        invoice_id=storage_invoice_id,
-        user_id=user_id,
-        client_name=payload.client_name,
-        client_email=payload.client_email,
-        invoice_amount=payload.invoice_amount_cents / 100,
-        amount_paid=0,
-        days_overdue=days_overdue,
-        jurisdiction=payload.jurisdiction,
-        status="active",
-        invoice_file_path=payload.storage_path,
-        invoice_file_name=payload.file_name,
-        invoice_file_mime="application/pdf",
-        invoice_file_size=payload.file_size,
-    )
-    return present_invoice(invoice)
-
-
-def pending_approval_action(invoice_id: str) -> str | None:
-    """Return the tool name of a draft waiting for the user's approval, if any.
-
-    Same check as the history endpoint, without building the draft preview,
-    so the dashboard can list every invoice that needs the user.
-    """
-    try:
-        pending = deps.agent_session.pending(invoice_id)
-    except Exception:
-        logger.exception("Could not read agent state for invoice %s", invoice_id)
-        return None
-    return pending.action.get("name") if pending is not None else None
-
-
-@app.get("/api/invoices")
-def list_invoices(
-    request: Request,
-    response: Response,
-    caller: Caller = Depends(get_caller),
-):
-    _user, user_id = caller.resolve()
-    invoices = deps.db.get_invoices_by_user(user_id)
-    # Aggregate metadata only; email bodies require an explicit history request.
-    communications = deps.db.get_communication_overviews([inv["id"] for inv in invoices])
-    for inv in invoices:
-        inv["communication_history"] = []
-        inv.update(communications.get(inv["id"], {"communication_count": 0, "outbound_count": 0, "last_communication_direction": None}))
-    presented = [present_invoice(inv) for inv in invoices]
-    open_ids = [inv["id"] for inv in presented if inv.get("status") != "paid"]
-    with ThreadPoolExecutor(max_workers=8) as pool:
-        actions = dict(zip(open_ids, pool.map(pending_approval_action, open_ids)))
-    for inv in presented:
-        action = actions.get(inv["id"])
-        inv["pending_action"] = action
-        inv["awaiting_approval"] = action is not None
-    return presented
-
-
-@app.post("/api/invoices")
-def create_invoice(
-    req: InvoiceCreateRequest,
-    request: Request,
-    response: Response,
-    caller: Caller = Depends(get_caller),
-):
-    user, user_id = caller.resolve()
-    return create_invoice_and_start_agent(req, user=user, user_id=user_id)
-
-
-@app.get("/api/invoices/{invoice_id}/sender")
-def get_sender(
-    invoice_id: str,
-    request: Request,
-    caller: Caller = Depends(get_caller),
-):
-    """Get current sender details for an invoice."""
-    caller.authorize(invoice_id)
-    user = caller.user()
-    ctx = get_context_for_invoice(invoice_id, user)
-    return {
-        "freelancer_name": ctx.freelancer_name,
-        "freelancer_email": ctx.freelancer_email,
-        "business_name": ctx.business_name,
-    }
-
-
-@app.patch("/api/invoices/{invoice_id}/sender")
-def update_sender(
-    invoice_id: str,
-    req: UpdateSenderRequest,
-    request: Request,
-    caller: Caller = Depends(get_caller),
-):
-    """Update sender/freelancer details for an invoice — persisted to DB."""
-    caller.authorize(invoice_id)
-    user = caller.user()
-
-    # Build DB updates
-    db_updates = {}
-    if req.freelancer_name is not None:
-        db_updates["sender_name"] = req.freelancer_name
-    if req.freelancer_email is not None:
-        db_updates["sender_email"] = req.freelancer_email
-    if req.business_name is not None:
-        db_updates["sender_business"] = req.business_name
-
-    if db_updates:
-        deps.db.update_invoice(invoice_id, **db_updates)
-
-    ctx = get_context_for_invoice(invoice_id, user)
-    return {
-        "freelancer_name": ctx.freelancer_name,
-        "freelancer_email": ctx.freelancer_email,
-        "business_name": ctx.business_name,
     }
 
 
@@ -1244,21 +843,6 @@ def escalate_invoice(invoice_id: str, request: Request, caller: Caller = Depends
     }
 
 
-@app.post("/api/invoices/{invoice_id}/settle")
-def settle_invoice(invoice_id: str, request: Request, caller: Caller = Depends(get_caller)):
-    """Mark an invoice as settled: the agent stops all work on it.
-
-    Settled uses the "paid" status, which chat, escalation, approvals and
-    client replies all respect. A draft waiting for approval is dropped.
-    """
-    invoice = caller.authorize(invoice_id)
-    if invoice_service.settle(invoice_id, invoice.get("user_id")):
-        sync_agent_state_from_invoice(invoice_id)
-    updated = deps.db.get_invoice(invoice_id)
-    updated["communication_history"] = []
-    return {"invoice": present_invoice(updated)}
-
-
 EMAIL_DRAFT_TOOLS = set(DRAFT_LABELS)
 
 EMAIL_STATUS_NOTES = {
@@ -1402,6 +986,16 @@ def send_approved_draft(
     return "sent", result, subject, draft
 
 
+app.include_router(create_invoices_router(
+    invoices=invoice_use_cases,
+    caller_dependency=get_caller,
+    context_for_invoice=get_context_for_invoice,
+    extract_state=extract_state,
+    enforce_rate_limit=enforce_rate_limit,
+    parse_limit=PARSE_LIMIT_PER_MINUTE,
+    max_upload_bytes=MAX_UPLOAD_BYTES,
+    file_bucket=INVOICE_FILE_BUCKET,
+))
 app.include_router(create_traces_router(
     deps=deps,
     caller_dependency=get_caller,
