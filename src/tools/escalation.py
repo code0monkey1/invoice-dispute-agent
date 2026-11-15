@@ -2,25 +2,26 @@ from langchain.tools import tool, ToolRuntime
 from langgraph.types import Command
 from langchain_core.messages import ToolMessage
 
+from src.domain.invoice import escalation_name, next_escalation_level
+
 
 @tool
 def escalate_dispute(runtime: ToolRuntime) -> Command:
     """Escalate the invoice dispute to the next level. Level 1=friendly, 2=formal, 3=legal."""
     current = runtime.state.get("escalation_level", 1)
-    if current >= 3:
+    new_level = next_escalation_level(current)
+    if new_level is None:
         return Command(update={
             "messages": [ToolMessage(
                 "Already at maximum escalation level (3 - Legal). Cannot escalate further.",
                 tool_call_id=runtime.tool_call_id
             )]
         })
-    new_level = current + 1
-    level_names = {1: "Friendly", 2: "Formal", 3: "Legal"}
     return Command(update={
         "escalation_level": new_level,
         "messages": [ToolMessage(
-            f"Dispute escalated from level {current} ({level_names[current]}) "
-            f"to level {new_level} ({level_names[new_level]}). "
+            f"Dispute escalated from level {current} ({escalation_name(current)}) "
+            f"to level {new_level} ({escalation_name(new_level)}). "
             f"New tools and communication tone are now available.",
             tool_call_id=runtime.tool_call_id
         )]

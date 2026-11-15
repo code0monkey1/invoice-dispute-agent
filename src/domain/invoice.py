@@ -25,6 +25,7 @@ COMMITTABLE_BY_TOOL = {
     "mark_invoice_pending": ({"status", "follow_up_date"}, {"pending"}),
 }
 MAX_ESCALATION_LEVEL = 3
+ESCALATION_LEVEL_NAMES = {1: "Friendly", 2: "Formal", 3: "Legal"}
 MAX_CLIENT_NAME_LENGTH = 200
 MAX_EMAIL_LENGTH = 254
 # One plain address: no spaces, commas, semicolons or angle brackets, so it
@@ -142,6 +143,15 @@ def escalation_target(current: int, requested: int) -> Optional[int]:
     """The level to move to, or None. Escalation never goes down and stops at Legal."""
     target = min(MAX_ESCALATION_LEVEL, requested)
     return target if target > current else None
+
+
+def next_escalation_level(current: int) -> Optional[int]:
+    """The next dispute level, or None when the dispute is already at Legal."""
+    return escalation_target(current, current + 1)
+
+
+def escalation_name(level: int) -> str:
+    return ESCALATION_LEVEL_NAMES[level]
 
 
 def clean_client_details(updates: dict) -> dict:

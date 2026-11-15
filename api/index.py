@@ -24,7 +24,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.types import Command
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from web.schemas import (  # noqa: E402
     ChatRequest, GenerateInvoicePayload, GoogleCallbackRequest, InvoiceCreateRequest, InvoiceUploadMetadata,
     ResumeRequest, SenderProfilePayload, SummaryRefreshRequest, UpdateDetailsRequest, UpdateSenderRequest,
@@ -55,6 +55,9 @@ from src.state import FreelancerContext
 from src.email_drafts import DRAFT_LABELS, DraftPreparationError, is_email_information, resolve_email_request
 from src.middleware.dynamic_tools import tools_for_level
 from src.domain.email_templates import render_draft
+from src.domain.chat import is_invoice_chat_message as invoice_chat_policy
+from src.domain.communication import was_sent_recently
+from src.domain.invoice import escalation_name, next_escalation_level
 from src import db as db_module
 from src.db import (
     TRACE_RUNS_MAX_LIMIT, DatabaseUnavailable, InvoiceAlreadyExists, init_db, get_user_gmail_tokens,
@@ -611,57 +614,14 @@ def present_invoice(invoice: dict | None) -> dict | None:
 
 # --- JWT Helpers ---
 
-INVOICE_CHAT_KEYWORDS = {
-    "invoice", "invoices", "payment", "paid", "pay", "payer", "balance", "due",
-    "overdue", "client", "customer", "email", "mail", "draft", "send", "sent",
-    "reminder", "deliver", "delivery", "attach", "attachment", "pdf", "amount",
-    "status", "dispute", "chase", "follow", "follow-up", "escalate", "late",
-    "fee", "fees", "legal", "demand", "notice", "owe", "owed", "owing",
-    # Steering the draft
-    "tone", "firm", "firmer", "soft", "softer", "polite", "friendly", "formal",
-    "rewrite", "reword", "edit", "shorter", "longer", "message", "letter",
-    "reply", "respond", "response", "remind", "nudge", "approve", "reject",
-    # Escalation and money
-    "escalation", "level", "court", "claims", "sue", "lawsuit", "lawyer",
-    "interest", "contract", "terms", "deadline", "extension", "installment",
-    "instalments", "refund", "money", "transfer", "wire", "cheque", "check",
-}
-
-# Answers to the agent's own questions ("yes", "go ahead") carry no keywords,
-# so very short messages always reach it.
-SHORT_REPLY_MAX_WORDS = 3
-
-
 def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -> bool:
-    """Return True when a message is plausibly about the user's invoices."""
-    normalized = message.lower()
-    words = re.findall(r"[a-z0-9_-]+", normalized)
-    if len(words) <= SHORT_REPLY_MAX_WORDS:
-        return True
-    if set(words) & INVOICE_CHAT_KEYWORDS:
-        return True
-
-    candidates = [
-        parse_public_invoice_id(current_invoice["id"]),
-        current_invoice.get("client_name", ""),
-        current_invoice.get("client_email", ""),
-    ]
+    """Load the owner's other invoices, then apply the framework-free chat policy."""
     try:
-        for invoice in deps.db.get_invoices_by_user(user_id):
-            candidates.extend([
-                parse_public_invoice_id(invoice["id"]),
-                invoice.get("client_name", ""),
-                invoice.get("client_email", ""),
-            ])
+        other_invoices = deps.db.get_invoices_by_user(user_id)
     except Exception:
         logger.exception("Failed to load invoices for chat guard")
-
-    for value in candidates:
-        value = str(value or "").strip().lower()
-        if len(value) >= 3 and value in normalized:
-            return True
-
-    return False
+        other_invoices = []
+    return invoice_chat_policy(message, current_invoice, other_invoices)
 
 
 def _parse_google_http_error(exc: urllib.error.HTTPError) -> tuple[str, str]:
@@ -1439,9 +1399,6 @@ def chat(req: ChatRequest, request: Request, caller: Caller = Depends(get_caller
     }
 
 
-ESCALATION_LEVEL_NAMES = {1: "Friendly", 2: "Formal", 3: "Legal"}
-
-
 @app.post("/api/invoices/{invoice_id}/escalate")
 def escalate_invoice(invoice_id: str, request: Request, caller: Caller = Depends(get_caller), include_history: bool = Query(True)):
     """Move an invoice to the next escalation level, then ask the agent for a draft.
@@ -1457,10 +1414,10 @@ def escalate_invoice(invoice_id: str, request: Request, caller: Caller = Depends
         raise HTTPException(status_code=400, detail="This invoice is paid, so there's nothing to escalate.")
 
     current = int(invoice.get("escalation_level") or 1)
-    if current >= 3:
+    new_level = next_escalation_level(current)
+    if new_level is None:
         raise HTTPException(status_code=400, detail="This invoice is already at the highest level (Legal).")
-    new_level = current + 1
-    level_name = ESCALATION_LEVEL_NAMES[new_level]
+    level_name = escalation_name(new_level)
 
     invoice_service.set_escalation_level(invoice_id, new_level)
     config = {"configurable": {"thread_id": f"invoice-{invoice_id}"}}
@@ -1535,29 +1492,13 @@ EMAIL_LOG_LABELS = {
     "mark_invoice_pending": "Payment Pending",
     "mark_invoice_paid": "Invoice Paid",
 }
-# An identical email logged this recently is treated as already sent.
-DUPLICATE_SEND_WINDOW = timedelta(minutes=30)
-
-
 def already_sent_recently(invoice_id: str, subject: str, body: str) -> bool:
     """True if this exact email went out moments ago.
 
     Approving again after a failure (a network drop, the AI step erroring)
     leaves the draft waiting, and must not email the client a second time.
     """
-    cutoff = datetime.now(timezone.utc) - DUPLICATE_SEND_WINDOW
-    for entry in deps.db.get_communications(invoice_id):
-        if entry.get("direction") != "outbound" or entry.get("subject") != subject or entry.get("content") != body:
-            continue
-        try:
-            sent_at = datetime.fromisoformat(str(entry.get("timestamp", "")).replace("Z", "+00:00"))
-        except ValueError:
-            continue
-        if sent_at.tzinfo is None:
-            sent_at = sent_at.replace(tzinfo=timezone.utc)
-        if sent_at >= cutoff:
-            return True
-    return False
+    return was_sent_recently(deps.db.get_communications(invoice_id), subject, body)
 
 
 def ensure_reply_token(invoice_id: str) -> str | None:

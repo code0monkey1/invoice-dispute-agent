@@ -21,7 +21,7 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 
 - [x] 3.1 Create `src/domain/invoice.py` with the commit rules from `invoice_service` as pure functions and unit tests that import nothing but the domain; verify `tests/test_invoice_service.py` still passes
 - [x] 3.2 Move email templates to `src/domain/email_templates.py`, read by both the approval flow and `src/tools/drafting.py`; verify the golden tests from 1.2 pass unchanged
-- [ ] 3.3 Move escalation policy, the duplicate-send guard and the chat topic guard to `src/domain/`; verify the tests from 1.3 pass unchanged
+- [x] 3.3 Move escalation policy, the duplicate-send guard and the chat topic guard to `src/domain/`; verify the tests from 1.3 pass unchanged
 - [ ] 3.4 Tighten the architecture test so `src/domain/` may import only the standard library; verify it passes
 
 ## 4. Ports and adapters
