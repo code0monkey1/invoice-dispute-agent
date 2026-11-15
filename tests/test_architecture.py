@@ -22,7 +22,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 INNER_LAYERS = {
-    "src/domain": (),
     "src/ports": ("src.domain",),
     "src/usecases": ("src.domain", "src.ports"),
 }
@@ -77,6 +76,10 @@ def layer_violations(folder: str, allowed: tuple[str, ...]) -> list[str]:
             elif not is_project_module(name) and not is_stdlib(name):
                 problems.append(f"{relative(path)} imports third-party {name}")
     return problems
+
+
+def test_domain_imports_only_the_standard_library_and_other_domain_modules():
+    assert layer_violations("src/domain", ()) == []
 
 
 def test_inner_layers_import_only_what_is_further_in():
