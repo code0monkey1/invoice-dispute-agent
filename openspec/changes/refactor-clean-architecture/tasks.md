@@ -30,7 +30,7 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 - [x] 4.2 Split `src/db.py` into `src/adapters/supabase/` implementing the store ports, with `db.py` re-exporting; verify the full suite passes
 - [x] 4.3 Pass token persistence into the Gmail adapter and a `TraceSink` into the tracer so neither imports the database; verify `tests/test_tracing.py`, `tests/test_tracer_core.py` and `tests/test_approve_sends_email.py` pass
 - [x] 4.4 Add `src/adapters/agent_session.py` owning thread config, the pending-interrupt walk and read-before-sync; replace the copies in `index.py`; verify `tests/test_history_keeps_approval.py` and `tests/test_invoice_list_approvals.py` pass
-- [ ] 4.5 Remove adapter-to-adapter imports from the architecture allow-list; verify it passes
+- [x] 4.5 Remove adapter-to-adapter imports from the architecture allow-list; verify it passes
 
 ## 5. Use cases and routers
 

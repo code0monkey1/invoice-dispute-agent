@@ -32,7 +32,7 @@ KNOWN_VIOLATIONS = {
     ("src/services/conversation_summary.py", "src.db"),
 }
 DATABASE_MODULE = "src.db"
-MAY_IMPORT_DATABASE = ("src/db.py", "src/adapters/")
+MAY_IMPORT_DATABASE = ("src/db.py",)
 
 
 def imports_of(path: Path) -> set[str]:
@@ -101,6 +101,20 @@ def test_only_known_modules_reach_into_the_database_layer():
     assert actual == KNOWN_VIOLATIONS
 
 
+def adapter_imports() -> list[str]:
+    """Adapters are independently replaceable and never compose one another."""
+    return [
+        f"{relative(path)} imports {name}"
+        for path in python_files("src/adapters")
+        for name in sorted(imports_of(path))
+        if name == "src.adapters" or name.startswith("src.adapters.")
+    ]
+
+
+def test_adapters_do_not_import_other_adapters():
+    assert adapter_imports() == []
+
+
 def test_the_rule_catches_a_forbidden_import(tmp_path, monkeypatch):
     """The checker itself: a domain file importing the database or a framework is reported."""
     domain = tmp_path / "src" / "domain"
@@ -111,6 +125,18 @@ def test_the_rule_catches_a_forbidden_import(tmp_path, monkeypatch):
     assert sorted(layer_violations("src/domain", ())) == [
         "src/domain/rules.py imports src.db",
         "src/domain/rules.py imports third-party fastapi",
+    ]
+
+
+def test_the_adapter_rule_catches_cross_adapter_composition(tmp_path, monkeypatch):
+    adapters = tmp_path / "src" / "adapters"
+    adapters.mkdir(parents=True)
+    (adapters / "gmail.py").write_text("from src.adapters import supabase\n")
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    assert adapter_imports() == [
+        "src/adapters/gmail.py imports src.adapters",
+        "src/adapters/gmail.py imports src.adapters.supabase",
     ]
 
 

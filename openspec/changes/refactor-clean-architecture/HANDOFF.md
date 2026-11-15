@@ -24,14 +24,15 @@ Read this first if you are a new session continuing the work. Update the "State"
 
 - Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`.
 - Baseline before any change: backend 761 passed, 13 skipped; frontend 178 passed, 6 skipped.
-- Done: task groups 1 (regression net), 2 (injection seam) and 3 (domain policy). Backend is 896 passed, 13 skipped; frontend is 178 passed, 6 skipped. `api/index.py` is 1,960 lines (from 2,388).
+- Done: task groups 1 (regression net), 2 (injection seam), 3 (domain policy) and 4 (ports/adapters). Backend is 908 passed, 13 skipped; frontend is 178 passed, 6 skipped. `api/index.py` is 1,933 lines (from 2,388).
 - What group 2 left in place:
-  - `web/app.py`: `create_app(deps, identity)` and the `Deps` container. Fields: `agent`, `run_agent`, `send_email`, `gmail_tokens`, `gmail_client`, `fetch_inbound_email`, `db`. Code reads them at call time.
+  - `web/app.py`: `create_app(deps, identity)` and the `Deps` container. Fields: `agent`, `agent_session`, `run_agent`, `send_email`, `gmail_tokens`, `gmail_client`, `fetch_inbound_email`, `db`. Code reads them at call time.
   - `web/identity.py`: `Identity` (tokens, guest cookies, ownership) and the lazy `Caller`, which routes get with `Depends(get_caller)`.
   - `web/schemas.py`: the ten request models.
   - Tests replace collaborators with `monkeypatch.setattr(api_index.deps, ...)`, and single members with `tests.fakes.Overrides`. `tests/test_architecture.py` fails on any patch of `api.index` itself.
 - Group 3 moved invoice rules, all email wording, escalation sequencing, duplicate-send detection and the chat-topic guard into `src/domain/`; the architecture test now explicitly permits only stdlib and other domain imports there.
-- Next: task 4.1 (`src/ports.py`).
+- Group 4 added application ports, moved Supabase to `src/adapters/supabase/`, injected Gmail token persistence and tracing storage, and centralized LangGraph checkpoint/interrupt access in `src/adapters/agent_session.py`. Adapters may not import other adapters.
+- Next: task 5.1 (extract health and traces to `web/routers/`).
 - Nothing has been pushed and no pull request is open.
 
 ## Things learned that the tasks do not say
