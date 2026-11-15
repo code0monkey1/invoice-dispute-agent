@@ -45,7 +45,7 @@ def create_accounts_router(
 ) -> APIRouter:
     router = APIRouter()
 
-    def google_auth_url(scopes: list[str], **extra: str) -> str:
+    def _auth_url(scopes: list[str], **extra: str) -> str:
         if not client_id or not redirect_uri:
             raise HTTPException(status_code=500, detail="Google OAuth is not configured on the server.")
         params = {
@@ -59,15 +59,20 @@ def create_accounts_router(
         return f"https://accounts.google.com/o/oauth2/auth?{urllib.parse.urlencode(params)}"
 
     @router.get("/api/auth/google/url")
-    def sign_in_url():
-        return {"url": google_auth_url(sign_in_scopes, access_type="online", prompt="select_account")}
+    def google_auth_url():
+        """Sign-in link: basic profile access only, so Google shows no warning."""
+        return {"url": _auth_url(sign_in_scopes, access_type="online", prompt="select_account")}
 
     @router.get("/api/auth/gmail/connect-url")
     def gmail_connect_url(caller: Caller = Depends(caller_dependency)):
+        """Connect Gmail link: adds send-only access for a signed-in user.
+
+        Offline access with consent so Google returns a refresh token we can keep.
+        """
         user = caller.user()
         if not user:
             raise HTTPException(status_code=401, detail="Sign in before connecting Gmail.")
-        return {"url": google_auth_url(
+        return {"url": _auth_url(
             gmail_scopes,
             access_type="offline",
             prompt="consent",
@@ -147,19 +152,19 @@ def create_accounts_router(
         }
 
     @router.get("/api/auth/me")
-    def get_me(caller: Caller = Depends(caller_dependency)):
+    def get_me_route(caller: Caller = Depends(caller_dependency)):
         user = caller.user()
         if not user:
             raise HTTPException(status_code=401, detail="Not authenticated")
         return {"user": auth.present_user(user)}
 
     @router.get("/api/users/me/sender-profile")
-    def get_sender_profile(caller: Caller = Depends(caller_dependency)):
+    def get_sender_profile_route(caller: Caller = Depends(caller_dependency)):
         _user, user_id = caller.resolve()
         return sender_profiles.get(user_id)
 
     @router.patch("/api/users/me/sender-profile")
-    def patch_sender_profile(
+    def patch_sender_profile_route(
         payload: SenderProfilePayload,
         caller: Caller = Depends(caller_dependency),
     ):

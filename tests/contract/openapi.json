@@ -1,0 +1,1733 @@
+{
+ "components": {
+  "schemas": {
+   "Body_parse_invoice_upload_api_invoices_parse_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file"
+    ],
+    "title": "Body_parse_invoice_upload_api_invoices_parse_post",
+    "type": "object"
+   },
+   "Body_upload_generated_invoice_pdf_api_invoices_generated_upload_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     },
+     "invoice_id": {
+      "title": "Invoice Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file",
+     "invoice_id"
+    ],
+    "title": "Body_upload_generated_invoice_pdf_api_invoices_generated_upload_post",
+    "type": "object"
+   },
+   "Body_upload_invoice_and_create_api_invoices_upload_post": {
+    "properties": {
+     "file": {
+      "contentMediaType": "application/octet-stream",
+      "title": "File",
+      "type": "string"
+     },
+     "metadata": {
+      "title": "Metadata",
+      "type": "string"
+     }
+    },
+    "required": [
+     "file",
+     "metadata"
+    ],
+    "title": "Body_upload_invoice_and_create_api_invoices_upload_post",
+    "type": "object"
+   },
+   "ChatRequest": {
+    "properties": {
+     "message": {
+      "title": "Message",
+      "type": "string"
+     },
+     "thread_id": {
+      "title": "Thread Id",
+      "type": "string"
+     }
+    },
+    "required": [
+     "thread_id",
+     "message"
+    ],
+    "title": "ChatRequest",
+    "type": "object"
+   },
+   "GenerateInvoicePayload": {
+    "additionalProperties": false,
+    "description": "Schema for creating a generated invoice from an already-uploaded PDF.",
+    "properties": {
+     "client_email": {
+      "maxLength": 254,
+      "minLength": 1,
+      "title": "Client Email",
+      "type": "string"
+     },
+     "client_name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Client Name",
+      "type": "string"
+     },
+     "due_date": {
+      "title": "Due Date",
+      "type": "string"
+     },
+     "file_name": {
+      "title": "File Name",
+      "type": "string"
+     },
+     "file_size": {
+      "title": "File Size",
+      "type": "integer"
+     },
+     "invoice_amount_cents": {
+      "exclusiveMinimum": 0.0,
+      "title": "Invoice Amount Cents",
+      "type": "integer"
+     },
+     "invoice_id": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Invoice Id",
+      "type": "string"
+     },
+     "jurisdiction": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Jurisdiction"
+     },
+     "storage_path": {
+      "title": "Storage Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "invoice_id",
+     "client_name",
+     "client_email",
+     "invoice_amount_cents",
+     "due_date",
+     "storage_path",
+     "file_name",
+     "file_size"
+    ],
+    "title": "GenerateInvoicePayload",
+    "type": "object"
+   },
+   "GoogleCallbackRequest": {
+    "properties": {
+     "code": {
+      "title": "Code",
+      "type": "string"
+     }
+    },
+    "required": [
+     "code"
+    ],
+    "title": "GoogleCallbackRequest",
+    "type": "object"
+   },
+   "HTTPValidationError": {
+    "properties": {
+     "detail": {
+      "items": {
+       "$ref": "#/components/schemas/ValidationError"
+      },
+      "title": "Detail",
+      "type": "array"
+     }
+    },
+    "title": "HTTPValidationError",
+    "type": "object"
+   },
+   "InvoiceCreateRequest": {
+    "properties": {
+     "amount_paid": {
+      "default": 0,
+      "minimum": 0.0,
+      "title": "Amount Paid",
+      "type": "number"
+     },
+     "client_email": {
+      "maxLength": 254,
+      "minLength": 1,
+      "title": "Client Email",
+      "type": "string"
+     },
+     "client_name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Client Name",
+      "type": "string"
+     },
+     "days_overdue": {
+      "minimum": 0.0,
+      "title": "Days Overdue",
+      "type": "integer"
+     },
+     "invoice_amount": {
+      "exclusiveMinimum": 0.0,
+      "title": "Invoice Amount",
+      "type": "number"
+     },
+     "invoice_id": {
+      "maxLength": 300,
+      "minLength": 1,
+      "title": "Invoice Id",
+      "type": "string"
+     },
+     "jurisdiction": {
+      "title": "Jurisdiction",
+      "type": "string"
+     }
+    },
+    "required": [
+     "invoice_id",
+     "client_name",
+     "client_email",
+     "invoice_amount",
+     "days_overdue",
+     "jurisdiction"
+    ],
+    "title": "InvoiceCreateRequest",
+    "type": "object"
+   },
+   "ResumeRequest": {
+    "properties": {
+     "decision": {
+      "title": "Decision",
+      "type": "string"
+     },
+     "edited_action": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Edited Action"
+     },
+     "message": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Message"
+     }
+    },
+    "required": [
+     "decision"
+    ],
+    "title": "ResumeRequest",
+    "type": "object"
+   },
+   "SenderProfilePayload": {
+    "additionalProperties": false,
+    "description": "Pydantic schema for the per-user sender profile used by generated invoices.",
+    "properties": {
+     "address": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Address"
+     },
+     "business_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Business Name"
+     },
+     "logo_url": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Logo Url"
+     },
+     "tax_id": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tax Id"
+     },
+     "your_email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Your Email"
+     },
+     "your_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Your Name"
+     }
+    },
+    "title": "SenderProfilePayload",
+    "type": "object"
+   },
+   "SummaryRefreshRequest": {
+    "additionalProperties": false,
+    "properties": {},
+    "title": "SummaryRefreshRequest",
+    "type": "object"
+   },
+   "UpdateDetailsRequest": {
+    "properties": {
+     "client_email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Client Email"
+     },
+     "client_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Client Name"
+     }
+    },
+    "title": "UpdateDetailsRequest",
+    "type": "object"
+   },
+   "UpdateSenderRequest": {
+    "properties": {
+     "business_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Business Name"
+     },
+     "freelancer_email": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Freelancer Email"
+     },
+     "freelancer_name": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Freelancer Name"
+     }
+    },
+    "title": "UpdateSenderRequest",
+    "type": "object"
+   },
+   "ValidationError": {
+    "properties": {
+     "ctx": {
+      "title": "Context",
+      "type": "object"
+     },
+     "input": {
+      "title": "Input"
+     },
+     "loc": {
+      "items": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "integer"
+        }
+       ]
+      },
+      "title": "Location",
+      "type": "array"
+     },
+     "msg": {
+      "title": "Message",
+      "type": "string"
+     },
+     "type": {
+      "title": "Error Type",
+      "type": "string"
+     }
+    },
+    "required": [
+     "loc",
+     "msg",
+     "type"
+    ],
+    "title": "ValidationError",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "title": "Invoice Dispute Agent API",
+  "version": "0.1.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/api/auth/gmail/connect-url": {
+   "get": {
+    "description": "Connect Gmail link: adds send-only access for a signed-in user.\n\nOffline access with consent so Google returns a refresh token we can keep.",
+    "operationId": "gmail_connect_url_api_auth_gmail_connect_url_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Gmail Connect Url"
+   }
+  },
+  "/api/auth/google/callback": {
+   "post": {
+    "operationId": "google_callback_api_auth_google_callback_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GoogleCallbackRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Google Callback"
+   }
+  },
+  "/api/auth/google/url": {
+   "get": {
+    "description": "Sign-in link: basic profile access only, so Google shows no warning.",
+    "operationId": "google_auth_url_api_auth_google_url_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Google Auth Url"
+   }
+  },
+  "/api/auth/me": {
+   "get": {
+    "operationId": "get_me_route_api_auth_me_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Me Route"
+   }
+  },
+  "/api/chat": {
+   "post": {
+    "operationId": "chat_api_chat_post",
+    "parameters": [
+     {
+      "in": "query",
+      "name": "include_history",
+      "required": false,
+      "schema": {
+       "default": true,
+       "title": "Include History",
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ChatRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Chat"
+   }
+  },
+  "/api/email/inbound": {
+   "post": {
+    "description": "Resend Inbound webhook: a client replied to an approved email.\n\nThe Reply-To token in the recipient address identifies the invoice, so\neach reply lands on exactly one customer's invoice.",
+    "operationId": "email_inbound_api_email_inbound_post",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Email Inbound"
+   }
+  },
+  "/api/health": {
+   "get": {
+    "operationId": "health_api_health_get",
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     }
+    },
+    "summary": "Health"
+   }
+  },
+  "/api/invoices": {
+   "get": {
+    "operationId": "list_invoices_api_invoices_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "List Invoices"
+   },
+   "post": {
+    "operationId": "create_invoice_api_invoices_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/InvoiceCreateRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Invoice"
+   }
+  },
+  "/api/invoices/generated": {
+   "post": {
+    "description": "Create an invoices row for a PDF already uploaded via /api/invoices/generated/upload.\n\nThe chase agent is NOT started here (escalation_level=0). The invoice\nappears in /dashboard and the agent kicks in when the user opens chat.",
+    "operationId": "create_generated_invoice_api_invoices_generated_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/GenerateInvoicePayload"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "201": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Create Generated Invoice"
+   }
+  },
+  "/api/invoices/generated/upload": {
+   "post": {
+    "description": "Upload a generated PDF blob to Supabase Storage under generated/{user_id}/...\n\nReturns the storage path which the frontend then passes to POST /api/invoices/generated.",
+    "operationId": "upload_generated_invoice_pdf_api_invoices_generated_upload_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_generated_invoice_pdf_api_invoices_generated_upload_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload Generated Invoice Pdf"
+   }
+  },
+  "/api/invoices/parse": {
+   "post": {
+    "operationId": "parse_invoice_upload_api_invoices_parse_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_parse_invoice_upload_api_invoices_parse_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Parse Invoice Upload"
+   }
+  },
+  "/api/invoices/upload": {
+   "post": {
+    "operationId": "upload_invoice_and_create_api_invoices_upload_post",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "multipart/form-data": {
+       "schema": {
+        "$ref": "#/components/schemas/Body_upload_invoice_and_create_api_invoices_upload_post"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Upload Invoice And Create"
+   }
+  },
+  "/api/invoices/{invoice_id}/details": {
+   "patch": {
+    "description": "Update client name and/or email in the agent state and DB.",
+    "operationId": "update_invoice_details_route_api_invoices__invoice_id__details_patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UpdateDetailsRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Update Invoice Details Route"
+   }
+  },
+  "/api/invoices/{invoice_id}/escalate": {
+   "post": {
+    "description": "Move an invoice to the next escalation level, then ask the agent for a draft.\n\nEscalating is the user's decision, so the level changes here directly\ninstead of depending on the model choosing to call its escalate tool.\nThe new draft still waits for the user's approval like any other.",
+    "operationId": "escalate_invoice_api_invoices__invoice_id__escalate_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "include_history",
+      "required": false,
+      "schema": {
+       "default": true,
+       "title": "Include History",
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Escalate Invoice"
+   }
+  },
+  "/api/invoices/{invoice_id}/history": {
+   "get": {
+    "description": "Retrieve the full conversation history and state for an existing thread.",
+    "operationId": "get_invoice_history_api_invoices__invoice_id__history_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Invoice History"
+   }
+  },
+  "/api/invoices/{invoice_id}/resume": {
+   "post": {
+    "operationId": "resume_api_invoices__invoice_id__resume_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "include_history",
+      "required": false,
+      "schema": {
+       "default": true,
+       "title": "Include History",
+       "type": "boolean"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/ResumeRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Resume"
+   }
+  },
+  "/api/invoices/{invoice_id}/sender": {
+   "get": {
+    "description": "Get current sender details for an invoice.",
+    "operationId": "get_sender_api_invoices__invoice_id__sender_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Sender"
+   },
+   "patch": {
+    "description": "Update sender/freelancer details for an invoice \u2014 persisted to DB.",
+    "operationId": "update_sender_api_invoices__invoice_id__sender_patch",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/UpdateSenderRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Update Sender"
+   }
+  },
+  "/api/invoices/{invoice_id}/settle": {
+   "post": {
+    "description": "Mark an invoice as settled: the agent stops all work on it.\n\nSettled uses the \"paid\" status, which chat, escalation, approvals and\nclient replies all respect. A draft waiting for approval is dropped.",
+    "operationId": "settle_invoice_api_invoices__invoice_id__settle_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Settle Invoice"
+   }
+  },
+  "/api/invoices/{invoice_id}/summary": {
+   "get": {
+    "operationId": "get_conversation_summary_api_invoices__invoice_id__summary_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Conversation Summary"
+   },
+   "post": {
+    "description": "Explicit invoice opening only; history reads and source writes never generate.",
+    "operationId": "refresh_conversation_summary_api_invoices__invoice_id__summary_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "anyOf": [
+         {
+          "$ref": "#/components/schemas/SummaryRefreshRequest"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "title": "Payload"
+       }
+      }
+     }
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Refresh Conversation Summary"
+   }
+  },
+  "/api/invoices/{invoice_id}/traces": {
+   "get": {
+    "description": "The invoice's agent runs, newest first, each with its steps in order.\n\nAccess goes through the invoice: a run is visible to whoever owns the\ninvoice now, which also covers a guest who has since signed in.",
+    "operationId": "invoice_traces_api_invoices__invoice_id__traces_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "invoice_id",
+      "required": true,
+      "schema": {
+       "title": "Invoice Id",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "limit",
+      "required": false,
+      "schema": {
+       "default": 20,
+       "maximum": 50,
+       "minimum": 1,
+       "title": "Limit",
+       "type": "integer"
+      }
+     },
+     {
+      "description": "started_at cursor from next_before",
+      "in": "query",
+      "name": "before",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "format": "date-time",
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "started_at cursor from next_before",
+       "title": "Before"
+      }
+     },
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Invoice Traces"
+   }
+  },
+  "/api/users/me/sender-profile": {
+   "get": {
+    "operationId": "get_sender_profile_route_api_users_me_sender_profile_get",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Get Sender Profile Route"
+   },
+   "patch": {
+    "operationId": "patch_sender_profile_route_api_users_me_sender_profile_patch",
+    "parameters": [
+     {
+      "in": "header",
+      "name": "authorization",
+      "required": false,
+      "schema": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Authorization"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/SenderProfilePayload"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/HTTPValidationError"
+        }
+       }
+      },
+      "description": "Validation Error"
+     }
+    },
+    "summary": "Patch Sender Profile Route"
+   }
+  }
+ }
+}

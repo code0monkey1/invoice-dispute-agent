@@ -24,7 +24,11 @@ def create_traces_router(
         before: datetime | None = Query(None, description="started_at cursor from next_before"),
         caller: Caller = Depends(caller_dependency),
     ):
-        """Return an invoice's runs newest-first, with ordered steps."""
+        """The invoice's agent runs, newest first, each with its steps in order.
+
+        Access goes through the invoice: a run is visible to whoever owns the
+        invoice now, which also covers a guest who has since signed in.
+        """
         invoice = caller.authorize(invoice_id)
         cursor = before.isoformat() if before else None
         runs = deps.db.list_agent_runs(invoice["id"], limit=limit, before=cursor)
