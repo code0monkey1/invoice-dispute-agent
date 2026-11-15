@@ -24,10 +24,10 @@ Read this first if you are a new session continuing the work. Update the "State"
 
 - Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`. Nothing pushed; no pull request.
 - Baseline before any change: backend 761 passed, 13 skipped; frontend 178 passed, 6 skipped.
-- Now: backend 951 passed, 13 skipped; frontend 178 passed, 6 skipped. `api/index.py` is 1,325 lines (from 2,388).
-- Done: groups 1-4, and 5.1-5.3. Last commit of 5.3: `7838130`.
-- Next: 5.4 (summary and history), then 5.5 escalate and chat, 5.6 inbound reply, 5.7 approve/resume, 5.8.
-- Not yet run: the live eval (`python -m evals.run`) for groups 3-4. It changed what the draft tools return to the model (now the sent-email text) and the agent wiring. Ask the user first which Groq key to use (see "Live eval" below).
+- Now: backend 959 passed, 13 skipped; frontend 178 passed, 6 skipped. `api/index.py` is 1,265 lines (from 2,388).
+- Done: groups 1-4, and 5.1-5.4. Last commit of 5.4: `89e0f7a`.
+- Next: 5.5 escalate and chat, then 5.6 inbound reply, 5.7 approve/resume, 5.8.
+- Live eval for groups 3-4: the user approved a run on 2026-11-16 (local key confirmed not production's org), but every model call got `401 Invalid API Key` from Groq with the key in `.env` (no shell override). No result yet: it needs a valid key from the user, then a rerun (see "Live eval" below).
 
 ### Layout so far
 
