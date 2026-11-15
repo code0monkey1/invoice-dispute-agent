@@ -4,7 +4,7 @@ from langchain.tools import tool, ToolRuntime
 from langgraph.types import Command
 from langchain_core.messages import ToolMessage
 
-from src.services.invoice_service import parse_follow_up_date
+from src.domain.invoice import parse_follow_up_date
 
 
 @tool
