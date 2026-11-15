@@ -105,6 +105,9 @@ from web.routers.traces import create_traces_router
 from web.routers.accounts import create_accounts_router
 from web.routers.invoices import create_invoices_router
 from web.routers.conversations import create_conversations_router
+from web.agent_context import AgentContexts
+from web.agent_runs import AgentRuns
+from web.rate_limits import RATE_LIMITS, enforce_rate_limit  # noqa: F401  (tests clear RATE_LIMITS through api.index)
 from web import presentation
 from web.presentation import (  # noqa: F401  (several are read through api.index by tests and evals)
     EMAIL_DRAFT_TOOLS, EMAIL_LOG_LABELS, EMAIL_SENT_STATUSES, EMAIL_STATUS_NOTES,
@@ -118,6 +121,15 @@ deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, gmail_
 deps.agent_session = LangGraphAgentSession(lambda: deps.agent)
 identity = Identity(SECRET_KEY, store=lambda: deps.db)
 live_db = Live(lambda: deps.db)  # use cases built here still see a database swapped later
+agent_contexts = AgentContexts(live_db)
+get_context_for_invoice = agent_contexts.for_invoice
+build_user_invoice_context = agent_contexts.summary
+runs = AgentRuns(deps)
+traced_run = runs.traced
+run_id_of = AgentRuns.run_id_of
+prior_message_count = runs.prior_message_count
+invoke_agent_with_retry = runs.run_agent_with_retry
+deps.run_agent = invoke_agent_with_retry
 invoice_use_cases = InvoiceUseCases(invoices=live_db, communications=live_db, sessions=Live(lambda: deps.agent_session))
 
 
@@ -155,7 +167,6 @@ app.include_router(create_accounts_router(
 
 # --- Helpers ---
 
-RATE_LIMITS: dict[str, list[float]] = {}
 CHAT_LIMIT_PER_MINUTE = 20
 SUMMARY_LIMIT_PER_MINUTE = 10
 PARSE_LIMIT_PER_MINUTE = 8
@@ -163,78 +174,9 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 INVOICE_FILE_BUCKET = os.getenv("SUPABASE_INVOICE_FILE_BUCKET", "invoice-files")
 
 
-def enforce_rate_limit(key: str, action: str, limit: int) -> None:
-    now = time.time()
-    window_start = now - 60
-    bucket_key = f"{action}:{key}"
-    hits = [ts for ts in RATE_LIMITS.get(bucket_key, []) if ts >= window_start]
-    if len(hits) >= limit:
-        raise HTTPException(status_code=429, detail="Rate limit reached. Please wait a minute and try again.")
-    hits.append(now)
-    RATE_LIMITS[bucket_key] = hits
-
-
 def sync_agent_state_from_invoice(invoice_id: str, config: dict | None = None) -> dict | None:
     """Copy the saved invoice into the agent's state (see InvoiceUseCases.sync_session)."""
     return invoice_use_cases.sync_session(invoice_id)
-
-
-@contextmanager
-def traced_run(kind: str, invoice_id: str, context: FreelancerContext,
-               request: Request | None = None, level: int | None = None):
-    """Trace one agent run. Middleware finds the run through context.trace_run_id."""
-    with trace_run(
-        kind,
-        user_id=context.user_id or None,
-        invoice_id=invoice_id,
-        sink=deps.db,
-        level=level,
-    ) as run:
-        context.trace_run_id = run.id
-        if request is not None:
-            trace_ids = getattr(request.state, "trace_ids", None)
-            if trace_ids is None:
-                request.state.trace_ids = trace_ids = []
-            trace_ids.append(run.id)
-        try:
-            yield run
-        finally:
-            context.trace_run_id = None
-
-
-def run_id_of(request: Request | None) -> str | None:
-    ids = getattr(getattr(request, "state", None), "trace_ids", None) if request is not None else None
-    return ids[-1] if ids else None
-
-
-def invoke_agent_with_retry(payload, *, context: FreelancerContext, config: dict):
-    last_error = None
-    for attempt in range(3):
-        try:
-            return deps.agent.invoke(payload, context=context, config=config)
-        except Exception as exc:
-            last_error = exc
-            message = str(exc).lower()
-            if "429" not in message and "rate_limit" not in message:
-                raise
-            time.sleep(1.5 * (attempt + 1))
-    raise last_error
-
-
-deps.run_agent = invoke_agent_with_retry
-
-
-def build_initial_invoice_message(req: InvoiceCreateRequest) -> str:
-    balance_due = compute_balance(req.invoice_amount, req.amount_paid)
-    return (
-        f"Invoice details have been saved. Here is the summary:\n"
-        f"- Client: {req.client_name} ({req.client_email})\n"
-        f"- Invoice: {req.invoice_id} for ${req.invoice_amount:.2f}\n"
-        f"- Amount already paid: ${req.amount_paid:.2f}\n"
-        f"- Remaining balance: ${balance_due:.2f}\n"
-        f"- {req.days_overdue} days overdue, jurisdiction: {req.jurisdiction}\n\n"
-        f"Please draft a polite payment reminder email to the client."
-    )
 
 
 def build_invoice_attachment(invoice: dict | None) -> dict | None:
@@ -285,97 +227,6 @@ def send_email_via_gmail(
 deps.send_email = send_email_via_gmail
 
 
-def build_user_invoice_context(current_invoice_id: str, user_id: str) -> str:
-    """Build a compact invoice-only context summary for the agent."""
-    if not user_id:
-        return ""
-    try:
-        invoices = deps.db.get_invoices_by_user(user_id)
-    except Exception:
-        logger.exception("Failed to build invoice context for user %s", user_id)
-        return ""
-
-    current = next((inv for inv in invoices if inv["id"] == current_invoice_id), None)
-    header = []
-    if current:
-        amount = float(current.get("invoice_amount", 0) or 0)
-        balance = compute_balance(amount, float(current.get("amount_paid", 0) or 0))
-        header = [
-            "Current invoice (use these exact details in any email you draft):",
-            f"  Invoice number: {parse_public_invoice_id(current['id'])}",
-            f"  Client name: {current.get('client_name') or 'unknown'}",
-            f"  Client email: {current.get('client_email') or 'unknown'}",
-            f"  Invoice total: ${amount:,.2f}; balance due: ${balance:,.2f}",
-            f"  Days overdue: {current.get('days_overdue', 0) or 0}; status: {current.get('status', 'active')}",
-            # Level 3 looks up small-claims rules with it, and final notices name it.
-            f"  Jurisdiction: {current.get('jurisdiction') or 'not set'}",
-            *([f"  Client promised to pay by: {current['follow_up_date']}"] if current.get("follow_up_date") else []),
-            "",
-            "All invoices for this user:",
-        ]
-
-    listed = invoices[:12]
-    try:
-        communications = deps.db.get_communications_for([inv["id"] for inv in listed])
-    except Exception:
-        logger.exception("Failed to read communications for user %s", user_id)
-        communications = {}
-    lines = []
-    for invoice in listed:
-        public_id = parse_public_invoice_id(invoice["id"])
-        marker = "current" if invoice["id"] == current_invoice_id else "other"
-        amount = float(invoice.get("invoice_amount", 0) or 0)
-        paid = float(invoice.get("amount_paid", 0) or 0)
-        balance = compute_balance(amount, paid)
-        lines.append(
-            f"- [{marker}] Invoice #{public_id}: {invoice.get('client_name', '')} "
-            f"<{invoice.get('client_email', '')}>, status {invoice.get('status', 'active')}, "
-            f"balance ${balance:,.2f}, {invoice.get('days_overdue', 0) or 0} days overdue."
-            + (f" Promised to pay by {invoice['follow_up_date']}." if invoice.get("follow_up_date") else "")
-        )
-        comms = communications.get(invoice["id"], [])
-        # Only our own outgoing subjects: inbound ones are written by outsiders.
-        recent_subjects = [
-            c.get("subject")
-            for c in [c for c in comms if c.get("direction") != "inbound"][-3:]
-            if c.get("subject")
-        ]
-        if recent_subjects:
-            lines.append(f"  Recent communications: {'; '.join(recent_subjects)}")
-
-    return "\n".join(header + lines)
-
-
-def get_context_for_invoice(invoice_id: str, user: dict | None = None) -> FreelancerContext:
-    """Get FreelancerContext for an invoice.
-
-    Priority: invoice-level sender overrides > authenticated user profile > defaults.
-    Always carries ``user_id`` so downstream tools can route per-user side-effects
-    (e.g. notifications) without re-deriving identity.
-    """
-    invoice = deps.db.get_invoice(invoice_id)
-    owner_id = (invoice or {}).get("user_id") or (user or {}).get("id", "")
-    invoice_context_summary = build_user_invoice_context(invoice_id, owner_id)
-
-    if invoice and invoice.get("sender_name"):
-        return FreelancerContext(
-            freelancer_name=invoice["sender_name"],
-            freelancer_email=invoice.get("sender_email") or (user or {}).get("email", "unknown@example.com"),
-            business_name=invoice.get("sender_business") or invoice["sender_name"],
-            user_id=owner_id,
-            invoice_context_summary=invoice_context_summary,
-        )
-    if user:
-        return FreelancerContext(
-            freelancer_name=user.get("name") or "Unknown",
-            freelancer_email=user.get("email") or "unknown@example.com",
-            business_name=user.get("name", "My Business"),
-            user_id=owner_id,
-            invoice_context_summary=invoice_context_summary,
-        )
-    return FreelancerContext(user_id=owner_id, invoice_context_summary=invoice_context_summary)
-
-
 # --- JWT Helpers ---
 
 def action_card(action, state, ctx, invoice=None):
@@ -400,13 +251,6 @@ def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -
 
 
 # --- Routes ---
-
-
-def prior_message_count(invoice_id: str, include_history: bool) -> int:
-    if include_history:
-        return 0
-    snapshot = deps.agent_session.get_state(invoice_id)
-    return len((getattr(snapshot, "values", None) or {}).get("messages", []))
 
 
 class _DeliveryUnknown(Exception):
