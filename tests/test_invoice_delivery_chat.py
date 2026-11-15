@@ -30,7 +30,7 @@ async def test_chat_blocks_unrelated_questions(client, fake_db, monkeypatch):
     def fail_invoke(*args, **kwargs):
         raise AssertionError("LLM should not be called for unrelated chat")
 
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", fail_invoke)
+    monkeypatch.setattr(api_index.deps, "run_agent", fail_invoke)
 
     response = await client.post(
         "/api/chat",
@@ -69,7 +69,7 @@ async def test_chat_allows_invoice_related_questions(client, fake_db, monkeypatc
             "communication_history": [],
         }
 
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", fake_invoke)
+    monkeypatch.setattr(api_index.deps, "run_agent", fake_invoke)
 
     response = await client.post(
         "/api/chat",
@@ -164,7 +164,7 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
 
     monkeypatch.setattr(api_index, "get_current_user", lambda authorization: fake_db.users[user_id])
     monkeypatch.setattr(api_index, "_current_caller_id", lambda request, authorization: user_id)
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda uid: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda uid: ("access", "refresh"))
     monkeypatch.setattr(api_index, "download_invoice_file", lambda bucket, path: fake_db.storage[path])
     monkeypatch.setattr(api_index.deps.agent, "update_state", lambda *args, **kwargs: None)
 

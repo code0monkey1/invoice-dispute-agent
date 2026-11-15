@@ -122,7 +122,7 @@ async def test_ai_outage_is_explained_without_provider_internals(client, fake_db
     import api.index as api_index
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry",
+    monkeypatch.setattr(api_index.deps, "run_agent",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("groq: invalid api key gsk_abc123")))
     r = await client.post("/api/chat", headers=headers,
                           json={"thread_id": f"invoice-{invoice['id']}", "message": "draft a reminder for this invoice"})
@@ -202,7 +202,7 @@ async def test_no_route_returns_a_bare_500_or_leaks_internals(lenient_client, fa
         with patch("src.db._supabase_rest_request",
                    side_effect=__import__("src.db", fromlist=["x"]).DatabaseUnavailable("network is unreachable")
                    if failure == "database_down" else RuntimeError("supabase secret detail")):
-            with patch.object(api_index, "invoke_agent_with_retry", side_effect=RuntimeError("gsk_live_key leaked")):
+            with patch.object(api_index.deps, "run_agent", side_effect=RuntimeError("gsk_live_key leaked")):
                 kwargs = {"headers": headers}
                 if method in ("POST", "PATCH", "PUT"):
                     kwargs["json"] = {}

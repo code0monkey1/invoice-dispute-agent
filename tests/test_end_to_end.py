@@ -34,11 +34,11 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
     agent = FakeAgent()
     monkeypatch.setattr(api_index.deps, "agent", agent)
     sent = []
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda uid: ("access", "refresh"))
-    monkeypatch.setattr(api_index, "send_email_via_gmail",
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda uid: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "send_email",
                         lambda uid, to, subject, body, thread_id=None, attachments=None, reply_to=None:
                         sent.append({"to": to, "subject": subject, "reply_to": reply_to}) or {"id": "m1", "threadId": "t1"})
-    monkeypatch.setattr(api_index, "fetch_received_email",
+    monkeypatch.setattr(api_index.deps, "fetch_inbound_email",
                         lambda email_id: {"text": "Sorry, paying on Friday.", "html": None})
     agent_prompts = []
 
@@ -46,7 +46,7 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
         agent_prompts.append(payload["messages"][0].content)
         return {**agent.state, "messages": [AIMessage(content="ok")]}
 
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", fake_invoke)
+    monkeypatch.setattr(api_index.deps, "run_agent", fake_invoke)
     headers = signed_in(fake_db)
 
     # 1. Create the invoice (as if from an uploaded PDF).

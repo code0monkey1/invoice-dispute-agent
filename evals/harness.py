@@ -90,8 +90,8 @@ class EvalHarness:
         stack = self._stack
         stack.enter_context(patch.object(db_module, "_supabase_rest_request", side_effect=fake_request))
         stack.enter_context(patch.object(gmail_module.GmailService, "__init__", _refuse_gmail))
-        stack.enter_context(patch.object(api_index, "send_email_via_gmail", fake_send))
-        stack.enter_context(patch.object(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh")))
+        stack.enter_context(patch.object(api_index.deps, "send_email", fake_send))
+        stack.enter_context(patch.object(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh")))
         stack.enter_context(patch.object(legal.tavily_client, "search", lambda *a, **k: CANNED_SEARCH))
         self._api = api_index
         self._agent_patch = None

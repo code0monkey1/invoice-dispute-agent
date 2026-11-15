@@ -116,10 +116,10 @@ def received_event(to):
 def inbound_fakes(monkeypatch):
     import api.index as api_index
     agent_calls = []
-    monkeypatch.setattr(api_index, "fetch_received_email", lambda email_id: {
+    monkeypatch.setattr(api_index.deps, "fetch_inbound_email", lambda email_id: {
         "text": "Sorry, this slipped through. Paying on Friday.", "html": None,
     })
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry",
+    monkeypatch.setattr(api_index.deps, "run_agent",
                         lambda payload, *, context, config: agent_calls.append(config) or {"messages": []})
     return agent_calls
 
@@ -175,8 +175,8 @@ async def test_approved_email_carries_the_tracking_reply_to(client, fake_db, mon
     agent = FakeAgent()
     monkeypatch.setattr(api_index.deps, "agent", agent)
     sent = []
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh"))
-    monkeypatch.setattr(api_index, "send_email_via_gmail",
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "send_email",
                         lambda user_id, to, subject, body, thread_id=None, attachments=None, reply_to=None:
                         sent.append(reply_to) or {"id": "m1", "threadId": "t1"})
 

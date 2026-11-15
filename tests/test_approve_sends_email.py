@@ -59,8 +59,8 @@ def sent(monkeypatch):
         calls.append({"user_id": user_id, "to": to_email, "subject": subject, "body": body})
         return {"id": "msg-1", "threadId": "thread-1"}
 
-    monkeypatch.setattr(api_index, "send_email_via_gmail", fake_send)
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "send_email", fake_send)
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh"))
     return calls
 
 
@@ -159,7 +159,7 @@ async def test_demo_mode_explains_that_nothing_was_sent(client, fake_db, fake_ag
 @pytest.mark.asyncio
 async def test_missing_gmail_connection_is_reported(client, fake_db, fake_agent, sent, monkeypatch):
     import api.index as api_index
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: None)
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: None)
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     fake_agent.ask_for_approval()
@@ -174,8 +174,8 @@ async def test_missing_gmail_connection_is_reported(client, fake_db, fake_agent,
 @pytest.mark.asyncio
 async def test_gmail_failure_is_reported_and_not_logged_as_sent(client, fake_db, fake_agent, monkeypatch):
     import api.index as api_index
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh"))
-    monkeypatch.setattr(api_index, "send_email_via_gmail", lambda *a, **k: None)
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "send_email", lambda *a, **k: None)
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     fake_agent.ask_for_approval()

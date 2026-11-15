@@ -76,9 +76,9 @@ async def test_a_reply_after_settling_is_kept_but_the_agent_stays_quiet(client, 
     import api.index as api_index
     monkeypatch.setenv("RESEND_INBOUND_DOMAIN", DOMAIN)
     monkeypatch.setenv("RESEND_WEBHOOK_SECRET", "whsec_" + base64.b64encode(SECRET_RAW).decode())
-    monkeypatch.setattr(api_index, "fetch_received_email", lambda email_id: {"text": "Thanks, all done!", "html": None})
+    monkeypatch.setattr(api_index.deps, "fetch_inbound_email", lambda email_id: {"text": "Thanks, all done!", "html": None})
     calls = []
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", lambda *a, **k: calls.append(1))
+    monkeypatch.setattr(api_index.deps, "run_agent", lambda *a, **k: calls.append(1))
 
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)

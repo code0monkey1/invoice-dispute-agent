@@ -28,7 +28,7 @@ def _fake_agent(monkeypatch, *, fail=False):
             raise RuntimeError("AI service error")
         return {"messages": [AIMessage(content="Here is a formal draft.")], "escalation_level": 2}
 
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", fake_invoke)
+    monkeypatch.setattr(api_index.deps, "run_agent", fake_invoke)
     return calls
 
 

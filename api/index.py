@@ -115,7 +115,7 @@ from web.app import (  # noqa: E402  (after env and database setup above)
     Deps, SafeJSONResponse, _json_safe, create_app,
 )
 
-deps = Deps(agent=agent_module.agent)
+deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, fetch_inbound_email=fetch_received_email)
 app = create_app(deps)
 
 
@@ -302,6 +302,9 @@ def invoke_agent_with_retry(payload, *, context: FreelancerContext, config: dict
                 raise
             time.sleep(1.5 * (attempt + 1))
     raise last_error
+
+
+deps.run_agent = invoke_agent_with_retry
 
 
 def build_initial_invoice_message(req: InvoiceCreateRequest) -> str:
@@ -535,7 +538,7 @@ def send_email_via_gmail(
     reply_to: list[str] | None = None,
 ) -> dict | None:
     """Send an email via Gmail API. Returns {id, threadId} or None on failure."""
-    tokens = get_user_gmail_tokens(user_id)
+    tokens = deps.gmail_tokens(user_id)
     if not tokens:
         logger.warning(f"No Gmail tokens for user {user_id} — skipping email send")
         return None
@@ -547,6 +550,9 @@ def send_email_via_gmail(
     except Exception as e:
         logger.error(f"Failed to send email via Gmail: {e}")
         return None
+
+
+deps.send_email = send_email_via_gmail
 
 
 def parse_draft_subject_and_body(draft: str) -> tuple[str, str]:
@@ -1066,7 +1072,7 @@ def google_callback(req: GoogleCallbackRequest, request: Request, response: Resp
         "token": token,
         "user": {
             "id": user_id, "email": email, "name": name, "picture": picture,
-            "gmail_connected": get_user_gmail_tokens(user_id) is not None,
+            "gmail_connected": deps.gmail_tokens(user_id) is not None,
         },
     }
 
@@ -1080,7 +1086,7 @@ def get_me_route(authorization: str | None = Header(None)):
         "user": {
             "id": user["id"], "email": user["email"],
             "name": user.get("name", ""), "picture": user.get("picture", ""),
-            "gmail_connected": get_user_gmail_tokens(user["id"]) is not None,
+            "gmail_connected": deps.gmail_tokens(user["id"]) is not None,
         }
     }
 
@@ -1705,7 +1711,7 @@ def chat(req: ChatRequest, request: Request, authorization: str | None = Header(
 
     try:
         with traced_run("chat", inv_id, context, request, level=(persisted_state or {}).get("escalation_level")) as run:
-            response = invoke_agent_with_retry(
+            response = deps.run_agent(
                 {"messages": [HumanMessage(content=req.message)]},
                 context=context,
                 config=langsmith_config(config, run),
@@ -1767,7 +1773,7 @@ def escalate_invoice(invoice_id: str, request: Request, authorization: str | Non
     )
     try:
         with traced_run("escalate", invoice_id, context, request, level=new_level) as run:
-            response = invoke_agent_with_retry({"messages": [HumanMessage(content=prompt)]}, context=context,
+            response = deps.run_agent({"messages": [HumanMessage(content=prompt)]}, context=context,
                                                config=langsmith_config(config, run))
             note_run_outcome(run, response)
     except Exception:
@@ -1931,7 +1937,7 @@ def send_approved_draft(
     subject, body = parse_draft_subject_and_body(draft)
     if not user:
         return "demo", None, subject, draft
-    if not get_user_gmail_tokens(user["id"]):
+    if not deps.gmail_tokens(user["id"]):
         return "gmail_not_connected", None, subject, draft
     if already_sent_recently(invoice_id, subject, body):
         return "already_sent", None, subject, draft
@@ -1945,7 +1951,7 @@ def send_approved_draft(
     token = ensure_reply_token(invoice_id)
     tracking = reply_address(token) if token else None
     reply_to = [tracking, user["email"]] if tracking and user.get("email") else None
-    result = send_email_via_gmail(
+    result = deps.send_email(
         user["id"], client_email, subject, body, gmail_thread_id,
         attachments=attachments or None, reply_to=reply_to,
     )
@@ -2219,7 +2225,7 @@ def handle_client_reply(invoice: dict, from_addr: str, subject: str, body: str) 
             f"Please analyze this reply and suggest the appropriate next action."
         )
         with traced_run("inbound_reply", invoice["id"], context, level=invoice.get("escalation_level")) as run:
-            response = invoke_agent_with_retry({"messages": [HumanMessage(content=agent_msg)]}, context=context,
+            response = deps.run_agent({"messages": [HumanMessage(content=agent_msg)]}, context=context,
                                                config=langsmith_config(config, run, untrusted_input=True))
             note_run_outcome(run, response)
     except Exception as e:
@@ -2239,7 +2245,7 @@ def _process_inbound_event(event: dict) -> str:
     body = ""
     if data.get("email_id"):
         try:
-            body = plain_text(fetch_received_email(data["email_id"]))
+            body = plain_text(deps.fetch_inbound_email(data["email_id"]))
         except Exception:
             logger.exception("Could not fetch received email %s from Resend", data.get("email_id"))
 
