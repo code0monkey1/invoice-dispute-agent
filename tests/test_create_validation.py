@@ -88,10 +88,10 @@ async def test_a_racing_duplicate_gets_409_not_500(client, fake_db, fake_agent, 
     headers = signed_in(fake_db)
     assert (await client.post("/api/invoices", headers=headers, json=body(invoice_id="INV-RACE"))).status_code == 200
 
-    real_get_invoice = api_index.deps.db.get_invoice
-    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoice=lambda invoice_id: None))  # the read raced the other insert
+    real_db = api_index.deps.db
+    monkeypatch.setattr(api_index.deps, "db", Overrides(real_db, get_invoice=lambda invoice_id: None))  # the read raced the other insert
     r = await client.post("/api/invoices", headers=headers, json=body(invoice_id="INV-RACE"))
-    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoice=real_get_invoice))
+    monkeypatch.setattr(api_index.deps, "db", real_db)
 
     assert r.status_code == 409, r.text
     # The primary key's answer, not the pre-check's ("Invoice 'INV-RACE' already exists").

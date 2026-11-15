@@ -4,11 +4,12 @@ from httpx import ASGITransport, AsyncClient
 
 from src.db import DatabaseUnavailable, InvoiceAlreadyExists
 from web.app import Deps, create_app
+from web.identity import Identity
 
 
 def build():
     deps = Deps(agent=object())
-    app = create_app(deps)
+    app = create_app(deps, Identity("test-secret", store=lambda: deps.db))
 
     @app.get("/numbers")
     def numbers():

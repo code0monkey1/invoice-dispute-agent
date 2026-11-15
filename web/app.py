@@ -102,7 +102,7 @@ def cors_origins() -> list[str]:
     return [origin.strip() for origin in configured.split(",") if origin.strip()]
 
 
-def create_app(deps: Deps, identity=None) -> FastAPI:
+def create_app(deps: Deps, identity) -> FastAPI:
     """*identity* (web.identity.Identity) answers who is calling, for routes that ask via Depends(get_caller)."""
     app = FastAPI(title="Invoice Dispute Agent API", default_response_class=SafeJSONResponse)
     app.state.deps = deps
