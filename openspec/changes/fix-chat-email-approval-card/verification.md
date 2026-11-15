@@ -6,7 +6,7 @@ the complete required golden evaluation passes.
 
 ## Deterministic evidence
 
-- Backend: 759 passed, 13 environment-dependent skips.
+- Backend: 761 passed, 13 environment-dependent skips.
 - Frontend: 178 passed, 6 existing skips; lint and production build passed.
 - Strict OpenSpec validation and Git diff checks passed.
 - Independent reviews covered routing, authorization, pending-card persistence,
@@ -49,6 +49,21 @@ choice at Friendly and Legal levels; both now return the correct card without
 sending. The unchanged live reminder case then produced real cards twice (2/2).
 Stage progression and the per-level allowlists remain unchanged. A complete CI
 run on this final repair is still required.
+
+The [selected-tool CI run](https://github.com/code0monkey1/invoice-dispute-agent/actions/runs/43635315545)
+stopped at 20/36 when the replacement organization exhausted its daily token
+quota; it correctly failed closed. Before that, contextual invoice delivery
+returned a provider tool-use error and two client-reply answers copied a name
+placeholder. Local tracing reproduced the delivery error: the model asked for
+approval before calling the tool that creates the approval card. The delivery
+tool description also supplied a literal placeholder as a negative example.
+The final wording makes preparation explicitly non-sending and before approval,
+and removes that copyable example. No stage, payment or threshold rules changed.
+Both new deterministic prompt regressions failed before this repair and now pass.
+The same three live cases then passed unchanged, with judge mean 5/5 and no
+pre-approval deliveries. Another supplied account with fresh capacity was validated
+and configured locally, in GitHub and in Vercel production on November 15 IST.
+The complete protected cohort remains required.
 
 The local Groq organization reached its 200,000-token daily allowance for
 `openai/gpt-oss-120b`. The user supplied a replacement credential. It was validated

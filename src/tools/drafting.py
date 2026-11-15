@@ -70,10 +70,13 @@ def invoice_delivery_draft(state: dict, ctx) -> str:
 
 @tool
 def draft_invoice_delivery_email(subject: str, body: str, runtime: ToolRuntime) -> str:
-    """Draft the first email that sends an invoice to the client. Include a concise subject and body.
+    """Prepare an invoice-delivery draft for the owner's review card. This does not send email.
+
+    Call this tool before requesting approval; delivery requires the owner's later card approval.
+    Include a concise subject and body.
 
     Write the real client name, invoice details and your signature from the system prompt;
-    never leave placeholders like [Client Name]."""
+    use actual values and omit missing details rather than leaving template placeholders."""
     return invoice_delivery_draft(runtime.state, runtime.context)
 
 

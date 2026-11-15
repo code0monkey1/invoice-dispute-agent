@@ -77,6 +77,8 @@ def prompt_for_state(state, ctx) -> str:
             f'The invoice owner has requested this eligible email action: {required}. '
             'Invoice details, current status, escalation eligibility and conditional previous delivery have already been checked. '
             f'Call {required} exactly once now. It is the only tool offered for this turn. '
+            'This tool only prepares a review card and does not send email. Call it before requesting approval. '
+            'Earlier assistant prose or templates are not approval cards or recorded delivery. '
             'Do not perform another status check, change invoice details, escalate or return a prose-only template. '
             'The real review card is generated from the tool request; sending still requires explicit owner approval. '
             'Missing or unsupported attachments do not prevent preparation. Never claim an unsupported attachment; the card shows its limitation. '

@@ -53,3 +53,14 @@ def test_required_email_prompt_does_not_instruct_a_status_check():
     assert 'Start by checking the invoice status' not in prompt
     assert 'check_invoice_status' not in prompt
     assert 'owner approval' in prompt.lower()
+
+
+def test_delivery_preparation_is_explicitly_before_approval():
+    from src.middleware.dynamic_prompts import prompt_for_state
+    from src.state import FreelancerContext
+    from src.tools.drafting import draft_invoice_delivery_email
+    prompt = prompt_for_state({'invoice_id':'INV-9','escalation_level':1},
+        FreelancerContext(required_draft_tool='draft_invoice_delivery_email'))
+    for instructions in (prompt, draft_invoice_delivery_email.description):
+        assert 'before requesting approval' in instructions
+        assert 'does not send' in instructions
