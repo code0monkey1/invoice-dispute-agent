@@ -78,6 +78,13 @@ class AgentSession(Protocol):
 
 
 @runtime_checkable
+class ConversationSummaries(Protocol):
+    """The stored summary of an invoice's conversation (src/services/conversation_summary.py)."""
+    def read(self, invoice_id: str) -> dict: ...
+    def refresh(self, invoice_id: str) -> dict: ...
+
+
+@runtime_checkable
 class TraceSink(Protocol):
     def insert_agent_run(self, row: dict) -> None: ...
     def insert_trace_steps(self, steps: list[dict]) -> None: ...

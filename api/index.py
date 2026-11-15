@@ -60,6 +60,7 @@ from src.domain.invoice import escalation_name, next_escalation_level
 from src.adapters.agent_session import LangGraphAgentSession
 from src.usecases.auth import AuthUseCases
 from src.usecases.sender_profile import SenderProfileUseCases
+from src.usecases.conversations import ConversationUseCases
 from src.usecases.invoices import InvoiceUseCases, present_invoice, safe_filename  # noqa: F401  (present_invoice re-exported)
 from src import db as db_module
 from src.db import (
@@ -103,6 +104,7 @@ from web.routers.health import create_health_router
 from web.routers.traces import create_traces_router
 from web.routers.accounts import create_accounts_router
 from web.routers.invoices import create_invoices_router
+from web.routers.conversations import create_conversations_router
 
 deps = Deps(agent=agent_module.agent, gmail_tokens=get_user_gmail_tokens, gmail_client=GmailService,
             fetch_inbound_email=fetch_received_email, db=db_module)
@@ -110,6 +112,20 @@ deps.agent_session = LangGraphAgentSession(lambda: deps.agent)
 identity = Identity(SECRET_KEY, store=lambda: deps.db)
 live_db = Live(lambda: deps.db)  # use cases built here still see a database swapped later
 invoice_use_cases = InvoiceUseCases(invoices=live_db, communications=live_db, sessions=Live(lambda: deps.agent_session))
+
+
+class _AgentSummaries:
+    """ConversationSummaries over the summary service, with the agent of the moment."""
+
+    def read(self, invoice_id: str) -> dict:
+        return conversation_summary.read(invoice_id, deps.agent)
+
+    def refresh(self, invoice_id: str) -> dict:
+        return conversation_summary.refresh(invoice_id, deps.agent)
+
+
+conversation_use_cases = ConversationUseCases(
+    sessions=Live(lambda: deps.agent_session), communications=live_db, summaries=_AgentSummaries())
 app = create_app(deps, identity)
 app.include_router(create_health_router(
     checkpointer_status=lambda: agent_module.checkpointer_status,
@@ -540,22 +556,6 @@ def is_invoice_chat_message(message: str, current_invoice: dict, user_id: str) -
 # --- Routes ---
 
 
-def compact_conversation(invoice: dict, caller: Caller) -> dict:
-    """Invoice/approval metadata for summary-first pages; no prior message bodies."""
-    snapshot = deps.agent_session.get_state(invoice["id"])
-    values = (getattr(snapshot, "values", None) or {})
-    state = {**invoice_state_from_db(invoice), "communication_history": []}
-    interrupt = None
-    pending = deps.agent_session.pending_from_snapshot(snapshot)
-    if invoice.get("status") != "paid" and pending is not None:
-        ctx = get_context_for_invoice(invoice["id"], caller.user())
-        interrupt = action_card(pending.action, pending.state, ctx, invoice)
-    flags = deps.db.communication_flags(invoice['id'])
-    return {"state": state, "interrupt": interrupt,
-            "has_history": bool(values.get("messages")) or flags['has_history'],
-            "has_outbound": flags['has_outbound']}
-
-
 def prior_message_count(invoice_id: str, include_history: bool) -> int:
     if include_history:
         return 0
@@ -568,80 +568,6 @@ def trim_action_response(result: dict, before: int, include_history: bool) -> di
         result = {**result, "messages": result.get("messages", [])[before:]}
         result['state'] = {**result.get('state', {}), 'communication_history': []}
     return result
-
-
-@app.get("/api/invoices/{invoice_id}/summary")
-def get_conversation_summary(invoice_id: str, request: Request, caller: Caller = Depends(get_caller)):
-    invoice = caller.authorize(invoice_id)
-    return {**conversation_summary.read(invoice_id, deps.agent), **compact_conversation(invoice, caller)}
-
-
-@app.post("/api/invoices/{invoice_id}/summary")
-def refresh_conversation_summary(
-    invoice_id: str, request: Request, response: Response,
-    payload: SummaryRefreshRequest | None = Body(None),
-    caller: Caller = Depends(get_caller),
-):
-    """Explicit invoice opening only; history reads and source writes never generate."""
-    invoice = caller.authorize(invoice_id)
-    enforce_rate_limit(caller.rate_key(), "summary", SUMMARY_LIMIT_PER_MINUTE)
-    result = conversation_summary.refresh(invoice_id, deps.agent)
-    if result["status"] not in ("current", "empty"):
-        response.status_code = 202
-    return {**result, **compact_conversation(invoice, caller)}
-
-
-def history_summary_fields(invoice_id: str) -> dict:
-    result = conversation_summary.read(invoice_id, deps.agent)
-    return {"summary": result["summary"], "summary_metadata": {
-        key: result[key] for key in ("source_version", "generated_at", "status", "is_stale")
-    }}
-
-
-@app.get("/api/invoices/{invoice_id}/history")
-def get_invoice_history(
-    invoice_id: str,
-    request: Request,
-    caller: Caller = Depends(get_caller),
-):
-    """Retrieve the full conversation history and state for an existing thread."""
-    invoice = caller.authorize(invoice_id)
-    persisted_state = invoice_state_from_db(invoice)
-    # Capture a waiting approval before any state write can erase its details.
-    # History preserves the interrupt instead of syncing while it is pending.
-    try:
-        read = deps.agent_session.read_before_sync(
-            invoice_id,
-            persisted_state,
-            preserve_pending=True,
-        )
-        snapshot = read.snapshot
-        if read.sync_error is not None:
-            logger.error("Failed to sync agent state for invoice %s: %s", invoice_id, read.sync_error)
-    except Exception:
-        return {"messages": [], "interrupt": None, "state": persisted_state, **history_summary_fields(invoice_id)}
-
-    if not snapshot or not snapshot.values:
-        return {"messages": [], "interrupt": None, "state": persisted_state, **history_summary_fields(invoice_id)}
-
-    state = snapshot.values
-    messages = serialize_messages(state.get("messages", []))
-
-    # Check for pending interrupt
-    interrupt_data = None
-    user = caller.user()
-    settled = (persisted_state or {}).get("status") == "paid"
-    if read.pending is not None and not settled:
-        ctx = get_context_for_invoice(invoice_id, user)
-        interrupt_data = action_card(read.pending.action, read.pending.state, ctx, invoice)
-
-    return {
-        "messages": messages,
-        "interrupt": interrupt_data,
-        "state": extract_state(state),
-        "communications": deps.db.get_summary_communications(invoice_id),
-        **history_summary_fields(invoice_id),
-    }
 
 
 def prepare_chat_email(req, invoice, context, config, snapshot, intent, before, request):
@@ -986,6 +912,20 @@ def send_approved_draft(
     return "sent", result, subject, draft
 
 
+def approval_card(pending, invoice: dict, user: dict | None) -> dict:
+    """The approval card for a waiting action, with the invoice's sender details."""
+    return action_card(pending.action, pending.state, get_context_for_invoice(invoice["id"], user), invoice)
+
+
+app.include_router(create_conversations_router(
+    conversations=conversation_use_cases,
+    caller_dependency=get_caller,
+    approval_card=approval_card,
+    serialize_messages=serialize_messages,
+    extract_state=extract_state,
+    enforce_rate_limit=enforce_rate_limit,
+    summary_limit=SUMMARY_LIMIT_PER_MINUTE,
+))
 app.include_router(create_invoices_router(
     invoices=invoice_use_cases,
     caller_dependency=get_caller,

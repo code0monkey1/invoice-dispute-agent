@@ -37,7 +37,7 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 - [x] 5.1 Extract health and traces to `web/routers/` and remove the shadowed second `/api/health`; verify `tests/test_traces_endpoint.py` and the route contract pass
 - [x] 5.2 Extract auth and sender profile (use case plus router); verify `tests/test_sender_profile.py` and `tests/test_security.py` pass
 - [x] 5.3 Extract invoice CRUD, upload, parsing and generator; verify `tests/test_generated_invoice.py`, `tests/test_create_validation.py` and `tests/test_settle_invoice.py` pass
-- [ ] 5.4 Extract summary and history; verify `tests/test_summary_api.py` and `tests/test_history_keeps_approval.py` pass
+- [x] 5.4 Extract summary and history; verify `tests/test_summary_api.py` and `tests/test_history_keeps_approval.py` pass
 - [ ] 5.5 Extract escalate and chat; verify `tests/test_escalate_invoice.py`, `tests/test_email_card_routing.py` and `tests/test_invoice_delivery_chat.py` pass
 - [ ] 5.6 Extract inbound reply; verify `tests/test_reply_tracking.py` and `tests/test_tool_gate.py` pass
 - [ ] 5.7 Add order-sensitive tests for approve/resume, then extract it; verify `tests/test_approve_sends_email.py` and `tests/test_real_graph_payments.py` pass
