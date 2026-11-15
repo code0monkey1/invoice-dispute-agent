@@ -20,13 +20,13 @@
 
 - [x] 4.1 Extend the golden case loader/harness with optional prior conversation and successful-delivery fixtures while preserving existing defaults. Verify fixture validation, actual API/graph replay, zero pre-approval outbox entries and refusal to construct a real Gmail client with deterministic tests.
 - [x] 4.2 Add a hard structural gate for cases expecting email approval: correct draft interrupt and no delivery before approval must pass independently of aggregate quality. Verify prose-only, missing/error/skipped cases cannot pass; preserve existing thresholds and required GitHub gate behavior with runner/workflow regression tests.
-- [ ] 4.3 Add direct and contextual email cases across supported levels, including the observed Legal phrases after prose-only replies, conditional already-sent behavior, explicit resend and trust-boundary negatives. Run the isolated live Groq golden set, require every critical card assertion to pass, preserve failed/provider-error results and document exact tools/cards/outbox evidence without real email sending.
+- [x] 4.3 Add direct and contextual email cases across supported levels, including the observed Legal phrases after prose-only replies, conditional already-sent behavior, explicit resend and trust-boundary negatives. Run the isolated live Groq golden set, require every critical card assertion to pass, preserve failed/provider-error results and document exact tools/cards/outbox evidence without real email sending.
 
 ## 5. Integrated verification and release
 
 - [x] 5.1 Run full backend/frontend suites, lint/build and strict OpenSpec validation, review the actual diff and obtain an independent review. Verify no unrelated changes, approval bypass, fictitious card parsing or summary/history regressions remain, and record results and existing skips/warnings.
 - [x] 5.2 Deploy preview and verify typed Legal draft preparation, contextual follow-up, pending-card reuse and reopening with history hidden on owned disposable fixtures. Verify conditional/prior-delivery and attachment notes, and leave live approval/send untriggered; record the preview URL and observations.
-- [ ] 5.3 Open a focused PR, require successful protected CI, merge and deploy the merged SHA through the established production flow. Verify alias/SHA/health, owned card creation/reuse and cross-owner denial without approving real delivery or changing the referenced real invoice; record release evidence and application rollback instructions.
+- [x] 5.3 Open a focused PR, require successful protected CI, merge and deploy the merged SHA through the established production flow. Verify alias/SHA/health, owned card creation/reuse and cross-owner denial without approving real delivery or changing the referenced real invoice; record release evidence and application rollback instructions.
 
 ## Workflow follow-up
 
