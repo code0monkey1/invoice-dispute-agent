@@ -8,6 +8,10 @@
 - src/usecases imports only the domain and ports.
 - Nothing under src/ imports the HTTP layer.
 
+Tests and evals replace collaborators through api.index.deps, never by
+patching api.index itself: such a patch keeps "working" after the code it
+targets moves elsewhere, while the real collaborator runs.
+
 KNOWN_VIOLATIONS lists what breaks the rule today. It must match exactly, so
 fixing one means deleting its line here, and nobody can add a new one unnoticed.
 """
@@ -107,3 +111,62 @@ def test_the_rule_catches_a_forbidden_import(tmp_path, monkeypatch):
         "src/domain/rules.py imports src.db",
         "src/domain/rules.py imports third-party fastapi",
     ]
+
+
+ENTRY_MODULE = "api.index"
+PATCHERS = {"setattr", "object"}  # monkeypatch.setattr / setattr / patch.object / mock.patch.object
+
+
+def entry_module_aliases(tree: ast.AST) -> set[str]:
+    """Names bound to api.index in a file: 'import api.index as x', and 'self._x = x' copies."""
+    names = {alias.asname for node in ast.walk(tree) if isinstance(node, ast.Import)
+             for alias in node.names if alias.name == ENTRY_MODULE and alias.asname}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Name) and node.value.id in names:
+            names.update(ast.unparse(t) for t in node.targets)
+    return names
+
+
+def entry_module_patches(path: Path) -> list[str]:
+    tree = ast.parse(path.read_text(), filename=str(path))
+    aliases = entry_module_aliases(tree)
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or not node.args:
+            continue
+        name = node.func.attr if isinstance(node.func, ast.Attribute) else getattr(node.func, "id", "")
+        target = node.args[0]
+        if name in PATCHERS and ast.unparse(target) in aliases:
+            found.append(f"{relative(path)}:{node.lineno} patches {ENTRY_MODULE}")
+        elif (name in {"patch", "setattr"} and isinstance(target, ast.Constant) and isinstance(target.value, str)
+              and target.value.startswith(ENTRY_MODULE + ".")):
+            found.append(f"{relative(path)}:{node.lineno} patches {target.value}")
+    return found
+
+
+def test_tests_and_evals_never_patch_the_entry_module():
+    found = [p for folder in ("tests", "evals") for path in python_files(folder) for p in entry_module_patches(path)]
+    assert found == []
+
+
+def test_the_patch_rule_catches_every_spelling(tmp_path, monkeypatch):
+    probe = tmp_path / "tests" / "test_probe.py"
+    probe.parent.mkdir()
+    probe.write_text(
+        "import api.index as api_index\n"
+        "from unittest.mock import patch\n"
+        "def test(monkeypatch):\n"
+        "    monkeypatch.setattr(api_index, 'agent', None)\n"          # line 4: forbidden
+        "    monkeypatch.setattr(api_index.deps, 'agent', None)\n"     # allowed
+        "    patch.object(api_index, 'get_invoice')\n"                # line 6: forbidden
+        "    patch('api.index.get_invoice')\n"                         # line 7: forbidden
+        "    monkeypatch.setattr('api.index.agent', None)\n"           # line 8: forbidden
+        "class H:\n"
+        "    def go(self):\n"
+        "        self._api = api_index\n"
+        "        patch.object(self._api, 'agent', None)\n"             # line 12: forbidden
+    )
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    lines = [int(p.split(":")[1].split()[0]) for p in entry_module_patches(probe)]
+    assert sorted(lines) == [4, 6, 7, 8, 12]
