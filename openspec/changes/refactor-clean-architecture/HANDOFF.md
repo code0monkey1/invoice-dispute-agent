@@ -25,14 +25,15 @@ Read this first if you are a new session continuing the work. Update the "State"
 - Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`.
 - Baseline before any change: backend 761 passed, 13 skipped; frontend 178 passed, 6 skipped.
 - Done: task group 1 (regression net), commit `4e5dbe9`. Backend is now 793 passed, 13 skipped.
-- Next: task 2.1, the app factory and `Deps` container.
+- Done: task 2.1. `web/app.py` holds `create_app(deps)` and the `Deps` container; `api/index.py` builds `deps` and `app` from it and still registers every route. Backend is 799 passed, 13 skipped.
+- Next: task 2.3 (request models to `web/schemas.py`), then 2.4 (tests swap fields on `deps` instead of patching `api.index`; start with `agent`), then 2.2.
 - Nothing has been pushed and no pull request is open.
 
 ## Things learned that the tasks do not say
 
 - **Import order trap.** `tests/conftest.py` patches `src.db.upload_invoice_file` and `download_invoice_file`, but `api/index.py` copies those names at import. The patch only works because `api.index` is first imported inside the `client` fixture, after the patch is active. A test module that imports `api.index` at the top breaks `tests/test_generated_invoice.py`. Import it inside functions until task 2.4 replaces these patches with injected fakes.
 - **New invoices start at escalation level 0**, not 1.
-- **The SPA catch-all** is registered only when `frontend/dist` exists, and its path is computed relative to `api/index.py`. Keep that correct when it moves to `api/app.py`.
+- **The SPA catch-all** is registered only when `frontend/dist` exists, and its path is computed relative to `api/index.py`. Keep that correct when it moves to `web/`.
 - **`vercel.json`** names `api/index.py`, and Vercel looks for the module-level `app` there. Both stay.
 - **The silent-patch risk.** If a caller moves out of `api/index.py` while the old name is still imported there, `monkeypatch.setattr(api_index, ...)` succeeds but does nothing. Convert a test to an injected fake before moving the code it fakes, and check the test fails when the fake misbehaves.
 - **Already covered, no new tests needed:** the chat email preflight (`tests/test_email_card_routing.py`), the chat topic guard (`tests/test_invoice_delivery_chat.py`), the top escalation level (`tests/test_escalate_invoice.py`).

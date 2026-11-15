@@ -110,58 +110,13 @@ GUEST_COOKIE_MAX_AGE = 60 * 60 * 24 * 30  # 30 days
 # Initialize database on startup
 init_db()
 
-def _json_safe(value):
-    """Replace inf/NaN (which JSON can't encode) with None, recursively."""
-    if isinstance(value, float) and not math.isfinite(value):
-        return None
-    if isinstance(value, dict):
-        return {k: _json_safe(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [_json_safe(v) for v in value]
-    return value
+from web.app import (  # noqa: E402  (after env and database setup above)
+    AI_UNAVAILABLE_DETAIL, DATABASE_UNAVAILABLE_DETAIL, UNEXPECTED_ERROR_DETAIL,
+    Deps, SafeJSONResponse, _json_safe, create_app,
+)
 
-
-class SafeJSONResponse(JSONResponse):
-    """A model can put inf/NaN in tool-call args, which are checkpointed and
-    returned by chat and history. Plain JSONResponse raises on them, which made
-    the invoice's chat fail on every load."""
-
-    def render(self, content) -> bytes:
-        return super().render(_json_safe(content))
-
-
-app = FastAPI(title="Invoice Dispute Agent API", default_response_class=SafeJSONResponse)
-
-DATABASE_UNAVAILABLE_DETAIL = "We couldn't reach the database just now, so this didn't finish. Please try again in a moment."
-UNEXPECTED_ERROR_DETAIL = "Something went wrong on our side. Please try again in a moment."
-AI_UNAVAILABLE_DETAIL = "The AI assistant isn't responding right now. Please try again in a moment."
-
-
-@app.exception_handler(RequestValidationError)
-async def request_validation_error(request: Request, exc: RequestValidationError):
-    # FastAPI's default handler echoes the rejected input, and an inf/NaN input
-    # made encoding the 422 itself fail with a 500.
-    return SafeJSONResponse(status_code=422, content={"detail": jsonable_encoder(exc.errors())})
-
-
-@app.exception_handler(InvoiceAlreadyExists)
-async def invoice_already_exists(request: Request, exc: InvoiceAlreadyExists):
-    # Two creates raced past the "already exists?" check; the primary key stopped the second.
-    return JSONResponse(status_code=409, content={"detail": "An invoice with this number already exists."})
-
-
-@app.exception_handler(DatabaseUnavailable)
-async def database_unavailable(request: Request, exc: DatabaseUnavailable):
-    # A network blip or a database outage: say so plainly instead of a bare 500.
-    logger.warning("Database unavailable on %s %s: %s", request.method, request.url.path, exc)
-    return JSONResponse(status_code=503, content={"detail": DATABASE_UNAVAILABLE_DETAIL}, headers={"Retry-After": "5"})
-
-
-@app.exception_handler(Exception)
-async def unexpected_error(request: Request, exc: Exception):
-    # Log the details; never send stack traces or internal messages to the browser.
-    logger.exception("Unhandled error on %s %s", request.method, request.url.path, exc_info=exc)
-    return JSONResponse(status_code=500, content={"detail": UNEXPECTED_ERROR_DETAIL})
+deps = Deps(agent=agent)
+app = create_app(deps)
 
 
 @app.get("/api/health")
@@ -175,37 +130,6 @@ def health():
         os.getenv("VERCEL_ENV") == "production" or store["reason"] != "not_configured")
     return {"status": "degraded" if degraded else "ok", "python": sys.version, "checkpointer": store,
             "traces": tracer.stats(), "langsmith": langsmith_status()}
-
-
-# CORS — explicit origins so credentials (guest_session cookie) can flow.
-# Set CORS_ALLOW_ORIGINS to a comma-separated list (e.g. "https://your.app,https://dash.your.app").
-# Defaults to localhost dev origins.
-_cors_env = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
-_cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_cors_origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["X-Trace-Id"],
-)
-
-
-@app.middleware("http")
-async def trace_id_header(request: Request, call_next):
-    """Name the agent run(s) a request made, so a bug report maps straight to its trace.
-
-    Created before the route runs: request.state lives in the ASGI scope, which
-    the route shares, so traced_run() can append to this list.
-    """
-    request.state.trace_ids = []
-    response = await call_next(request)
-    if request.state.trace_ids:
-        response.headers["X-Trace-Id"] = ",".join(request.state.trace_ids)
-    return response
-
 
 
 # --- Request/Response Models ---

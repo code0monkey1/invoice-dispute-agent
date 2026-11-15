@@ -32,17 +32,19 @@ See `proposal.md` for motivation. Constraints that shape the approach:
 **Layout**
 
 ```
-api/index.py     entry point: app = create_app(real_deps())
-api/app.py       factory, middleware, exception handlers, SPA catch-all
-api/deps.py      identity as Depends
-api/schemas.py   request models
-api/routers/     auth, invoices, chat, approval, inbound, traces, health
+api/index.py     entry point: app = create_app(deps)
+web/app.py       factory, Deps container, middleware, exception handlers
+web/identity.py  identity as Depends
+web/schemas.py   request models
+web/routers/     auth, invoices, chat, approval, inbound, traces, health
 src/domain/      policy, stdlib only
 src/ports.py     Protocols
 src/usecases/    one module per flow
 src/adapters/    supabase, gmail, resend, agent_session, tracing
 ```
 
+- **The HTTP layer lives in `web/`, not `api/`.** Vercel can treat each Python file under `api/` as its own serverless function, which would publish `api/app.py` or a router file as an endpoint. Only the entry point stays in `api/`. Alternative: underscore-prefixed files in `api/`; rejected because it relies on a naming convention nobody will remember.
+- **`Deps` is one mutable container read at call time.** Code reads `deps.agent`, not a module global, so a test that swaps a field affects every caller wherever that caller lives. This is what removes the silent-patch risk; constructor injection per use case follows as flows are extracted.
 - **Ports only where a second implementation exists.** `FakeDB`, the eval Gmail outbox and `ScriptedModel` already are those implementations. Alternative: a port for every collaborator; rejected because it adds files without removing coupling.
 - **`typing.Protocol` over abstract base classes.** Existing fakes satisfy a Protocol without inheriting from it. Alternative: ABCs; rejected because every fake would need editing for no behavioral gain.
 - **A plain dataclass `Deps` plus `app.state`, read through `Depends`.** Alternative: a DI library; rejected as an extra dependency for about eight collaborators.

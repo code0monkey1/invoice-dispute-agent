@@ -11,9 +11,9 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 
 ## 2. Injection seam
 
-- [ ] 2.1 Add `api/app.py` with `create_app(deps)` and a `Deps` dataclass; `api/index.py` builds `app` from it; verify the route contract test and full suite pass
-- [ ] 2.2 Move identity helpers to `api/deps.py` and use `Depends` in handlers; verify `tests/test_security.py` and `tests/test_pentest_invoice_writes.py` pass
-- [ ] 2.3 Move the request models to `api/schemas.py`; verify `tests/test_create_validation.py` passes
+- [x] 2.1 Add `web/app.py` with `create_app(deps)` and a `Deps` dataclass; `api/index.py` builds `app` from it; verify the route contract test and full suite pass
+- [ ] 2.2 Move identity helpers to `web/identity.py` and use `Depends` in handlers; verify `tests/test_security.py` and `tests/test_pentest_invoice_writes.py` pass
+- [ ] 2.3 Move the request models to `web/schemas.py`; verify `tests/test_create_validation.py` passes
 - [ ] 2.4 Convert tests and `evals/harness.py` from patching `api.index` to injected fakes, one patched name at a time (`agent`, `invoke_agent_with_retry`, `get_user_gmail_tokens`, `fetch_received_email`, `send_email_via_gmail`, then the rest); verify each converted test fails when its fake is made to misbehave
 - [ ] 2.5 Extend the architecture test to forbid `setattr` patches on `api.index` in `tests/` and `evals/`; verify it passes
 
@@ -34,7 +34,7 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 
 ## 5. Use cases and routers
 
-- [ ] 5.1 Extract health and traces to `api/routers/` and remove the shadowed second `/api/health`; verify `tests/test_traces_endpoint.py` and the route contract pass
+- [ ] 5.1 Extract health and traces to `web/routers/` and remove the shadowed second `/api/health`; verify `tests/test_traces_endpoint.py` and the route contract pass
 - [ ] 5.2 Extract auth and sender profile (use case plus router); verify `tests/test_sender_profile.py` and `tests/test_security.py` pass
 - [ ] 5.3 Extract invoice CRUD, upload, parsing and generator; verify `tests/test_generated_invoice.py`, `tests/test_create_validation.py` and `tests/test_settle_invoice.py` pass
 - [ ] 5.4 Extract summary and history; verify `tests/test_summary_api.py` and `tests/test_history_keeps_approval.py` pass

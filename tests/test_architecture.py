@@ -1,7 +1,7 @@
 """The dependency rule: imports point toward business policy.
 
-    api  ->  usecases  ->  domain
-    adapters ->  ports  ->  domain
+    api/index.py -> web -> usecases -> domain
+                 adapters -> ports -> domain
 
 - src/domain imports only the standard library.
 - src/ports imports only the domain.
@@ -55,7 +55,7 @@ def relative(path: Path) -> str:
 
 
 def is_project_module(name: str) -> bool:
-    return name.split(".")[0] in {"src", "api", "evals", "tests"}
+    return name.split(".")[0] in {"src", "api", "web", "evals", "tests"}
 
 
 def is_stdlib(name: str) -> bool:
@@ -82,7 +82,7 @@ def test_inner_layers_import_only_what_is_further_in():
 
 def test_nothing_under_src_imports_the_http_layer():
     offenders = [relative(p) for p in python_files("src")
-                 if any(n == "api" or n.startswith("api.") for n in imports_of(p))]
+                 if any(n.split(".")[0] in {"api", "web"} for n in imports_of(p))]
     assert offenders == []
 
 
