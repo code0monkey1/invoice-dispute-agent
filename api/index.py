@@ -54,7 +54,7 @@ from src.state import FreelancerContext
 from src.email_drafts import DRAFT_LABELS, DraftPreparationError, is_email_information, resolve_email_request
 from src.middleware.dynamic_tools import tools_for_level
 from src.domain.email_templates import render_draft
-from src.domain.chat import is_invoice_chat_message as invoice_chat_policy
+from src.domain.chat import email_preflight, is_invoice_chat_message as invoice_chat_policy
 from src.domain.communication import was_sent_recently
 from src.domain.invoice import escalation_name, next_escalation_level
 from src.adapters.agent_session import LangGraphAgentSession
@@ -570,51 +570,41 @@ def trim_action_response(result: dict, before: int, include_history: bool) -> di
     return result
 
 
+class _DeliveryUnknown(Exception):
+    """The last send of an email couldn't be looked up."""
+
+
 def prepare_chat_email(req, invoice, context, config, snapshot, intent, before, request):
-    """Preflight a current owner action, leaving real delivery behind /resume."""
+    """Preflight a current owner action, leaving real delivery behind /resume (src.domain.chat.email_preflight)."""
     waiting = pending_action(snapshot)
-    if not intent and not waiting:
+
+    def last_delivery(label):
+        try:
+            return deps.db.get_last_outbound_delivery(invoice["id"], label)
+        except Exception as exc:
+            raise _DeliveryUnknown from exc
+
+    try:
+        decision = email_preflight(
+            intent=intent,
+            waiting=waiting,
+            invoice=invoice,
+            allowed_tools={t.name for t in tools_for_level(invoice_state_from_db(invoice)["escalation_level"])},
+            labels=DRAFT_LABELS,
+            last_delivery=last_delivery,
+        )
+    except _DeliveryUnknown:
+        raise HTTPException(status_code=503, detail='Previous delivery could not be verified. Please try again.')
+    if decision is None:
         return None
-    if invoice.get('status') == 'paid':
-        return None  # existing settled-invoice response remains authoritative
-    reply = None
-    card = None
-    outcome = None
-    if waiting:
-        card = action_card(waiting, getattr(snapshot, 'values', None) or {}, context, invoice)
-        reply = 'Please approve or reject the existing review card before preparing another action.'
-        outcome = 'pending_reused'
-    elif intent.clarification:
-        reply, outcome = intent.clarification, 'clarification'
-    else:
-        tool = intent.tool_name
-        allowed = {t.name for t in tools_for_level(invoice_state_from_db(invoice)['escalation_level'])}
-        if tool not in allowed:
-            reply = 'Final notices are available at Legal level.' if tool == 'draft_final_notice' else 'That email is not available at the current escalation level.'
-            outcome = 'unavailable_level'
-        else:
-            missing = [label for key,label in [('client_name','client name'),('client_email','client email')] if not str(invoice.get(key) or '').strip()]
-            if not invoice.get('invoice_amount'):
-                missing.append('invoice amount')
-            if tool == 'draft_final_notice' and not invoice.get('jurisdiction'):
-                missing.append('jurisdiction')
-            if missing:
-                reply = 'Please provide the ' + ', '.join(missing) + ' before I prepare this email.'
-                outcome = 'missing_details'
-            elif intent.only_if_unsent:
-                try:
-                    last = deps.db.get_last_outbound_delivery(invoice['id'], DRAFT_LABELS[tool])
-                except Exception:
-                    raise HTTPException(status_code=503, detail='Previous delivery could not be verified. Please try again.')
-                if last:
-                    reply = f"The {DRAFT_LABELS[tool]} was already sent on {last.get('timestamp') or 'a recorded earlier date'}. I have not prepared or sent a duplicate. Ask me to prepare another draft if you want to resend it."
-                    outcome = 'already_delivered'
-        if reply is None:
-            context.required_draft_tool = tool
-            context.invoice_context_summary += '\nCurrent email attachment status: ' + attachment_note(invoice, tool)
-            return None
+    if decision.outcome is None:
+        context.required_draft_tool = decision.tool
+        context.invoice_context_summary += '\nCurrent email attachment status: ' + attachment_note(invoice, decision.tool)
+        return None
+    reply, outcome = decision.reply, decision.outcome
+    card = action_card(waiting, getattr(snapshot, 'values', None) or {}, context, invoice) if decision.reuse_pending else None
     with traced_run('chat', invoice['id'], context, request, level=invoice.get('escalation_level')) as run:
-        run.add('email_preparation', (waiting or {}).get('name') or getattr(intent, 'tool_name', None), {'outcome':outcome})
+        run.add('email_preparation', decision.tool, {'outcome': outcome})
         extra = [HumanMessage(content=req.message), AIMessage(content=reply)]
         if waiting:
             messages = list((getattr(snapshot, 'values', None) or {}).get('messages', [])) + extra
