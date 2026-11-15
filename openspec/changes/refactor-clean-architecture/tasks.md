@@ -13,7 +13,7 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 
 - [x] 2.1 Add `web/app.py` with `create_app(deps)` and a `Deps` dataclass; `api/index.py` builds `app` from it; verify the route contract test and full suite pass
 - [x] 2.2 Move identity helpers to `web/identity.py` and use `Depends` in handlers; verify `tests/test_security.py` and `tests/test_pentest_invoice_writes.py` pass
-- [ ] 2.3 Move the request models to `web/schemas.py`; verify `tests/test_create_validation.py` passes
+- [x] 2.3 Move the request models to `web/schemas.py`; verify `tests/test_create_validation.py` passes
 - [x] 2.4 Convert tests and `evals/harness.py` from patching `api.index` to injected fakes, one patched name at a time (`agent`, `invoke_agent_with_retry`, `get_user_gmail_tokens`, `fetch_received_email`, `send_email_via_gmail`, then the rest); verify each converted test fails when its fake is made to misbehave
 - [x] 2.5 Extend the architecture test to forbid `setattr` patches on `api.index` in `tests/` and `evals/`; verify it passes
 

@@ -25,6 +25,10 @@ from langgraph.types import Command
 
 import logging
 from datetime import datetime, timedelta, timezone
+from web.schemas import (  # noqa: E402
+    ChatRequest, GenerateInvoicePayload, GoogleCallbackRequest, InvoiceCreateRequest, InvoiceUploadMetadata,
+    ResumeRequest, SenderProfilePayload, SummaryRefreshRequest, UpdateDetailsRequest, UpdateSenderRequest,
+)
 from web.identity import (
     DEFAULT_SECRET_KEY, GUEST_COOKIE_NAME, Caller, Identity, assert_secret_configured, get_caller,
 )
@@ -106,48 +110,6 @@ def health():
         os.getenv("VERCEL_ENV") == "production" or store["reason"] != "not_configured")
     return {"status": "degraded" if degraded else "ok", "python": sys.version, "checkpointer": store,
             "traces": tracer.stats(), "langsmith": langsmith_status()}
-
-
-# --- Request/Response Models ---
-
-class ChatRequest(BaseModel):
-    thread_id: str
-    message: str
-
-
-class InvoiceCreateRequest(BaseModel):
-    # Trimmed, so "INV-1 " can't become a second invoice next to "INV-1".
-    model_config = {"str_strip_whitespace": True}
-
-    invoice_id: str = Field(min_length=1, max_length=300)
-    client_name: str = Field(min_length=1, max_length=200)
-    client_email: str = Field(min_length=1, max_length=254)
-    invoice_amount: float = Field(gt=0, allow_inf_nan=False)
-    days_overdue: int = Field(ge=0)
-    jurisdiction: str
-    amount_paid: float = Field(default=0, ge=0, allow_inf_nan=False)
-
-
-class InvoiceUploadMetadata(InvoiceCreateRequest):
-    pass
-
-
-class ResumeRequest(BaseModel):
-    decision: str  # "approve", "reject", "edit"
-    message: Optional[str] = None
-    edited_action: Optional[dict] = None
-
-
-class UpdateDetailsRequest(BaseModel):
-    client_name: Optional[str] = None
-    client_email: Optional[str] = None
-
-
-class UpdateSenderRequest(BaseModel):
-    freelancer_name: Optional[str] = None
-    freelancer_email: Optional[str] = None
-    business_name: Optional[str] = None
-
 
 
 # --- Helpers ---
@@ -834,10 +796,6 @@ def gmail_connect_url(caller: Caller = Depends(get_caller)):
     return {"url": url}
 
 
-class GoogleCallbackRequest(BaseModel):
-    code: str
-
-
 @app.post("/api/auth/google/callback")
 def google_callback(req: GoogleCallbackRequest, request: Request, response: Response):
     import urllib.request
@@ -934,17 +892,6 @@ def get_me_route(caller: Caller = Depends(get_caller)):
 
 # ─── Sender profile (Invoice Generator) ──────────────────────────────────────
 
-class SenderProfilePayload(BaseModel):
-    """Pydantic schema for the per-user sender profile used by generated invoices."""
-    model_config = {"extra": "forbid"}
-
-    business_name: Optional[str] = None
-    your_name: Optional[str] = None
-    your_email: Optional[str] = None
-    address: Optional[str] = None
-    logo_url: Optional[str] = None
-    tax_id: Optional[str] = None
-
 
 _EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 
@@ -983,10 +930,6 @@ def patch_sender_profile_route(
     existing = (deps.db.get_user(user_id) or {}).get("sender_profile") or {}
     merged = {**existing, **incoming}
     return deps.db.update_user_sender_profile(user_id, merged)
-
-
-class SummaryRefreshRequest(BaseModel):
-    model_config = {"extra": "forbid"}
 
 
 def compact_conversation(invoice: dict, caller: Caller) -> dict:
@@ -1220,20 +1163,6 @@ async def upload_invoice_and_create(
 
 
 # ─── Invoice Generator endpoints ─────────────────────────────────────────────
-
-class GenerateInvoicePayload(BaseModel):
-    """Schema for creating a generated invoice from an already-uploaded PDF."""
-    model_config = {"extra": "forbid", "str_strip_whitespace": True}
-
-    invoice_id: str = Field(min_length=1, max_length=300)
-    client_name: str = Field(min_length=1, max_length=200)
-    client_email: str = Field(min_length=1, max_length=254)
-    invoice_amount_cents: int = Field(gt=0)
-    due_date: str  # yyyy-mm-dd
-    jurisdiction: Optional[str] = None
-    storage_path: str
-    file_name: str
-    file_size: int
 
 
 @app.post("/api/invoices/generated/upload")
@@ -1716,7 +1645,6 @@ def ensure_reply_token(invoice_id: str) -> str | None:
         logger.exception("Could not save a reply token for invoice %s (is the reply_token column missing?)", invoice_id)
         return None
     return token if (updated or {}).get("reply_token") == token else None
-
 
 
 # ─── LangSmith: the steps outside the agent graph ─────────────────────────────
