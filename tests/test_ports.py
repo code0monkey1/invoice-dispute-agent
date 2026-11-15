@@ -38,6 +38,12 @@ class FakeAgentSession:
     def pending(self, invoice_id):
         return None
 
+    def pending_from_snapshot(self, snapshot):
+        return None
+
+    def read_before_sync(self, invoice_id, persisted_state, *, preserve_pending=False):
+        return None
+
 
 class FakeClock:
     def now(self):

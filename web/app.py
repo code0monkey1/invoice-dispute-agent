@@ -29,6 +29,7 @@ AI_UNAVAILABLE_DETAIL = "The AI assistant isn't responding right now. Please try
 class Deps:
     """The app's outside collaborators. Tests replace fields; code reads them at call time."""
     agent: Any                       # the compiled LangGraph agent (state, interrupts)
+    agent_session: Any = None        # checkpoint addressing and pending-interrupt reads
     run_agent: Any = None            # (payload, *, context, config) -> agent response
     send_email: Any = None           # (user_id, to_email, subject, body, ...) -> provider result or None
     gmail_tokens: Any = None         # (user_id) -> (access, refresh) or None
