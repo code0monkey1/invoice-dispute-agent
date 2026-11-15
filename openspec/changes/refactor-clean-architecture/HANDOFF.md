@@ -24,17 +24,22 @@ Read this first if you are a new session continuing the work. Update the "State"
 
 - Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`.
 - Baseline before any change: backend 761 passed, 13 skipped; frontend 178 passed, 6 skipped.
-- Done: task group 1 (regression net), commit `4e5dbe9`. Backend is now 793 passed, 13 skipped.
-- Done: task 2.1. `web/app.py` holds `create_app(deps)` and the `Deps` container; `api/index.py` builds `deps` and `app` from it and still registers every route. Backend is 799 passed, 13 skipped.
-- Next: task 2.3 (request models to `web/schemas.py`), then 2.4 (tests swap fields on `deps` instead of patching `api.index`; start with `agent`), then 2.2.
+- Done: task group 1 (regression net) and task group 2 (injection seam). Last commit of group 2: `4168c68`. Backend is 815 passed, 13 skipped. `api/index.py` is 2,086 lines (from 2,388).
+- What group 2 left in place:
+  - `web/app.py`: `create_app(deps, identity)` and the `Deps` container. Fields: `agent`, `run_agent`, `send_email`, `gmail_tokens`, `gmail_client`, `fetch_inbound_email`, `db`. Code reads them at call time.
+  - `web/identity.py`: `Identity` (tokens, guest cookies, ownership) and the lazy `Caller`, which routes get with `Depends(get_caller)`.
+  - `web/schemas.py`: the ten request models.
+  - Tests replace collaborators with `monkeypatch.setattr(api_index.deps, ...)`, and single members with `tests.fakes.Overrides`. `tests/test_architecture.py` fails on any patch of `api.index` itself.
+- Next: task 3.1 (`src/domain/invoice.py`).
 - Nothing has been pushed and no pull request is open.
 
 ## Things learned that the tasks do not say
 
-- **Import order trap.** `tests/conftest.py` patches `src.db.upload_invoice_file` and `download_invoice_file`, but `api/index.py` copies those names at import. The patch only works because `api.index` is first imported inside the `client` fixture, after the patch is active. A test module that imports `api.index` at the top breaks `tests/test_generated_invoice.py`. Import it inside functions until task 2.4 replaces these patches with injected fakes.
+- **Import order (fixed in group 2).** `api/index.py` used to copy `src.db` names at import, so a test module importing it at the top could break `tests/conftest.py`'s storage patches. It now calls `deps.db.<name>()`. Keep it that way: never copy a collaborator's function into a module at import.
 - **New invoices start at escalation level 0**, not 1.
 - **The SPA catch-all** is registered only when `frontend/dist` exists, and its path is computed relative to `api/index.py`. Keep that correct when it moves to `web/`.
 - **`vercel.json`** names `api/index.py`, and Vercel looks for the module-level `app` there. Both stay.
+- **How to check a converted test still tests something:** make its fake ineffective (e.g. have `Overrides` ignore its members) and confirm the test fails. Two tests needed stronger assertions for this in group 2.
 - **The silent-patch risk.** If a caller moves out of `api/index.py` while the old name is still imported there, `monkeypatch.setattr(api_index, ...)` succeeds but does nothing. Convert a test to an injected fake before moving the code it fakes, and check the test fails when the fake misbehaves.
 - **Already covered, no new tests needed:** the chat email preflight (`tests/test_email_card_routing.py`), the chat topic guard (`tests/test_invoice_delivery_chat.py`), the top escalation level (`tests/test_escalate_invoice.py`).
 - **Possibly stale docs:** `CLAUDE.md` describes a Gmail push webhook and Telegram routes; `api/index.py` has neither. Check the rest of the repo in task 7.2.
