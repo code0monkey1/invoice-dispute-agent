@@ -4,6 +4,7 @@ and a retry after a failure must never email the client twice.
 Found when the database became unreachable mid-session: every request
 returned a plain-text 500 with no explanation.
 """
+from tests.fakes import Overrides
 import socket
 import urllib.error
 from io import BytesIO
@@ -13,7 +14,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from src.db import _supabase_rest_request as real_rest_request  # captured before the fake is patched in
+from src.adapters.supabase import _supabase_rest_request as real_rest_request  # captured before the fake is patched in
 from tests.test_approve_sends_email import DRAFT, approve, create_invoice, fake_agent, sent, signed_in  # noqa: F401
 
 
@@ -26,8 +27,8 @@ async def lenient_client(fake_db):
 
 
 def database_down():
-    from src.db import DatabaseUnavailable
-    return patch("src.db._supabase_rest_request", side_effect=DatabaseUnavailable("network is unreachable"))
+    from src.errors import DatabaseUnavailable
+    return patch("src.adapters.supabase._supabase_rest_request", side_effect=DatabaseUnavailable("network is unreachable"))
 
 
 # ─── Database outage ─────────────────────────────────────────────────────────
@@ -66,7 +67,7 @@ async def test_database_outage_gives_a_clear_503(lenient_client, fake_db, method
 
 
 def test_reads_retry_a_network_blip_but_writes_do_not(monkeypatch):
-    from src import db
+    from src.adapters import supabase as db
     monkeypatch.setattr(db.time, "sleep", lambda s: None)
     calls = {"n": 0}
 
@@ -98,7 +99,7 @@ def test_reads_retry_a_network_blip_but_writes_do_not(monkeypatch):
     urllib.error.HTTPError("http://x", 503, "Service Unavailable", {}, BytesIO(b"<html>cloudflare</html>")),
 ])
 def test_network_and_server_failures_become_database_unavailable(monkeypatch, error):
-    from src import db
+    from src.adapters import supabase as db
     monkeypatch.setattr(db.time, "sleep", lambda s: None)
     with patch("urllib.request.urlopen", side_effect=error), pytest.raises(db.DatabaseUnavailable):
         real_rest_request("GET", "invoices")
@@ -109,7 +110,7 @@ def test_network_and_server_failures_become_database_unavailable(monkeypatch, er
 @pytest.mark.asyncio
 async def test_unexpected_errors_are_json_without_internals(lenient_client, fake_db, monkeypatch):
     import api.index as api_index
-    monkeypatch.setattr(api_index, "get_invoices_by_user", lambda uid: (_ for _ in ()).throw(ValueError("secret column xyz")))
+    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, get_invoices_by_user=lambda uid: (_ for _ in ()).throw(ValueError("secret column xyz"))))
     r = await lenient_client.get("/api/invoices")
     assert r.status_code == 500
     assert r.headers["content-type"].startswith("application/json")
@@ -122,7 +123,7 @@ async def test_ai_outage_is_explained_without_provider_internals(client, fake_db
     import api.index as api_index
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry",
+    monkeypatch.setattr(api_index.deps, "run_agent",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("groq: invalid api key gsk_abc123")))
     r = await client.post("/api/chat", headers=headers,
                           json={"thread_id": f"invoice-{invoice['id']}", "message": "draft a reminder for this invoice"})
@@ -157,7 +158,7 @@ async def test_retrying_approve_after_a_failure_does_not_email_twice(client, fak
     assert second.json()["email_status"] == "already_sent"
     assert second.json()["email_sent"] is True
     import api.index as api_index
-    outbound = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
+    outbound = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
     assert len(outbound) == 1
 
 
@@ -199,10 +200,11 @@ async def test_no_route_returns_a_bare_500_or_leaks_internals(lenient_client, fa
     for method, path in _api_routes():
         url = (path.replace("{invoice_id}", invoice["id"]).replace("{full_path:path}", "x")
                    .replace("{token}", "t"))
-        with patch("src.db._supabase_rest_request",
-                   side_effect=__import__("src.db", fromlist=["x"]).DatabaseUnavailable("network is unreachable")
+        from src.errors import DatabaseUnavailable
+        with patch("src.adapters.supabase._supabase_rest_request",
+                   side_effect=DatabaseUnavailable("network is unreachable")
                    if failure == "database_down" else RuntimeError("supabase secret detail")):
-            with patch.object(api_index, "invoke_agent_with_retry", side_effect=RuntimeError("gsk_live_key leaked")):
+            with patch.object(api_index.deps, "run_agent", side_effect=RuntimeError("gsk_live_key leaked")):
                 kwargs = {"headers": headers}
                 if method in ("POST", "PATCH", "PUT"):
                     kwargs["json"] = {}
@@ -222,7 +224,7 @@ async def test_no_route_returns_a_bare_500_or_leaks_internals(lenient_client, fa
 @pytest.mark.parametrize("timeout_error", [TimeoutError("timed out"), urllib.error.URLError(socket.timeout("timed out"))])
 def test_a_read_that_timed_out_is_not_retried(monkeypatch, timeout_error):
     """Three 20-second timeouts would blow the 60-second function limit."""
-    from src import db
+    from src.adapters import supabase as db
     monkeypatch.setattr(db.time, "sleep", lambda s: None)
     calls = {"n": 0}
 
@@ -238,17 +240,18 @@ def test_a_read_that_timed_out_is_not_retried(monkeypatch, timeout_error):
 @pytest.mark.asyncio
 async def test_email_sent_then_everything_fails_still_reports_sent(client, fake_db, fake_agent, sent):
     """Gmail accepts the email, then both the AI step and the database fail."""
-    from src.db import DatabaseUnavailable
+    from src.errors import DatabaseUnavailable
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     fake_agent.ask_for_approval()
     import api.index as api_index
 
-    real_get_invoice = api_index.get_invoice
-    calls = {"after_send": False}
+    real_get_invoice = api_index.deps.db.get_invoice
+    calls = {"after_send": False, "db_failures": 0}
 
     def flaky_get_invoice(invoice_id):
         if calls["after_send"]:
+            calls["db_failures"] += 1
             raise DatabaseUnavailable("down")
         return real_get_invoice(invoice_id)
 
@@ -257,9 +260,10 @@ async def test_email_sent_then_everything_fails_still_reports_sent(client, fake_
         raise RuntimeError("AI down")
 
     fake_agent.invoke = invoke_then_db_dies
-    with patch.object(api_index, "get_invoice", flaky_get_invoice):
+    with patch.object(api_index.deps, "db", Overrides(api_index.deps.db, get_invoice=flaky_get_invoice)):
         r = await approve(client, invoice, headers)
 
+    assert calls["db_failures"] > 0  # the database really was down after the send
     assert len(sent) == 1
     assert r.status_code == 200, r.text
     assert r.json()["email_sent"] is True

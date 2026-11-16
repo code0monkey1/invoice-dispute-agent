@@ -61,7 +61,7 @@ def server(monkeypatch):
             if self.current:
                 self.current.close()
             self.current = Instance(self.model)
-            monkeypatch.setattr(api_index, "agent", self.current.agent)
+            monkeypatch.setattr(api_index.deps, "agent", self.current.agent)
 
     s = Server()
     s.restart()

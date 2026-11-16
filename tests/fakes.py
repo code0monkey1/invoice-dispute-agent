@@ -39,7 +39,7 @@ class FakeDB:
         table = path_segments[0] if path_segments else ""
         self.requests.append((method, table, params))
         if table in self.down_tables:
-            from src.db import DatabaseUnavailable
+            from src.errors import DatabaseUnavailable
             raise DatabaseUnavailable(f"{table} is down (simulated)")
         if table == 'rpc/invoice_communication_overviews':
             results = []
@@ -63,6 +63,28 @@ class FakeDB:
         if table == "communication_history":
             return self._communications(method, params, payload)
         return None
+
+    def insert_agent_run(self, row: dict) -> None:
+        self.handle("POST", ["agent_runs"], payload=row)
+
+    def insert_trace_steps(self, steps: list[dict]) -> None:
+        if steps:
+            self.handle("POST", ["agent_trace_steps"], payload=steps)
+
+    def list_agent_runs(self, invoice_id: str, limit: int = 20, before: str | None = None) -> list[dict]:
+        query = [("invoice_id", f"eq.{invoice_id}"), ("order", "started_at.desc"), ("limit", str(limit))]
+        if before:
+            query.append(("started_at", f"lt.{before}"))
+        return self.handle("GET", ["agent_runs"], query=query) or []
+
+    def get_trace_steps(self, run_ids: list[str]) -> dict[str, list[dict]]:
+        grouped = {run_id: [] for run_id in run_ids}
+        if not run_ids:
+            return grouped
+        query = [("run_id", f"in.({','.join(run_ids)})"), ("order", "seq.asc")]
+        for row in self.handle("GET", ["agent_trace_steps"], query=query) or []:
+            grouped.setdefault(row["run_id"], []).append(row)
+        return grouped
 
     def _summary_rpc(self, name, p):
         from copy import deepcopy
@@ -179,7 +201,7 @@ class FakeDB:
             row.setdefault("status", "active")
             if row["id"] in self.invoices:
                 # invoices.id is the primary key: PostgREST answers 409.
-                from src.db import Conflict
+                from src.errors import Conflict
                 raise Conflict(f"duplicate key value violates unique constraint (id={row['id']})")
             self.invoices[row["id"]] = row
             return [row]
@@ -224,3 +246,20 @@ class ScriptedModel(BaseChatModel):
 
 def tool_call(name, **args):
     return AIMessage(content="", tool_calls=[{"name": name, "args": args, "id": f"call-{uuid.uuid4().hex[:8]}"}])
+
+
+class Overrides:
+    """A collaborator with some members replaced, for one test.
+
+        monkeypatch.setattr(deps, "db", Overrides(deps.db, get_invoice=lambda invoice_id: None))
+
+    Everything not named falls through to the real one, looked up at call time.
+    """
+
+    def __init__(self, base, **members):
+        self._base = base
+        self._members = members
+
+    def __getattr__(self, name):
+        members = self.__dict__.get("_members", {})
+        return members[name] if name in members else getattr(self.__dict__["_base"], name)

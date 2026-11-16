@@ -1,26 +1,19 @@
-"""Invoice business rules: the one place invoice facts are written.
+"""Invoice rules: balances, invoice numbers, what an approval may commit,
+escalation, and which client details can be saved.
 
-Routes call these functions; tools never write the database. A tool that
-changes money or status is HITL-gated, so it only proposes the change in agent
-state. Once the user approves, the resume route hands the agent's response to
-apply_approved_outcome, which validates it and commits it.
+Pure functions over plain dicts. Reading and writing invoices is the
+caller's job (src/usecases/).
 
-    tool ──(state)──▶ user approves ──▶ resume route ──▶ apply_approved_outcome ──▶ db
-                                                                                   │
-    agent checkpoint ◀── sync_agent_state_from_invoice (api/index.py) ◀────────────┘
-
-Status values: active (default) → pending (client promised to pay by
-follow_up_date) → paid (settled). Nothing leaves paid.
+Status values: active (default) -> pending (client promised to pay by
+follow_up_date) -> paid (settled). Nothing leaves paid.
 """
-import logging
+import base64
 import math
 import re
 from datetime import date
 from typing import Optional
 
-from src import db
-
-logger = logging.getLogger("invoicechaser")
+INVOICE_ID_SEPARATOR = "__inv__"
 
 # What approving each payment tool may commit: the fields it may change and
 # the statuses it may set. Approving anything else (an email draft) commits no
@@ -32,6 +25,7 @@ COMMITTABLE_BY_TOOL = {
     "mark_invoice_pending": ({"status", "follow_up_date"}, {"pending"}),
 }
 MAX_ESCALATION_LEVEL = 3
+ESCALATION_LEVEL_NAMES = {1: "Friendly", 2: "Formal", 3: "Legal"}
 MAX_CLIENT_NAME_LENGTH = 200
 MAX_EMAIL_LENGTH = 254
 # One plain address: no spaces, commas, semicolons or angle brackets, so it
@@ -57,13 +51,33 @@ def parse_follow_up_date(value) -> Optional[str]:
         return None
 
 
-def invoice_state_from_db(invoice: dict) -> dict:
+def build_invoice_storage_id(user_id: str, invoice_id: str) -> str:
+    """Create a per-user storage ID while preserving the public invoice number."""
+    encoded = base64.urlsafe_b64encode(invoice_id.encode()).decode().rstrip("=")
+    return f"{user_id}{INVOICE_ID_SEPARATOR}{encoded}"
+
+
+def parse_public_invoice_id(storage_id: str) -> str:
+    """Recover the original invoice number from a storage ID when possible."""
+    if INVOICE_ID_SEPARATOR not in storage_id:
+        return storage_id
+
+    _, encoded = storage_id.split(INVOICE_ID_SEPARATOR, 1)
+    try:
+        padding = "=" * (-len(encoded) % 4)
+        return base64.urlsafe_b64decode(f"{encoded}{padding}".encode()).decode()
+    except Exception:
+        return storage_id
+
+
+def invoice_state(invoice: dict) -> dict:
+    """The invoice as the agent sees it, with the database's blanks filled in."""
     amount_paid = float(invoice.get("amount_paid", 0) or 0)
     invoice_amount = float(invoice.get("invoice_amount", 0) or 0)
     return {
         "client_name": invoice.get("client_name", ""),
         "client_email": invoice.get("client_email", ""),
-        "invoice_id": db.parse_public_invoice_id(invoice["id"]),
+        "invoice_id": parse_public_invoice_id(invoice["id"]),
         "invoice_amount": invoice_amount,
         "amount_paid": amount_paid,
         "balance_due": compute_balance(invoice_amount, amount_paid),
@@ -75,24 +89,19 @@ def invoice_state_from_db(invoice: dict) -> dict:
     }
 
 
-def apply_approved_outcome(invoice_id: str, response: dict, approved_tool: Optional[str]) -> Optional[dict]:
-    """Commit the payment and status changes the user just approved.
+def approved_changes(invoice: dict, response: dict, approved_tool: Optional[str]) -> tuple[dict, list[tuple[str, object]]]:
+    """What approving *approved_tool* commits to *invoice*, from the agent's *response*.
 
-    Only the fields *approved_tool* is allowed to change are read from
-    *response* (the agent state after the approved run). Returns the saved
-    invoice as agent state, or None if the invoice is gone. A settled invoice
-    is never changed, even by a request racing the settle.
+    Returns (updates, rejected): the fields to save, and the (field, value)
+    pairs the agent proposed that may not be saved. Only the fields the tool
+    may change are read. A settled invoice is never changed.
     """
-    invoice = db.get_invoice(invoice_id)
-    if not invoice:
-        logger.warning("apply_approved_outcome: invoice %s not found", invoice_id)
-        return None
     if (invoice.get("status") or "active") == "paid" or approved_tool not in COMMITTABLE_BY_TOOL:
-        return invoice_state_from_db(invoice)
+        return {}, []
     fields, statuses = COMMITTABLE_BY_TOOL[approved_tool]
-
     invoice_amount = float(invoice.get("invoice_amount", 0) or 0)
-    updates = {}
+    updates: dict = {}
+    rejected: list[tuple[str, object]] = []
 
     new_paid_raw = response.get("amount_paid")
     if (
@@ -105,65 +114,50 @@ def apply_approved_outcome(invoice_id: str, response: dict, approved_tool: Optio
         if abs(new_paid - float(invoice.get("amount_paid", 0) or 0)) > 0.005:
             updates["amount_paid"] = new_paid
     elif new_paid_raw is not None and "amount_paid" in fields:
-        logger.warning("Ignoring invalid amount_paid %r for invoice %s", new_paid_raw, invoice_id)
+        rejected.append(("amount_paid", new_paid_raw))
 
     new_status = response.get("status")
     if "status" in fields and isinstance(new_status, str) and new_status != (invoice.get("status") or "active"):
         if new_status in statuses:
             updates["status"] = new_status
         else:
-            logger.warning("Ignoring status %r from %s for invoice %s", new_status, approved_tool, invoice_id)
+            rejected.append(("status", new_status))
 
     if "follow_up_date" in fields and "follow_up_date" in response and response.get("status") == "pending":
         follow_up_date = parse_follow_up_date(response.get("follow_up_date"))
         if follow_up_date is None:
-            logger.warning("Ignoring invalid follow_up_date %r for invoice %s", response.get("follow_up_date"), invoice_id)
+            rejected.append(("follow_up_date", response.get("follow_up_date")))
         elif follow_up_date != invoice.get("follow_up_date"):
             updates["follow_up_date"] = follow_up_date
     if updates.get("status") == "pending" and "follow_up_date" not in updates and not invoice.get("follow_up_date"):
         # A promise without a readable date isn't a promise we can follow up on.
         updates.pop("status")
-
-    if not updates:
-        return invoice_state_from_db(invoice)
-    updated = db.update_invoice(invoice_id, only_if_unpaid=True, **updates)
-    return invoice_state_from_db(updated) if updated else None
+    return updates, rejected
 
 
-def set_escalation_level(invoice_id: str, new_level) -> bool:
-    """Raise the invoice's escalation level. Never lowers it. Returns True if it changed."""
-    if not isinstance(new_level, int) or isinstance(new_level, bool):
-        return False
-    invoice = db.get_invoice(invoice_id)
-    if not invoice:
-        return False
-    current = int(invoice.get("escalation_level") or 0)
-    target = min(MAX_ESCALATION_LEVEL, new_level)
-    if target <= current:
-        return False
-    db.update_invoice(invoice_id, escalation_level=target)
-    return True
+def is_escalation_level(value) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
 
 
-def settle(invoice_id: str, user_id: Optional[str]) -> bool:
-    """Mark the invoice paid and log it, exactly once. Returns True for the call that settled it."""
-    if not db.mark_invoice_settled(invoice_id):
-        return False
-    db.add_communication(
-        invoice_id=invoice_id,
-        comm_type="invoice_settled",
-        subject="Marked as settled",
-        content="Marked as settled. The agent will take no further action on this invoice.",
-        direction="internal",
-        user_id=user_id,
-    )
-    return True
+def escalation_target(current: int, requested: int) -> Optional[int]:
+    """The level to move to, or None. Escalation never goes down and stops at Legal."""
+    target = min(MAX_ESCALATION_LEVEL, requested)
+    return target if target > current else None
 
 
-def update_client_details(invoice_id: str, updates: dict) -> dict:
-    """Save the client's name and email. Other fields are ignored. Returns what was saved.
+def next_escalation_level(current: int) -> Optional[int]:
+    """The next dispute level, or None when the dispute is already at Legal."""
+    return escalation_target(current, current + 1)
 
-    Raises InvalidClientDetails, saving nothing, if either value is unusable.
+
+def escalation_name(level: int) -> str:
+    return ESCALATION_LEVEL_NAMES[level]
+
+
+def clean_client_details(updates: dict) -> dict:
+    """The client name and email from *updates*, tidied. Other fields are dropped.
+
+    Raises InvalidClientDetails if either value is unusable.
     """
     allowed = {}
     name = updates.get("client_name")
@@ -178,6 +172,4 @@ def update_client_details(invoice_id: str, updates: dict) -> dict:
         if len(email) > MAX_EMAIL_LENGTH or not _SINGLE_EMAIL_RE.match(email):
             raise InvalidClientDetails("Client email must be a single email address.")
         allowed["client_email"] = email
-    if allowed:
-        db.update_invoice(invoice_id, **allowed)
     return allowed

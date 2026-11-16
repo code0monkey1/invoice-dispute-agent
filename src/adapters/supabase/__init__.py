@@ -22,6 +22,9 @@ from typing import Optional, Sequence
 from cryptography.fernet import Fernet
 from supabase import create_client, Client
 
+from src.domain.invoice import build_invoice_storage_id, parse_public_invoice_id  # noqa: F401  (re-exported)
+from src.errors import Conflict, DatabaseUnavailable, InvoiceAlreadyExists
+
 # ---------------------------------------------------------------------------
 # Supabase client singleton
 # ---------------------------------------------------------------------------
@@ -31,35 +34,8 @@ logger = logging.getLogger("invoicechaser")
 _supabase_client: Optional[Client] = None
 
 
-class DatabaseUnavailable(RuntimeError):
-    """The database couldn't be reached or answered with a server error.
-
-    Raised instead of raw network errors so the API can tell the user to try
-    again, rather than failing with a bare "Internal Server Error".
-    ``retryable`` is False for timeouts: retrying a 20-second timeout would
-    push the request past the 60-second serverless limit.
-    """
-
-    def __init__(self, message: str, *, retryable: bool = True):
-        super().__init__(message)
-        self.retryable = retryable
-
-
-class Conflict(RuntimeError):
-    """The write broke a unique constraint (PostgREST answers 409)."""
-
-
-class InvoiceAlreadyExists(Conflict):
-    """This user already has an invoice with this number.
-
-    The routes check first, but two creates can race past that check; the
-    primary key on invoices.id (user + number) then stops the second insert.
-    """
-
-
 # Waits before retrying a read that hit a network blip.
 _READ_RETRY_DELAYS = (0.3, 1.0)
-_INVOICE_ID_SEPARATOR = "__inv__"
 _SUPABASE_TIMEOUT_SECONDS = 20
 
 
@@ -198,25 +174,6 @@ def init_db() -> None:
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def build_invoice_storage_id(user_id: str, invoice_id: str) -> str:
-    """Create a per-user storage ID while preserving the public invoice number."""
-    encoded = base64.urlsafe_b64encode(invoice_id.encode()).decode().rstrip("=")
-    return f"{user_id}{_INVOICE_ID_SEPARATOR}{encoded}"
-
-
-def parse_public_invoice_id(storage_id: str) -> str:
-    """Recover the original invoice number from a storage ID when possible."""
-    if _INVOICE_ID_SEPARATOR not in storage_id:
-        return storage_id
-
-    _, encoded = storage_id.split(_INVOICE_ID_SEPARATOR, 1)
-    try:
-        padding = "=" * (-len(encoded) % 4)
-        return base64.urlsafe_b64decode(f"{encoded}{padding}".encode()).decode()
-    except Exception:
-        return storage_id
 
 
 def upsert_user(

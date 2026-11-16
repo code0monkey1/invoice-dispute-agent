@@ -1,3 +1,4 @@
+from tests.fakes import Overrides
 from types import SimpleNamespace
 
 import pytest
@@ -30,7 +31,7 @@ async def test_chat_blocks_unrelated_questions(client, fake_db, monkeypatch):
     def fail_invoke(*args, **kwargs):
         raise AssertionError("LLM should not be called for unrelated chat")
 
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", fail_invoke)
+    monkeypatch.setattr(api_index.deps, "run_agent", fail_invoke)
 
     response = await client.post(
         "/api/chat",
@@ -69,7 +70,7 @@ async def test_chat_allows_invoice_related_questions(client, fake_db, monkeypatc
             "communication_history": [],
         }
 
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", fake_invoke)
+    monkeypatch.setattr(api_index.deps, "run_agent", fake_invoke)
 
     response = await client.post(
         "/api/chat",
@@ -139,7 +140,7 @@ def test_serialize_messages_flattens_structured_content():
 @pytest.mark.asyncio
 async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, monkeypatch):
     import api.index as api_index
-    from src.db import build_invoice_storage_id
+    from src.domain.invoice import build_invoice_storage_id
 
     user_id = "user-123"
     storage_id = build_invoice_storage_id(user_id, "INV-ATTACH-1")
@@ -162,11 +163,10 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
     }
     fake_db.storage["generated/user-123/abc/invoice.pdf"] = b"pdf-content"
 
-    monkeypatch.setattr(api_index, "get_current_user", lambda authorization: fake_db.users[user_id])
-    monkeypatch.setattr(api_index, "_current_caller_id", lambda request, authorization: user_id)
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda uid: ("access", "refresh"))
-    monkeypatch.setattr(api_index, "download_invoice_file", lambda bucket, path: fake_db.storage[path])
-    monkeypatch.setattr(api_index.agent, "update_state", lambda *args, **kwargs: None)
+    signed_in = {"Authorization": f"Bearer {api_index.identity.create_jwt(user_id, 'owner@example.com')}"}
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda uid: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "db", Overrides(api_index.deps.db, download_invoice_file=lambda bucket, path: fake_db.storage[path]))
+    monkeypatch.setattr(api_index.deps.agent, "update_state", lambda *args, **kwargs: None)
 
     state = {
         "messages": [AIMessage(content="Draft ready")],
@@ -192,8 +192,8 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
         }]
     })
     task = SimpleNamespace(interrupts=[interrupt])
-    monkeypatch.setattr(api_index.agent, "get_state", lambda config: SimpleNamespace(values=state, tasks=[task]))
-    monkeypatch.setattr(api_index.agent, "invoke", lambda *args, **kwargs: state)
+    monkeypatch.setattr(api_index.deps.agent, "get_state", lambda config: SimpleNamespace(values=state, tasks=[task]))
+    monkeypatch.setattr(api_index.deps.agent, "invoke", lambda *args, **kwargs: state)
 
     sent = {}
 
@@ -210,11 +210,11 @@ async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, mo
             })
             return {"id": "msg-1", "threadId": "thread-1"}
 
-    monkeypatch.setattr(api_index, "GmailService", FakeGmailService)
+    monkeypatch.setattr(api_index.deps, "gmail_client", FakeGmailService)
 
     response = await client.post(
         f"/api/invoices/{storage_id}/resume",
-        headers={"Authorization": "Bearer test"},
+        headers=signed_in,
         json={
             "decision": "approve",
             "message": "Subject: Edited Invoice Subject\n\nEdited invoice body.",
@@ -253,9 +253,8 @@ GUARD_INVOICE = {"id": "guest-x__inv__SU5WLTE", "client_name": "Acme Corp", "cli
     "they asked for an extension until Friday",
 ])
 def test_guard_lets_invoice_conversation_through(message, monkeypatch):
-    import api.index as api_index
-    monkeypatch.setattr(api_index, "get_invoices_by_user", lambda _uid: [])
-    assert api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
+    from web.routers.chat import is_invoice_chat_message
+    assert is_invoice_chat_message(SimpleNamespace(get_invoices_by_user=lambda _uid: []), message, GUARD_INVOICE, "guest-x")
 
 
 @pytest.mark.parametrize("message", [
@@ -264,6 +263,17 @@ def test_guard_lets_invoice_conversation_through(message, monkeypatch):
     "who won the football match last night",
 ])
 def test_guard_still_blocks_off_topic_questions(message, monkeypatch):
-    import api.index as api_index
-    monkeypatch.setattr(api_index, "get_invoices_by_user", lambda _uid: [])
-    assert not api_index.is_invoice_chat_message(message, GUARD_INVOICE, "guest-x")
+    from web.routers.chat import is_invoice_chat_message
+    assert not is_invoice_chat_message(SimpleNamespace(get_invoices_by_user=lambda _uid: []), message, GUARD_INVOICE, "guest-x")
+
+
+@pytest.mark.parametrize("message,lookups", [
+    ("yes", 0),                                     # short reply
+    ("what is the status of this one?", 0),         # invoice keyword
+    ("what happened with northwind lately?", 1),    # only a lookup can tell
+])
+def test_guard_reads_the_owners_invoices_only_when_it_must(message, lookups, monkeypatch):
+    from web.routers.chat import is_invoice_chat_message
+    calls = []
+    is_invoice_chat_message(SimpleNamespace(get_invoices_by_user=lambda uid: calls.append(uid) or []), message, GUARD_INVOICE, "guest-x")
+    assert len(calls) == lookups

@@ -120,7 +120,7 @@ async def test_pre_approval_count_measures_actual_sends_before_auto_approval():
         def _generate(self, messages, **kwargs):
             if self.replies:
                 import api.index as api
-                api.send_email_via_gmail("eval-user", "ap@acme.example", "Premature", "Unsafe")
+                api.deps.send_email("eval-user", "ap@acme.example", "Premature", "Unsafe")
             return super()._generate(messages, **kwargs)
 
     model = PrematureSender(replies=[tool_call("draft_final_notice")])

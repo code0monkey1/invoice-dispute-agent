@@ -162,7 +162,7 @@ async def test_tokens_and_cost_are_recorded_when_the_model_reports_usage(client,
 
     model = PricedModel()
     model.replies = [AIMessage(content="It's overdue.", usage_metadata={"input_tokens": 1000, "output_tokens": 50, "total_tokens": 1050})]
-    monkeypatch.setattr(api_index, "agent", build_agent(model, MemorySaver()))
+    monkeypatch.setattr(api_index.deps, "agent", build_agent(model, MemorySaver()))
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     await post_chat(client, headers, invoice, "How overdue is this invoice?")
@@ -218,7 +218,7 @@ async def test_a_failed_model_call_is_traced_as_an_error_and_still_identified(cl
         def _generate(self, messages, stop=None, run_manager=None, **kwargs):
             raise ConnectionError("groq is down")
 
-    monkeypatch.setattr(api_index, "agent", build_agent(BrokenModel(), MemorySaver()))
+    monkeypatch.setattr(api_index.deps, "agent", build_agent(BrokenModel(), MemorySaver()))
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     r = await post_chat(client, headers, invoice, "What is the status of this invoice?")
@@ -269,30 +269,36 @@ async def test_a_client_reply_that_tries_to_escalate_is_refused_and_traced(clien
     assert blocked["name"] == "escalate_dispute" and blocked["payload"]["reason"] == "untrusted_input"
 
 
-@pytest.mark.asyncio
-async def test_a_draft_that_cant_be_rebuilt_still_sends_and_is_traced_as_approved(client, fake_db, scripted, sent, monkeypatch):
-    """Labelling the decision must never fail the approval itself."""
-    import api.index as api_index
-    headers, invoice, _ = await drafted_reminder(client, fake_db, scripted)
-    real = api_index.generate_draft_preview
-    calls = {"n": 0}
+def test_a_draft_that_cant_be_rebuilt_is_recorded_as_a_plain_approval():
+    """Labelling the decision must never fail the approval itself.
 
-    def flaky(*args, **kwargs):  # the first call is describe_decision's comparison
-        calls["n"] += 1
-        return None if calls["n"] == 1 else real(*args, **kwargs)
+    An amount the template can't format means there is no draft to compare
+    the approved text with: record a plain approval instead of raising.
+    """
+    from api.index import describe_decision
+    from src.state import FreelancerContext
+    action = {"name": "draft_polite_reminder", "args": {}}
+    unrenderable = {"client_name": "Acme", "invoice_id": "INV-1", "invoice_amount": "lots"}
 
-    monkeypatch.setattr(api_index, "generate_draft_preview", flaky)
-    r = await resume(client, headers, invoice, "approve", message="Subject: Hi\n\nMy own words")
-    assert r.status_code == 200, r.text
-    assert len(sent) == 1
-    [run] = runs(fake_db, "resume")
-    decision = steps(fake_db, run["id"])[0]["payload"]
-    assert decision["decision"] == "approve" and decision["compared_with_draft"] is False
+    decision = describe_decision("approve", "Subject: Hi\n\nMy own words", action, unrenderable, FreelancerContext())
+
+    assert decision == {"decision": "approve", "had_pending_action": True, "compared_with_draft": False}
+
+
+def test_an_approval_with_different_words_is_recorded_as_an_edit():
+    from api.index import describe_decision
+    from src.state import FreelancerContext
+    action = {"name": "draft_polite_reminder", "args": {}}
+    state = {"client_name": "Acme", "invoice_id": "INV-1", "invoice_amount": 100, "days_overdue": 3}
+
+    decision = describe_decision("approve", "Subject: Hi\n\nMy own words", action, state, FreelancerContext())
+
+    assert decision["decision"] == "approved_with_edits" and 0 <= decision["similarity"] < 1
 
 
 def test_trace_writes_use_a_short_timeout(monkeypatch):
     """A slow database must not push a finished request past the 60 s serverless limit."""
-    import src.db as db
+    from src.adapters import supabase as db
     seen = []
     monkeypatch.setenv("SUPABASE_URL", "http://supabase.invalid")
     monkeypatch.setattr(db, "_send", lambda request, timeout=None: seen.append(timeout) or "")

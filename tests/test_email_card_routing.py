@@ -1,4 +1,5 @@
 """An owner email action must reach real HITL, never a prose-only fake composer."""
+from tests.fakes import Overrides
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -32,7 +33,7 @@ def choice_model(monkeypatch):
     import api.index as api
     from src.agent import build_agent
     model = ChoiceModel()
-    monkeypatch.setattr(api, 'agent', build_agent(model, MemorySaver()))
+    monkeypatch.setattr(api.deps, 'agent', build_agent(model, MemorySaver()))
     return model
 
 
@@ -42,7 +43,7 @@ async def legal_invoice(client, fake_db, history=True):
     invoice = await create_invoice(client, headers)
     fake_db.invoices[invoice['id']].update(escalation_level=3, amount_paid=100)
     if history:
-        api.agent.update_state({'configurable': {'thread_id': 'invoice-' + invoice['id']}}, {'messages': [
+        api.deps.agent.update_state({'configurable': {'thread_id': 'invoice-' + invoice['id']}}, {'messages': [
             HumanMessage(content='Please prepare the final notice.'),
             AIMessage(content='Subject: FINAL NOTICE BEFORE LEGAL ACTION\n\nDear Acme, please pay. Copy this into your email client.'),
         ]})
@@ -166,7 +167,7 @@ async def test_malformed_required_draft_is_bounded_failure(client, fake_db, monk
     import api.index as api
     from src.agent import build_agent
     invoice, headers = await legal_invoice(client, fake_db)
-    monkeypatch.setattr(api, 'agent', build_agent(ScriptedModel(replies=[
+    monkeypatch.setattr(api.deps, 'agent', build_agent(ScriptedModel(replies=[
         tool_call('draft_invoice_delivery_email', **args)]), MemorySaver()))
     r = await post_chat(client, invoice, headers, 'Send the invoice')
     assert r.status_code == 503 and 'review card' in r.json()['detail']
@@ -188,7 +189,7 @@ def test_delivery_preview_uses_current_facts_instead_of_model_claims():
 async def test_conditional_delivery_lookup_failure_is_not_assumed_unsent(client, fake_db, choice_model, monkeypatch):
     import api.index as api
     invoice, headers = await legal_invoice(client, fake_db)
-    monkeypatch.setattr(api, 'get_last_outbound_delivery', lambda *a: (_ for _ in ()).throw(RuntimeError('private database error')))
+    monkeypatch.setattr(api.deps, "db", Overrides(api.deps.db, get_last_outbound_delivery=lambda *a: (_ for _ in ()).throw(RuntimeError('private database error'))))
     r = await post_chat(client, invoice, headers, 'Send the final notice if not already sent')
     assert r.status_code == 503 and choice_model.choices == []
     assert 'private database error' not in r.text

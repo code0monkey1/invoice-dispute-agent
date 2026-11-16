@@ -19,8 +19,13 @@ from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import patch
 
+from dotenv import load_dotenv
+
 # The API reads these at import time. Real values (from .env) win; these only
 # fill gaps so the harness runs on a laptop or in CI with just GROQ_API_KEY.
+# Load .env first: load_dotenv never overrides, so a placeholder set here first
+# would hide the real key and every model call would fail with 401.
+load_dotenv()
 for _key, _value in {
     "SUPABASE_URL": "http://supabase.invalid",
     "SUPABASE_KEY": "eval-harness",
@@ -76,7 +81,7 @@ class EvalHarness:
 
     async def __aenter__(self) -> "EvalHarness":
         import api.index as api_index
-        import src.db as db_module
+        from src.adapters import supabase as db_module
         import src.services.gmail_service as gmail_module
         import src.tools.legal as legal
 
@@ -90,8 +95,8 @@ class EvalHarness:
         stack = self._stack
         stack.enter_context(patch.object(db_module, "_supabase_rest_request", side_effect=fake_request))
         stack.enter_context(patch.object(gmail_module.GmailService, "__init__", _refuse_gmail))
-        stack.enter_context(patch.object(api_index, "send_email_via_gmail", fake_send))
-        stack.enter_context(patch.object(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh")))
+        stack.enter_context(patch.object(api_index.deps, "send_email", fake_send))
+        stack.enter_context(patch.object(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh")))
         stack.enter_context(patch.object(legal.tavily_client, "search", lambda *a, **k: CANNED_SEARCH))
         self._api = api_index
         self._agent_patch = None
@@ -102,7 +107,7 @@ class EvalHarness:
 
     def _signed_in(self) -> dict:
         self.db.users[EVAL_USER] = {"id": EVAL_USER, "email": "owner@example.com", "name": "Owner"}
-        return {"Authorization": f"Bearer {self._api.create_jwt(EVAL_USER, 'owner@example.com')}"}
+        return {"Authorization": f"Bearer {self._api.identity.create_jwt(EVAL_USER, 'owner@example.com')}"}
 
     async def run_case(self, case: Case, model: Any) -> CaseRun:
         from src.agent import build_agent
@@ -111,7 +116,7 @@ class EvalHarness:
         self.outbox.clear()
         self._api.RATE_LIMITS.clear()
         result = CaseRun(case_id=case.id)
-        with patch.object(self._api, "agent", build_agent(model, MemorySaver())):
+        with patch.object(self._api.deps, "agent", build_agent(model, MemorySaver())):
             transport = ASGITransport(app=self._api.app)
             async with AsyncClient(transport=transport, base_url="http://eval") as client:
                 try:
@@ -166,7 +171,7 @@ class EvalHarness:
         if case.history:
             messages = [(HumanMessage if entry["role"] == "user" else AIMessage)(content=entry["content"])
                         for entry in case.history]
-            self._api.agent.update_state({"configurable": {"thread_id": f"invoice-{invoice_id}"}},
+            self._api.deps.agent.update_state({"configurable": {"thread_id": f"invoice-{invoice_id}"}},
                                          {"messages": messages})
         for entry in case.prior_deliveries:
             self.db.communications.append({

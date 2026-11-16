@@ -32,13 +32,13 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
     monkeypatch.setenv("RESEND_WEBHOOK_SECRET", "whsec_" + base64.b64encode(SECRET_RAW).decode())
 
     agent = FakeAgent()
-    monkeypatch.setattr(api_index, "agent", agent)
+    monkeypatch.setattr(api_index.deps, "agent", agent)
     sent = []
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda uid: ("access", "refresh"))
-    monkeypatch.setattr(api_index, "send_email_via_gmail",
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda uid: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "send_email",
                         lambda uid, to, subject, body, thread_id=None, attachments=None, reply_to=None:
                         sent.append({"to": to, "subject": subject, "reply_to": reply_to}) or {"id": "m1", "threadId": "t1"})
-    monkeypatch.setattr(api_index, "fetch_received_email",
+    monkeypatch.setattr(api_index.deps, "fetch_inbound_email",
                         lambda email_id: {"text": "Sorry, paying on Friday.", "html": None})
     agent_prompts = []
 
@@ -46,7 +46,7 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
         agent_prompts.append(payload["messages"][0].content)
         return {**agent.state, "messages": [AIMessage(content="ok")]}
 
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", fake_invoke)
+    monkeypatch.setattr(api_index.deps, "run_agent", fake_invoke)
     headers = signed_in(fake_db)
 
     # 1. Create the invoice (as if from an uploaded PDF).
@@ -56,7 +56,7 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
     })
     assert r.status_code == 200, r.text
     invoice = r.json()["invoice"]
-    agent.state = api_index.invoice_state_from_db(api_index.get_invoice(invoice["id"]))
+    agent.state = api_index.invoice_state_from_db(api_index.deps.db.get_invoice(invoice["id"]))
 
     # 2. The agent drafts a reminder; the dashboard shows it waiting for the user.
     agent.ask_for_approval("draft_polite_reminder")
@@ -69,7 +69,7 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
     r = await client.post(f"/api/invoices/{invoice['id']}/resume", headers=headers,
                           json={"decision": "approve", "message": DRAFT})
     assert r.json()["email_status"] == "sent"
-    token = api_index.get_invoice(invoice["id"])["reply_token"]
+    token = api_index.deps.db.get_invoice(invoice["id"])["reply_token"]
     assert sent[-1]["to"] == "sam@clientco.com"
     assert sent[-1]["reply_to"] == [f"inv-{token}@{INBOUND_DOMAIN}", "owner@example.com"]
 
@@ -79,14 +79,14 @@ async def test_full_invoice_lifecycle(client, fake_db, monkeypatch):
         "to": [f"inv-{token}@{INBOUND_DOMAIN}"], "subject": "Re: A reminder"}}).encode()
     r = await client.post("/api/email/inbound", content=body, headers=signed(body))
     assert r.json()["status"] == "stored"
-    replies = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
+    replies = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
     assert "paying on Friday" in replies[0]["content"]
     assert "<client_reply>" in agent_prompts[-1]
 
     # 5. The user escalates; the level changes and the agent is asked for a formal draft.
     r = await client.post(f"/api/invoices/{invoice['id']}/escalate", headers=headers)
     assert r.status_code == 200, r.text
-    assert api_index.get_invoice(invoice["id"])["escalation_level"] == 2
+    assert api_index.deps.db.get_invoice(invoice["id"])["escalation_level"] == 2
     assert "Formal" in agent_prompts[-1]
 
     # 6. A second escalation reaches Legal; a third is refused.

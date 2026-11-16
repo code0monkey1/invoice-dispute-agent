@@ -63,7 +63,7 @@ def test_recorder_numbers_steps_and_sums_tokens():
 
 
 def test_trace_run_writes_one_run_and_its_steps(fake_db):
-    with trace_run("chat", user_id="u1", invoice_id="inv1", level=1) as rec:
+    with trace_run("chat", user_id="u1", invoice_id="inv1", level=1, sink=fake_db) as rec:
         rec.add("model_call", "model", {"text": "hi"})
         rec.status = "interrupted"
     assert len(fake_db.agent_runs) == 1
@@ -79,7 +79,7 @@ def test_trace_run_writes_one_run_and_its_steps(fake_db):
 
 def test_trace_run_records_errors_and_reraises(fake_db):
     with pytest.raises(ValueError):
-        with trace_run("chat", user_id="u1", invoice_id="inv1"):
+        with trace_run("chat", user_id="u1", invoice_id="inv1", sink=fake_db):
             raise ValueError("model blew up")
     assert fake_db.agent_runs[0]["status"] == "error"
     assert "model blew up" in fake_db.agent_runs[0]["error"]
@@ -88,14 +88,14 @@ def test_trace_run_records_errors_and_reraises(fake_db):
 def test_flush_failure_is_fail_open_and_counted(fake_db, caplog):
     fake_db.down_tables = {"agent_runs"}
     before = tracer.stats()["traces_dropped"]
-    with trace_run("resume", user_id="u1", invoice_id="inv1") as rec:
+    with trace_run("resume", user_id="u1", invoice_id="inv1", sink=fake_db) as rec:
         rec.add("email_send", "draft_polite_reminder", {"status": "sent"})
     assert tracer.stats()["traces_dropped"] == before + 1
     assert rec.id in caplog.text and "trace.flush failed" in caplog.text
 
 
 def test_recorder_is_found_by_run_id_only_while_the_run_is_open(fake_db):
-    with trace_run("chat", user_id="u1", invoice_id="inv1") as rec:
+    with trace_run("chat", user_id="u1", invoice_id="inv1", sink=fake_db) as rec:
         assert tracer.get_recorder(rec.id) is rec
     assert tracer.get_recorder(rec.id) is None
     assert tracer.get_recorder(None) is None

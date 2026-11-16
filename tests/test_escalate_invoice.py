@@ -28,7 +28,7 @@ def _fake_agent(monkeypatch, *, fail=False):
             raise RuntimeError("AI service error")
         return {"messages": [AIMessage(content="Here is a formal draft.")], "escalation_level": 2}
 
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", fake_invoke)
+    monkeypatch.setattr(api_index.deps, "run_agent", fake_invoke)
     return calls
 
 
@@ -43,7 +43,7 @@ async def test_escalate_raises_the_level_and_asks_for_a_draft(client, fake_db, m
     body = r.json()
     assert body["state"]["escalation_level"] == 2
     import api.index as api_index
-    assert api_index.get_invoice(invoice["id"])["escalation_level"] == 2
+    assert api_index.deps.db.get_invoice(invoice["id"])["escalation_level"] == 2
     assert len(calls) == 1 and "Formal" in calls[0]
 
 
@@ -65,7 +65,7 @@ async def test_cannot_escalate_past_legal(client, fake_db, monkeypatch):
     invoice = await _create_invoice(client, "INV-ESC-3")
     _fake_agent(monkeypatch)
     import api.index as api_index
-    api_index.update_invoice(invoice["id"], escalation_level=3)
+    api_index.deps.db.update_invoice(invoice["id"], escalation_level=3)
 
     r = await client.post(f"/api/invoices/{invoice['id']}/escalate")
     assert r.status_code == 400

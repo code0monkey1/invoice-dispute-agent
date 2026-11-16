@@ -116,10 +116,10 @@ def received_event(to):
 def inbound_fakes(monkeypatch):
     import api.index as api_index
     agent_calls = []
-    monkeypatch.setattr(api_index, "fetch_received_email", lambda email_id: {
+    monkeypatch.setattr(api_index.deps, "fetch_inbound_email", lambda email_id: {
         "text": "Sorry, this slipped through. Paying on Friday.", "html": None,
     })
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry",
+    monkeypatch.setattr(api_index.deps, "run_agent",
                         lambda payload, *, context, config: agent_calls.append(config) or {"messages": []})
     return agent_calls
 
@@ -137,11 +137,11 @@ async def test_inbound_reply_is_stored_on_the_matching_invoice(client, fake_db, 
 
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "stored"
-    replies = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
+    replies = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "inbound"]
     assert len(replies) == 1
     assert "Paying on Friday" in replies[0]["content"]
     # Separation: the other invoice is untouched.
-    assert not [c for c in api_index.get_communications(other["id"]) if c.get("direction") == "inbound"]
+    assert not [c for c in api_index.deps.db.get_communications(other["id"]) if c.get("direction") == "inbound"]
     # The agent was asked to analyse the reply on this invoice's thread.
     [config] = inbound_fakes
     assert config["configurable"] == {"thread_id": f"invoice-{invoice['id']}"}  # the invoice's own thread
@@ -173,10 +173,10 @@ async def test_approved_email_carries_the_tracking_reply_to(client, fake_db, mon
     import api.index as api_index
 
     agent = FakeAgent()
-    monkeypatch.setattr(api_index, "agent", agent)
+    monkeypatch.setattr(api_index.deps, "agent", agent)
     sent = []
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh"))
-    monkeypatch.setattr(api_index, "send_email_via_gmail",
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "send_email",
                         lambda user_id, to, subject, body, thread_id=None, attachments=None, reply_to=None:
                         sent.append(reply_to) or {"id": "m1", "threadId": "t1"})
 
@@ -191,7 +191,7 @@ async def test_approved_email_carries_the_tracking_reply_to(client, fake_db, mon
     await client.post(f"/api/invoices/{invoice['id']}/resume", headers=headers,
                       json={"decision": "approve", "message": DRAFT})
 
-    token = api_index.get_invoice(invoice["id"])["reply_token"]
+    token = api_index.deps.db.get_invoice(invoice["id"])["reply_token"]
     assert sent == [[f"inv-{token}@{INBOUND_DOMAIN}", "owner@example.com"]]
 
 
@@ -230,7 +230,7 @@ async def test_connect_gmail_requires_sign_in(client):
 
 
 def test_signing_in_again_keeps_an_existing_gmail_connection(fake_db):
-    from src import db
+    from src.adapters import supabase as db
     db.upsert_user("u-keep", "u@example.com", "U", "", access_token="acc", refresh_token="ref")
     db.upsert_user("u-keep", "u@example.com", "U", "", access_token=None, refresh_token=None)
     assert db.get_user_gmail_tokens("u-keep") == ("acc", "ref")

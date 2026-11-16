@@ -25,9 +25,9 @@ async def test_settling_marks_the_invoice_paid_and_logs_it(client, fake_db, fake
 
     assert r.status_code == 200, r.text
     assert r.json()["invoice"]["status"] == "paid"
-    assert api_index.get_invoice(invoice["id"])["status"] == "paid"
+    assert api_index.deps.db.get_invoice(invoice["id"])["status"] == "paid"
     assert fake_agent.state["status"] == "paid"
-    log = api_index.get_communications(invoice["id"])
+    log = api_index.deps.db.get_communications(invoice["id"])
     assert log[-1]["type"] == "invoice_settled"
 
 
@@ -64,7 +64,7 @@ async def test_another_user_cannot_settle_the_invoice(client, fake_db, fake_agen
     invoice = await create_invoice(client, signed_in(fake_db, "user-a"))
     r = await client.post(f"/api/invoices/{invoice['id']}/settle", headers=signed_in(fake_db, "user-b"))
     assert r.status_code == 404
-    assert api_index.get_invoice(invoice["id"])["status"] == "active"
+    assert api_index.deps.db.get_invoice(invoice["id"])["status"] == "active"
 
 
 SECRET_RAW = b"test-webhook-signing-key-32bytes!"
@@ -76,9 +76,9 @@ async def test_a_reply_after_settling_is_kept_but_the_agent_stays_quiet(client, 
     import api.index as api_index
     monkeypatch.setenv("RESEND_INBOUND_DOMAIN", DOMAIN)
     monkeypatch.setenv("RESEND_WEBHOOK_SECRET", "whsec_" + base64.b64encode(SECRET_RAW).decode())
-    monkeypatch.setattr(api_index, "fetch_received_email", lambda email_id: {"text": "Thanks, all done!", "html": None})
+    monkeypatch.setattr(api_index.deps, "fetch_inbound_email", lambda email_id: {"text": "Thanks, all done!", "html": None})
     calls = []
-    monkeypatch.setattr(api_index, "invoke_agent_with_retry", lambda *a, **k: calls.append(1))
+    monkeypatch.setattr(api_index.deps, "run_agent", lambda *a, **k: calls.append(1))
 
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
@@ -95,12 +95,12 @@ async def test_a_reply_after_settling_is_kept_but_the_agent_stays_quiet(client, 
 
     assert r.json()["status"] == "stored"
     assert calls == []
-    assert any(c.get("direction") == "inbound" for c in api_index.get_communications(invoice["id"]))
+    assert any(c.get("direction") == "inbound" for c in api_index.deps.db.get_communications(invoice["id"]))
 
 
 def test_only_the_first_of_two_racing_settles_counts(fake_db):
     """Two clicks at once must not both log 'settled' (the status change is conditional)."""
-    from src import db
+    from src.adapters import supabase as db
     fake_db.invoices["inv-1"] = {"id": "inv-1", "status": "active", "user_id": "u"}
     assert db.mark_invoice_settled("inv-1") is True
     assert db.mark_invoice_settled("inv-1") is False

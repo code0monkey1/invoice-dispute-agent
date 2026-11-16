@@ -60,7 +60,7 @@ def case_from_run(run: dict, *, level: int, name: str) -> dict:
 
 
 def fetch_run(run_id: str) -> dict | None:
-    from src import db
+    from src.adapters import supabase as db
 
     run = db.get_agent_run(run_id)
     if run is None:

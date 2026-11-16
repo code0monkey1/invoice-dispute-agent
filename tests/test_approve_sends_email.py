@@ -20,12 +20,14 @@ class FakeAgent:
         self.pending = None
         self.interrupts_cleared = False
         self.resumed_with = None
+        self.events = []
 
     def ask_for_approval(self, tool_name="draft_polite_reminder"):
         self.pending = {"name": tool_name, "args": {}}
         self.interrupts_cleared = False
 
     def get_state(self, config):
+        self.events.append("read_state")
         tasks = []
         if self.pending:
             interrupts = [] if self.interrupts_cleared else [SimpleNamespace(value={"action_requests": [self.pending]})]
@@ -33,10 +35,12 @@ class FakeAgent:
         return SimpleNamespace(values=dict(self.state, messages=[]), tasks=tasks)
 
     def update_state(self, config, values):
+        self.events.append("sync_state")
         self.state.update(values)
         self.interrupts_cleared = True  # what LangGraph does to a pending interrupt
 
     def invoke(self, payload, context=None, config=None):
+        self.events.append("resume_agent")
         self.resumed_with = getattr(payload, "resume", payload)
         self.pending = None
         return dict(self.state, messages=[AIMessage(content="Done.")])
@@ -46,7 +50,7 @@ class FakeAgent:
 def fake_agent(monkeypatch):
     import api.index as api_index
     agent = FakeAgent()
-    monkeypatch.setattr(api_index, "agent", agent)
+    monkeypatch.setattr(api_index.deps, "agent", agent)
     return agent
 
 
@@ -59,15 +63,15 @@ def sent(monkeypatch):
         calls.append({"user_id": user_id, "to": to_email, "subject": subject, "body": body})
         return {"id": "msg-1", "threadId": "thread-1"}
 
-    monkeypatch.setattr(api_index, "send_email_via_gmail", fake_send)
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "send_email", fake_send)
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh"))
     return calls
 
 
 def signed_in(fake_db, user_id="user-1"):
     import api.index as api_index
     fake_db.users[user_id] = {"id": user_id, "email": "owner@example.com", "name": "Owner"}
-    return {"Authorization": f"Bearer {api_index.create_jwt(user_id, 'owner@example.com')}"}
+    return {"Authorization": f"Bearer {api_index.identity.create_jwt(user_id, 'owner@example.com')}"}
 
 
 async def create_invoice(client, headers=None, invoice_id="INV-SEND-1"):
@@ -114,6 +118,36 @@ async def test_approving_a_draft_sends_it_from_gmail(client, fake_db, fake_agent
 
 
 @pytest.mark.asyncio
+async def test_approval_reads_pending_before_sync_then_sends_before_resume(
+    client, fake_db, fake_agent, monkeypatch,
+):
+    """The order is part of the contract: syncing hides the interrupt details,
+    and resuming before the send loses the approved draft forever.
+    """
+    import api.index as api_index
+
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)
+    fake_agent.ask_for_approval()
+    fake_db.invoices[invoice["id"]]["days_overdue"] = 15  # force a state sync
+    fake_agent.events.clear()
+
+    def record_send(*args, **kwargs):
+        fake_agent.events.append("send_email")
+        return {"id": "msg-order", "threadId": "thread-order"}
+
+    monkeypatch.setattr(api_index.deps, "send_email", record_send)
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh"))
+
+    response = await approve(client, invoice, headers)
+
+    assert response.status_code == 200, response.text
+    assert fake_agent.events.index("read_state") < fake_agent.events.index("sync_state")
+    assert fake_agent.events.index("sync_state") < fake_agent.events.index("send_email")
+    assert fake_agent.events.index("send_email") < fake_agent.events.index("resume_agent")
+
+
+@pytest.mark.asyncio
 async def test_sent_email_is_logged_and_thread_saved(client, fake_db, fake_agent, sent):
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
@@ -122,10 +156,10 @@ async def test_sent_email_is_logged_and_thread_saved(client, fake_db, fake_agent
     await approve(client, invoice, headers)
 
     import api.index as api_index
-    outbound = [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
+    outbound = [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
     assert len(outbound) == 1
     assert outbound[0]["subject"] == "A reminder about invoice INV-SEND-1"
-    assert api_index.get_invoice(invoice["id"])["gmail_thread_id"] == "thread-1"
+    assert api_index.deps.db.get_invoice(invoice["id"])["gmail_thread_id"] == "thread-1"
 
 
 @pytest.mark.asyncio
@@ -133,7 +167,7 @@ async def test_sends_to_the_client_email_saved_on_the_invoice(client, fake_db, f
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     import api.index as api_index
-    api_index.update_invoice(invoice["id"], client_email="billing@acme.example")
+    api_index.deps.db.update_invoice(invoice["id"], client_email="billing@acme.example")
     fake_agent.ask_for_approval()
 
     await approve(client, invoice, headers)
@@ -159,7 +193,7 @@ async def test_demo_mode_explains_that_nothing_was_sent(client, fake_db, fake_ag
 @pytest.mark.asyncio
 async def test_missing_gmail_connection_is_reported(client, fake_db, fake_agent, sent, monkeypatch):
     import api.index as api_index
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: None)
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: None)
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     fake_agent.ask_for_approval()
@@ -174,8 +208,8 @@ async def test_missing_gmail_connection_is_reported(client, fake_db, fake_agent,
 @pytest.mark.asyncio
 async def test_gmail_failure_is_reported_and_not_logged_as_sent(client, fake_db, fake_agent, monkeypatch):
     import api.index as api_index
-    monkeypatch.setattr(api_index, "get_user_gmail_tokens", lambda user_id: ("access", "refresh"))
-    monkeypatch.setattr(api_index, "send_email_via_gmail", lambda *a, **k: None)
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh"))
+    monkeypatch.setattr(api_index.deps, "send_email", lambda *a, **k: None)
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     fake_agent.ask_for_approval()
@@ -184,7 +218,7 @@ async def test_gmail_failure_is_reported_and_not_logged_as_sent(client, fake_db,
 
     assert body["email_sent"] is False
     assert body["email_status"] == "failed"
-    assert not [c for c in api_index.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
+    assert not [c for c in api_index.deps.db.get_communications(invoice["id"]) if c.get("direction") == "outbound"]
 
 
 @pytest.mark.asyncio
@@ -211,7 +245,7 @@ async def test_opening_the_invoice_before_approving_still_sends(client, fake_db,
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     import api.index as api_index
-    fake_agent.state = api_index.invoice_state_from_db(api_index.get_invoice(invoice["id"]))
+    fake_agent.state = api_index.invoice_state_from_db(api_index.deps.db.get_invoice(invoice["id"]))
     fake_agent.ask_for_approval()
 
     history = await client.get(f"/api/invoices/{invoice['id']}/history", headers=headers)
