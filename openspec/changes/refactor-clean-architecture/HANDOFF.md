@@ -75,3 +75,4 @@ Accepted as-is: `src/db.py` was moved whole, not split, into one adapter module;
 ### Frontend follow-up
 
 - Task 6.1: components with existing hooks keep them; InvoiceForm parsing and generated-invoice persistence now use useInvoiceFiles, and AuthProvider delegates to useAuthSession. Existing component tests unchanged. Added file-operation and session hook tests. Backend 988 passed/13 skipped; frontend 184 passed/6 skipped; production build passes.
+- Task 6.2: ChatPanel now composes a container hook, ChatConversation, ChatSidebar and shared settlement confirmation. Existing ChatPanel tests unchanged; all 184 frontend tests pass, production build and lint pass.
