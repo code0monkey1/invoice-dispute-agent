@@ -71,3 +71,7 @@ Accepted as-is: `src/db.py` was moved whole, not split, into one adapter module;
 - Local Homebrew default Node is broken (missing simdjson dylib); use `PATH=/opt/homebrew/opt/node@22/bin:$PATH`. Frontend baseline: 178 passed, 6 skipped.
 - Independent backend review found two compatibility gaps, both fixed with failing-first regression tests: Gmail token reads now follow a swapped `deps.db`; draft tools retain their original no-comma amount formatting and explicit-zero/negative balance rules while sharing wording with the unchanged approval preview. Full suite after fixes: 1001 passed, 13 skipped. Policy golden expectations and the route set remain unchanged.
 - User confirmed release target: existing Vercel project; no Netlify setup requested.
+
+### Frontend follow-up
+
+- Task 6.1: components with existing hooks keep them; InvoiceForm parsing and generated-invoice persistence now use useInvoiceFiles, and AuthProvider delegates to useAuthSession. Existing component tests unchanged. Added file-operation and session hook tests. Backend 988 passed/13 skipped; frontend 184 passed/6 skipped; production build passes.

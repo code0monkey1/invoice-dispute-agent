@@ -1,0 +1,80 @@
+import { useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '../api'
+import type { User } from '../types'
+import { qk } from './queries'
+import { clearCache } from '../queryClient'
+
+import { OAUTH_STATE_KEY } from '../contexts/auth'
+
+function withOAuthState(url: string): string {
+  const state = crypto.randomUUID()
+  sessionStorage.setItem(OAUTH_STATE_KEY, state)
+  const u = new URL(url)
+  u.searchParams.set('state', state)
+  return u.toString()
+}
+
+export function useAuthSession() {
+  // The saved user renders immediately; the cached /me check below keeps
+  // flags like gmail_connected current without blocking the first paint.
+  const [savedUser, setUser] = useState<User | null>(() => {
+    try {
+      const saved = localStorage.getItem('invoicechaser_user')
+      return saved ? JSON.parse(saved) : null
+    } catch {
+      return null
+    }
+  })
+  const loading = false
+  const me = useQuery({
+    queryKey: qk.me,
+    queryFn: async () => {
+      const { user: fresh } = await api.getMe()
+      localStorage.setItem('invoicechaser_user', JSON.stringify(fresh))
+      return fresh
+    },
+    enabled: Boolean(localStorage.getItem('invoicechaser_token')),
+    staleTime: 5 * 60_000,
+  })
+  const user = me.data ?? savedUser
+
+  const signIn = async () => {
+    const { url } = await api.getGoogleAuthUrl()
+    window.location.href = withOAuthState(url)
+  }
+
+  // Asks Google for send-only Gmail access, separately from sign-in.
+  const connectGmail = async () => {
+    const { url } = await api.getGmailConnectUrl()
+    window.location.href = withOAuthState(url)
+  }
+
+  const signOut = async () => {
+    localStorage.removeItem('invoicechaser_token')
+    localStorage.removeItem('invoicechaser_user')
+    setUser(null)
+    // Invoice data must not stay in this browser after signing out.
+    await clearCache()
+    window.location.href = '/'
+  }
+
+  const enterAsGuest = (name: string) => {
+    const guestUser: User = {
+      id: 'guest',
+      email: '',
+      name,
+      picture: '',
+    }
+    localStorage.setItem('invoicechaser_user', JSON.stringify(guestUser))
+    void clearCache()
+    setUser(guestUser)
+  }
+
+  // A guest is any user without a real auth token. The frontend marker is
+  // the legacy 'guest' id; the backend independently tracks each guest via
+  // an HTTP-only cookie (ic_guest_session) so data stays isolated per browser.
+  const isGuest = !!user && (user.id === 'guest' || !user.email)
+
+  return { user, isGuest, loading, signIn, connectGmail, signOut, enterAsGuest }
+}

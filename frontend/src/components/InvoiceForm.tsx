@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { AlertCircle, FileText, Sparkles, Upload, X } from 'lucide-react'
-import { api } from '../api'
+import { useInvoiceFiles } from '../hooks/useInvoiceFiles'
 
 interface Props {
   open: boolean
@@ -29,6 +29,7 @@ const emptyForm = {
 }
 
 export default function InvoiceForm({ open, onClose, onSubmit, loading, error }: Props) {
+  const { parse } = useInvoiceFiles()
   const [form, setForm] = useState(emptyForm)
   const [uploadedFile, setUploadedFile] = useState<File | undefined>()
   const [parsing, setParsing] = useState(false)
@@ -57,7 +58,7 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
     setParseError(null)
     setParseWarnings([])
     try {
-      const parsed = await api.parseInvoiceFile(file)
+      const parsed = await parse(file)
       const extracted = parsed.extracted
       setForm(current => ({
         ...current,
