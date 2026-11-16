@@ -22,13 +22,12 @@ Read this first if you are a new session continuing the work. Update the "State"
 
 ## State
 
-- Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`. Nothing pushed; no pull request.
+- Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`.
 - Baseline before any change: backend 761 passed, 13 skipped; frontend 178 passed, 6 skipped.
-- Now: backend 971 passed, 13 skipped; frontend 178 passed, 6 skipped. `api/index.py` is about 1,270 lines (from 2,388).
-- Done: groups 1-4, and 5.1-5.4. Last commit of 5.4: `89e0f7a`.
-- 5.5 in progress (not ticked): the email preflight is domain policy (`src.domain.chat.email_preflight`, commit `af2e574`). Left: moving the chat and escalate routes.
-- Next, decided: before moving chat/escalate (5.5), inbound reply (5.6) and approve/resume (5.7), move the helpers those four share out of `api/index.py` into one `web/` module (`serialize_messages`, `serialize_message_content`, `extract_state`, `action_card`, `extract_interrupt`, `attachment_note`, `generate_draft_preview`, `traced_run`, `run_id_of`, `prior_message_count`, `trim_action_response`). Otherwise each router factory needs 12+ callables. Pin with the OpenAPI snapshot and the email-card tests; then 5.5 to 5.8.
-- Live eval for groups 3-4: the user approved a run on 2026-11-16 (local key confirmed not production's org), but every model call got `401 Invalid API Key` from Groq with the key in `.env` (no shell override). No result yet: it needs a valid key from the user, then a rerun (see "Live eval" below).
+- Now: backend 988 passed, 13 skipped. `api/index.py` is the 19-line entry point; `web/bootstrap.py` is the composition root.
+- Done: groups 1-5 (backend). Next: group 6 (frontend), then group 7 (integration). Groups 1-5 ship as one pull request first; group 6 onwards is a follow-up branch.
+- Live eval: a full local run on 2026-11-16 at `61e0f92` failed its gate on three cases. A/B runs on `main` vs the branch showed them to be model variance: identical captured model inputs, `l2-quality-dispute` flaky on `main` too, `l1-client-promises-date` 7/7 on `main` and 10/15 on the branch with the last 10 at 9/10; `l0-injected-reply` failed in the baseline as well. The PR's required `golden-set` CI check is the eval gate for the final code.
+- Tasks 5.6, 5.7 and a 5.8 draft were done by another tool (Codex) on 2026-11-16 in this same checkout. Reviewed against the original code: faithful except the 5.8 draft dropping INFO logging and the SPA comments (fixed in `cb46ace`). Agents must not share a checkout at the same time.
 
 ### Layout so far
 

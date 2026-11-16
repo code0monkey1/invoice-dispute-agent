@@ -41,7 +41,7 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 - [x] 5.5 Extract escalate and chat; verify `tests/test_escalate_invoice.py`, `tests/test_email_card_routing.py` and `tests/test_invoice_delivery_chat.py` pass
 - [x] 5.6 Extract inbound reply; verify `tests/test_reply_tracking.py` and `tests/test_tool_gate.py` pass
 - [x] 5.7 Add order-sensitive tests for approve/resume, then extract it; verify `tests/test_approve_sends_email.py` and `tests/test_real_graph_payments.py` pass
-- [ ] 5.8 Reduce `api/index.py` to the entry point and delete `src/db.py` re-exports nothing uses; verify the full suite and `python -m evals.run` against the pre-refactor `evals/results/latest.md`
+- [x] 5.8 Reduce `api/index.py` to the entry point and delete `src/db.py` re-exports nothing uses; verify the full suite and `python -m evals.run` against the pre-refactor `evals/results/latest.md`
 
 ## 6. Frontend
 
