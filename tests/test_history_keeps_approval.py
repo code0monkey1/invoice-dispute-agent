@@ -51,10 +51,10 @@ async def test_reloading_a_drafted_reminder_keeps_it_sendable(client, fake_db, s
 
 def test_sync_does_not_treat_empty_values_as_changes():
     import api.index as api_index
-    from src.services.invoice_service import invoice_state_from_db
+    from src.domain.invoice import invoice_state
 
     row = {"id": "u::x", "client_name": "Acme", "status": "active", "follow_up_date": None, "jurisdiction": None}
-    persisted = invoice_state_from_db(row)
+    persisted = invoice_state(row)
     assert persisted["follow_up_date"] == "" and persisted["jurisdiction"] == ""  # the database's NULL, as ''
 
     class Snapshot:

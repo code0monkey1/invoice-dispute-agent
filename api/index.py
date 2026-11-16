@@ -21,7 +21,6 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from typing import Optional
 from langchain_core.messages import AIMessage
-from langgraph.types import Command
 
 import logging
 from datetime import datetime, timezone
@@ -44,8 +43,6 @@ from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from fastapi import Depends, Header, HTTPException, Query
 
-from langsmith import traceable
-
 from src import agent as agent_module
 from src.observability import tracer
 from src.observability.tracer import RunRecorder, langsmith_config, langsmith_status, note_run_outcome, trace_run
@@ -54,7 +51,6 @@ from src.email_drafts import DRAFT_LABELS, DraftPreparationError, is_email_infor
 from src.middleware.dynamic_tools import tools_for_level
 from src.domain.email_templates import render_draft
 from src.domain.chat import email_preflight, is_invoice_chat_message as invoice_chat_policy
-from src.domain.communication import was_sent_recently
 from src.domain.invoice import escalation_name, next_escalation_level
 from src.adapters.agent_session import LangGraphAgentSession
 from src.usecases.auth import AuthUseCases
@@ -62,6 +58,7 @@ from src.usecases.sender_profile import SenderProfileUseCases
 from src.usecases.conversations import ConversationUseCases
 from src.usecases.invoices import InvoiceUseCases, present_invoice, safe_filename  # noqa: F401  (present_invoice re-exported)
 from src.usecases.inbound_reply import InboundReplyUseCases
+from src.usecases.approvals import ApprovalUseCases
 from src import db as db_module
 from src.db import (
     TRACE_RUNS_MAX_LIMIT, DatabaseUnavailable, InvoiceAlreadyExists, init_db, get_user_gmail_tokens,
@@ -73,7 +70,7 @@ from src.invoice_parser import (
     parsed_invoice_payload,
     validate_invoice_upload,
 )
-from src.services import conversation_summary, invoice_service
+from src.services import conversation_summary
 from src.domain.invoice import compute_balance, invoice_state as invoice_state_from_db
 from src.services.gmail_service import GmailService, SCOPES, SIGN_IN_SCOPES, GMAIL_SEND_SCOPE
 from src.services.resend_inbound import (
@@ -111,6 +108,8 @@ from web.rate_limits import (  # noqa: F401  (tests read these through api.index
 )
 from web.routers.chat import create_chat_router
 from web.routers.inbound import create_inbound_router
+from web.routers.approval import create_approval_router
+from web.approval import ApprovalFlow, resume_trace_inputs, send_trace_inputs, send_trace_outputs
 from web.inbound_reply import InboundReplyAgent, reply_trace_inputs
 from web import presentation
 from web.presentation import (  # noqa: F401  (several are read through api.index by tests and evals)
@@ -193,22 +192,6 @@ def sync_agent_state_from_invoice(invoice_id: str, config: dict | None = None) -
     return invoice_use_cases.sync_session(invoice_id)
 
 
-def build_invoice_attachment(invoice: dict | None) -> dict | None:
-    """Return a Gmail attachment dict for the invoice file, or None if unavailable."""
-    if not invoice or not invoice.get("invoice_file_path"):
-        return None
-    try:
-        content = deps.db.download_invoice_file(INVOICE_FILE_BUCKET, invoice["invoice_file_path"])
-    except Exception:
-        logger.exception("Failed to download invoice attachment for %s", invoice.get("id"))
-        return None
-    return {
-        "filename": invoice.get("invoice_file_name") or "invoice.pdf",
-        "mime_type": invoice.get("invoice_file_mime") or "application/pdf",
-        "content": content,
-    }
-
-
 def send_email_via_gmail(
     user_id: str,
     to_email: str,
@@ -256,111 +239,24 @@ def extract_interrupt(response, ctx: FreelancerContext | None = None, invoice=No
 # --- Routes ---
 
 
-def already_sent_recently(invoice_id: str, subject: str, body: str) -> bool:
-    """True if this exact email went out moments ago.
-
-    Approving again after a failure (a network drop, the AI step erroring)
-    leaves the draft waiting, and must not email the client a second time.
-    """
-    return was_sent_recently(deps.db.get_communications(invoice_id), subject, body)
-
-
-# ─── LangSmith: the steps outside the agent graph ─────────────────────────────
-# LangChain traces the agent itself. A client's reply, your decision and the
-# email send happen around it, so they are wrapped with @traceable and the
-# agent run nests inside them in LangSmith. By default @traceable uploads every
-# argument; these allow-lists keep the user row (which holds Gmail tokens) and
-# other internals out. A no-op unless LANGSMITH_TRACING is on.
-
-def _resume_trace_inputs(inputs: dict) -> dict:
-    req = inputs.get("req")
-    return {
-        "invoice_id": inputs.get("invoice_id"),
-        "decision": getattr(req, "decision", None),
-        "tool": (inputs.get("pending_action") or {}).get("name"),
-        "edited": bool(getattr(req, "message", None)),
-        "trace_run_id": getattr(inputs.get("run"), "id", None),
-    }
-
-
-def _send_trace_inputs(inputs: dict) -> dict:
-    return {"invoice_id": inputs.get("invoice_id"), "tool": inputs.get("tool_name"),
-            "edited": bool(inputs.get("edited_draft"))}
-
-
-def _send_trace_outputs(outputs) -> dict:
-    status, _result, subject, _draft = outputs if isinstance(outputs, tuple) else (outputs, None, None, None)
-    return {"status": status, "subject": subject}
-
-@traceable(name="send_approved_email", run_type="tool",
-           process_inputs=_send_trace_inputs, process_outputs=_send_trace_outputs)
-def send_approved_draft(
-    invoice_id: str,
-    user: dict | None,
-    context: FreelancerContext,
-    tool_name: str,
-    tool_args: dict,
-    agent_state: dict,
-    edited_draft: str | None,
-) -> tuple[str, dict | None, str | None, str | None]:
-    """Send an approved email draft. Returns (status, gmail_result, subject, draft_text).
-
-    The invoice row is the source of truth for the recipient, so edits made
-    on the invoice after the draft was written still reach the right address.
-    """
-    invoice_data = deps.db.get_invoice(invoice_id) or {}
-    state = {**agent_state, **invoice_state_from_db(invoice_data)} if invoice_data else agent_state
-    client_email = invoice_data.get("client_email") or agent_state.get("client_email", "")
-    draft = edited_draft or generate_draft_preview(tool_name, state, context, tool_args)
-    if not draft or not client_email:
-        logger.warning("[RESUME] Nothing to send: draft=%s, client_email=%s", bool(draft), bool(client_email))
-        return "failed", None, None, draft
-
-    subject, body = parse_draft_subject_and_body(draft)
-    if not user:
-        return "demo", None, subject, draft
-    if not deps.gmail_tokens(user["id"]):
-        return "gmail_not_connected", None, subject, draft
-    if already_sent_recently(invoice_id, subject, body):
-        return "already_sent", None, subject, draft
-
-    gmail_thread_id = invoice_data.get("gmail_thread_id")
-    attachments = []
-    if tool_name == "draft_invoice_delivery_email":
-        attachment = build_invoice_attachment(invoice_data)
-        if attachment:
-            attachments.append(attachment)
-    token = ensure_reply_token(invoice_id)
-    tracking = reply_address(token) if token else None
-    reply_to = [tracking, user["email"]] if tracking and user.get("email") else None
-    result = deps.send_email(
-        user["id"], client_email, subject, body, gmail_thread_id,
-        attachments=attachments or None, reply_to=reply_to,
-    )
-    logger.info(f"[RESUME] email_result={result}")
-    if not result:
-        return "failed", None, subject, draft
-    # Record the send right away: if anything after this fails, a retry must
-    # see that the email already went out.
-    try:
-        deps.db.add_communication(
-            invoice_id=invoice_id,
-            comm_type=EMAIL_LOG_LABELS.get(tool_name, tool_name),
-            subject=subject,
-            content=body,
-            direction="outbound",
-            user_id=invoice_data.get("user_id"),
-        )
-        if not gmail_thread_id and isinstance(result, dict) and result.get("threadId"):
-            deps.db.update_invoice(invoice_id, gmail_thread_id=result["threadId"])
-    except Exception:
-        logger.exception("Email sent for invoice %s, but recording it failed", invoice_id)
-    return "sent", result, subject, draft
-
-
-def approval_card(pending, invoice: dict, user: dict | None) -> dict:
-    """The approval card for a waiting action, with the invoice's sender details."""
-    return action_card(pending.action, pending.state, get_context_for_invoice(invoice["id"], user), invoice)
+approval_use_cases = ApprovalUseCases(live_db)
+approval_flow = ApprovalFlow(
+    deps=deps,
+    runs=runs,
+    contexts=agent_contexts,
+    invoices=invoice_use_cases,
+    approvals=approval_use_cases,
+    ensure_reply_token=ensure_reply_token,
+    reply_address=reply_address,
+    attachment_bucket=INVOICE_FILE_BUCKET,
+)
+approval_card = approval_flow.action_card
+already_sent_recently = approval_flow.already_sent_recently
+send_approved_draft = approval_flow.send_approved_draft
+_resume_run = approval_flow.resume_run
+_resume_trace_inputs = resume_trace_inputs
+_send_trace_inputs = send_trace_inputs
+_send_trace_outputs = send_trace_outputs
 
 
 app.include_router(create_conversations_router(
@@ -392,176 +288,7 @@ app.include_router(create_traces_router(
 ))
 
 
-@app.post("/api/invoices/{invoice_id}/resume")
-def resume(
-    invoice_id: str,
-    req: ResumeRequest,
-    request: Request,
-    caller: Caller = Depends(get_caller),
-    include_history: bool = Query(True),
-):
-    invoice = caller.authorize(invoice_id)
-    if invoice.get("status") == "paid":
-        raise HTTPException(status_code=400, detail="This invoice is settled, so nothing will be sent.")
-    config = deps.agent_session.thread_config(invoice_id)
-    before = prior_message_count(invoice_id, include_history)
-    user = caller.user()
-    context = get_context_for_invoice(invoice_id, user)
-    # Read the pending draft BEFORE syncing state from the DB. LangGraph's
-    # update_state() keeps a pending task but empties its interrupts (resume
-    # still works), so syncing first made the approved draft invisible and the
-    # email was never sent.
-    pending_action = None
-    pending_state: dict = {}
-    try:
-        read = deps.agent_session.read_before_sync(
-            invoice_id,
-            invoice_state_from_db(invoice),
-        )
-        if read.pending is not None:
-            pending_action = read.pending.action
-            pending_state = read.pending.state
-        if read.sync_error is not None:
-            logger.error("Failed to sync agent state for invoice %s: %s", invoice_id, read.sync_error)
-    except Exception:
-        logger.exception("Could not read the pending action for invoice %s", invoice_id)
-        sync_agent_state_from_invoice(invoice_id)
-    level = pending_state.get("escalation_level", invoice.get("escalation_level"))
-    with traced_run("resume", invoice_id, context, request, level=level) as run:
-        run.add("human_decision", (pending_action or {}).get("name"),
-                describe_decision(req.decision, req.message, pending_action, pending_state, context))
-        result = _resume_run(invoice_id, req, user, context, config, pending_action, pending_state, run)
-        return trim_action_response(result, before, include_history)
-
-
-@traceable(name="human_decision", process_inputs=_resume_trace_inputs)
-def _resume_run(invoice_id, req, user, context, config, pending_action, pending_state, run: RunRecorder):
-    email_result = None
-    email_status = None
-
-    approved_tool_name = None
-    approved_subject = None
-    approved_args = {}
-    approved_draft_text = None
-    if req.decision == "approve" and pending_action:
-        approved_tool_name = pending_action["name"]
-        approved_args = pending_action.get("args", {}) or {}
-        logger.info("[RESUME] approving tool=%s run_id=%s", approved_tool_name, run.id)
-        if approved_tool_name in EMAIL_DRAFT_TOOLS:
-            try:
-                email_status, email_result, approved_subject, approved_draft_text = send_approved_draft(
-                    invoice_id, user, context, approved_tool_name, approved_args, pending_state, req.message,
-                )
-            except Exception:
-                logger.exception("Error sending email on approve for invoice %s run_id=%s", invoice_id, run.id)
-                email_status = "failed"
-            run.add("email_send", approved_tool_name, {
-                "status": email_status,
-                "subject": approved_subject,
-                "gmail_message_id": email_result.get("id") if isinstance(email_result, dict) else None,
-                "gmail_thread_id": email_result.get("threadId") if isinstance(email_result, dict) else None,
-            })
-
-    if req.decision == "approve":
-        decisions = [{"type": "approve"}]
-    elif req.decision == "reject":
-        decisions = [{"type": "reject", "message": req.message or "Please revise."}]
-    elif req.decision == "edit" and req.edited_action:
-        decisions = [{"type": "edit", "edited_action": req.edited_action}]
-    else:
-        decisions = [{"type": "reject", "message": req.message or "Please revise."}]
-
-    # Once the email is out, a later failure must not look like "nothing
-    # happened": the user would approve again (a duplicate is blocked by
-    # already_sent_recently, but they still deserve the truth).
-    email_went_out = email_status in EMAIL_SENT_STATUSES
-    if req.decision == 'approve' and approved_tool_name in EMAIL_DRAFT_TOOLS:
-        context.suppress_email_drafts = True
-    try:
-        response = deps.agent_session.invoke(
-            invoice_id,
-            Command(resume={"decisions": decisions}),
-            context=context,
-            config=langsmith_config(config, run, decision=req.decision),
-        )
-    except Exception as e:
-        run.fail(e)
-        logger.exception("Agent resume failed for invoice %s run_id=%s", invoice_id, run.id)
-        if email_went_out:
-            return with_email_status(
-                {"messages": current_messages(invoice_id), "interrupt": None, "state": current_state(invoice_id, pending_state)},
-                approved_tool_name, email_status, email_result,
-                extra_note="The assistant couldn't finish updating this chat. Refresh in a moment.",
-            )
-        error_msg = str(e)
-        if "rate_limit" in error_msg.lower() or "429" in error_msg:
-            raise HTTPException(status_code=429, detail="AI rate limit reached. Please wait a few minutes and try again.")
-        raise HTTPException(status_code=503, detail=AI_UNAVAILABLE_DETAIL)
-
-    try:
-        record_resume_outcome(invoice_id, req.decision, approved_tool_name, approved_subject, response)
-    except Exception:
-        if not email_went_out:
-            raise
-        logger.exception("Email sent for invoice %s, but updating its state failed", invoice_id)
-
-    note_run_outcome(run, response)
-    result = {
-        "messages": serialize_messages(response["messages"]),
-        "interrupt": extract_interrupt(response, context, deps.db.get_invoice(invoice_id)),
-        "state": extract_state(response),
-    }
-    return with_email_status(result, approved_tool_name, email_status, email_result)
-
-
-def record_resume_outcome(invoice_id, decision, approved_tool_name, approved_subject, response) -> None:
-    """Persist what the agent did after an approval to the database and agent state."""
-    # Persist any payment/status changes the agent applied (record_partial_payment,
-    # mark_invoice_paid, mark_invoice_pending) back to the DB. Reads from the
-    # post-invoke response state rather than the pre-invoke interrupt task, because
-    # sync_agent_state_from_invoice clears pending tasks before we can inspect them.
-    if decision == "approve":
-        persisted_state = invoice_service.apply_approved_outcome(invoice_id, response, approved_tool_name)
-        if persisted_state:
-            # Only write fields that differ: update_state() empties any new
-            # draft the resumed run is waiting on.
-            changes = {k: v for k, v in persisted_state.items() if response.get(k) != v}
-            if changes:
-                deps.agent_session.update_state(invoice_id, changes)
-                response.update(changes)
-
-    # Log the approved action into agent state. The outbound email itself was
-    # recorded in the database by send_approved_draft as soon as it was sent.
-    if decision == "approve" and approved_tool_name:
-        entry = {
-            "type": EMAIL_LOG_LABELS.get(approved_tool_name, approved_tool_name),
-            "content": approved_subject or "Email approved",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }
-        history = response.get("communication_history", [])
-        history.append(entry)
-        deps.agent_session.update_state(invoice_id, {"communication_history": history})
-        response["communication_history"] = history
-
-    invoice_use_cases.set_escalation_level(invoice_id, response.get("escalation_level"))
-
-
-def current_state(invoice_id: str, fallback: dict) -> dict:
-    # Best effort: the email is already out, so a database hiccup here must not
-    # turn the response into an error.
-    try:
-        invoice = deps.db.get_invoice(invoice_id)
-        return invoice_state_from_db(invoice) if invoice else extract_state(fallback)
-    except Exception:
-        return extract_state(fallback)
-
-
-def current_messages(invoice_id: str) -> list:
-    try:
-        snapshot = deps.agent_session.get_state(invoice_id)
-        return serialize_messages((snapshot.values or {}).get("messages", [])) if snapshot and snapshot.values else []
-    except Exception:
-        return []
+app.include_router(create_approval_router(flow=approval_flow, caller_dependency=get_caller))
 
 
 app.include_router(create_inbound_router(

@@ -20,12 +20,14 @@ class FakeAgent:
         self.pending = None
         self.interrupts_cleared = False
         self.resumed_with = None
+        self.events = []
 
     def ask_for_approval(self, tool_name="draft_polite_reminder"):
         self.pending = {"name": tool_name, "args": {}}
         self.interrupts_cleared = False
 
     def get_state(self, config):
+        self.events.append("read_state")
         tasks = []
         if self.pending:
             interrupts = [] if self.interrupts_cleared else [SimpleNamespace(value={"action_requests": [self.pending]})]
@@ -33,10 +35,12 @@ class FakeAgent:
         return SimpleNamespace(values=dict(self.state, messages=[]), tasks=tasks)
 
     def update_state(self, config, values):
+        self.events.append("sync_state")
         self.state.update(values)
         self.interrupts_cleared = True  # what LangGraph does to a pending interrupt
 
     def invoke(self, payload, context=None, config=None):
+        self.events.append("resume_agent")
         self.resumed_with = getattr(payload, "resume", payload)
         self.pending = None
         return dict(self.state, messages=[AIMessage(content="Done.")])
@@ -111,6 +115,36 @@ async def test_approving_a_draft_sends_it_from_gmail(client, fake_db, fake_agent
     assert body["email_sent"] is True
     assert body["email_status"] == "sent"
     assert fake_agent.resumed_with == {"decisions": [{"type": "approve"}]}
+
+
+@pytest.mark.asyncio
+async def test_approval_reads_pending_before_sync_then_sends_before_resume(
+    client, fake_db, fake_agent, monkeypatch,
+):
+    """The order is part of the contract: syncing hides the interrupt details,
+    and resuming before the send loses the approved draft forever.
+    """
+    import api.index as api_index
+
+    headers = signed_in(fake_db)
+    invoice = await create_invoice(client, headers)
+    fake_agent.ask_for_approval()
+    fake_db.invoices[invoice["id"]]["days_overdue"] = 15  # force a state sync
+    fake_agent.events.clear()
+
+    def record_send(*args, **kwargs):
+        fake_agent.events.append("send_email")
+        return {"id": "msg-order", "threadId": "thread-order"}
+
+    monkeypatch.setattr(api_index.deps, "send_email", record_send)
+    monkeypatch.setattr(api_index.deps, "gmail_tokens", lambda user_id: ("access", "refresh"))
+
+    response = await approve(client, invoice, headers)
+
+    assert response.status_code == 200, response.text
+    assert fake_agent.events.index("read_state") < fake_agent.events.index("sync_state")
+    assert fake_agent.events.index("sync_state") < fake_agent.events.index("send_email")
+    assert fake_agent.events.index("send_email") < fake_agent.events.index("resume_agent")
 
 
 @pytest.mark.asyncio
