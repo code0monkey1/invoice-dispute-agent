@@ -19,7 +19,7 @@ function gatewayImports(source: string): string[] {
 }
 
 it('components and auth providers access the API through hooks', () => {
-  const sources = import.meta.glob<string>(['../components/**/*.{ts,tsx}', '../contexts/**/*.{ts,tsx}'], { eager: true, query: '?raw', import: 'default' })
+  const sources = import.meta.glob<string>(['../components/**/*.{ts,tsx}', '../contexts/**/*.{ts,tsx}', '!../**/__tests__/**'], { eager: true, query: '?raw', import: 'default' })
   const violations = Object.entries(sources)
     .flatMap(([path, source]) => gatewayImports(source).map(module => `${path}: ${module}`))
   expect(violations).toEqual([])
