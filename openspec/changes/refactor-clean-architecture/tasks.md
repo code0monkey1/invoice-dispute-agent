@@ -54,5 +54,5 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 
 - [x] 7.1 Empty the architecture-test allow-list and remove unused imports; verify the full backend and frontend suites pass
 - [x] 7.2 Update the architecture section of `CLAUDE.md` to the new layout and correct its Gmail-webhook and Telegram descriptions against the code; verify every path it names exists
-- [ ] 7.3 Run the app locally and exercise create invoice, chat, approve a draft, escalate, settle and `/api/health`; verify each behaves as before
+- [x] 7.3 Run the app locally and exercise create invoice, chat, approve a draft, escalate, settle and `/api/health`; verify each behaves as before
 - [ ] 7.4 Deploy a Vercel preview and verify `/api/health` responds and the SPA loads
