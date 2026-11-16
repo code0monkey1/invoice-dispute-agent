@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Play } from 'lucide-react'
 import { GoogleIcon } from './GoogleIcon'
-import { demoButton } from './styles'
-import { googleButton } from './styles'
+import { demoButton, googleButton } from './styles'
 
 
 export interface CtaProps {

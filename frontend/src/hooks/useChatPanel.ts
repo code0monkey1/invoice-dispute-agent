@@ -132,50 +132,49 @@ export function useChatPanel() {
   }
 
   const saveDetails = async () => {
-  if (!invoiceId) return
-  setSavingDetails(true)
-  try {
-    const res = await api.updateDetails(invoiceId, {
-      client_name: editName.trim(),
-      client_email: editEmail.trim(),
-    })
-    if (res.state) {
-      initMessages(messages, interrupt, res.state)
+    if (!invoiceId) return
+    setSavingDetails(true)
+    try {
+      const res = await api.updateDetails(invoiceId, {
+        client_name: editName.trim(),
+        client_email: editEmail.trim(),
+      })
+      if (res.state) {
+        initMessages(messages, interrupt, res.state)
+      }
+      setEditingDetails(false)
+      // If there's a pending draft, regenerate it with updated details
+      if (interrupt) {
+        reject('Client details were updated. Please regenerate the draft with the new details.')
+      }
+    } catch (err) {
+      console.error('Failed to update details:', err)
+    } finally {
+      setSavingDetails(false)
     }
-    setEditingDetails(false)
-    // If there's a pending draft, regenerate it with updated details
-    if (interrupt) {
-      reject('Client details were updated. Please regenerate the draft with the new details.')
-    }
-  } catch (err) {
-    console.error('Failed to update details:', err)
-  } finally {
-    setSavingDetails(false)
-  }
   }
 
   const saveSender = async () => {
-  if (!invoiceId) return
-  setSavingSender(true)
-  try {
-    const res = await api.updateSender(invoiceId, {
-      freelancer_name: senderName.trim(),
-      freelancer_email: senderEmail.trim(),
-      business_name: senderBusiness.trim(),
-    })
-    queryClient.setQueryData(qk.sender(invoiceId), res)
-    setEditingSender(false)
-    // If there's a pending draft, regenerate it with updated sender
-    if (interrupt) {
-      reject('Sender details were updated. Please regenerate the draft with the new sender information.')
+    if (!invoiceId) return
+    setSavingSender(true)
+    try {
+      const res = await api.updateSender(invoiceId, {
+        freelancer_name: senderName.trim(),
+        freelancer_email: senderEmail.trim(),
+        business_name: senderBusiness.trim(),
+      })
+      queryClient.setQueryData(qk.sender(invoiceId), res)
+      setEditingSender(false)
+      // If there's a pending draft, regenerate it with updated sender
+      if (interrupt) {
+        reject('Sender details were updated. Please regenerate the draft with the new sender information.')
+      }
+    } catch (err) {
+      console.error('Failed to update sender:', err)
+    } finally {
+      setSavingSender(false)
     }
-  } catch (err) {
-    console.error('Failed to update sender:', err)
-  } finally {
-    setSavingSender(false)
   }
-  }
-
   return {
     APPROVAL_TOOLS,
     SUMMARY_PROMPT,
