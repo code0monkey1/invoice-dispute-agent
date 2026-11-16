@@ -64,3 +64,8 @@ Accepted as-is: `src/db.py` was moved whole, not split, into one adapter module;
 - **Dead code to remove in group 5 or 7:** the second `/api/health` (shadowed, never reached), unused imports in `api/index.py` (`Flow`, `id_token`, `google_requests`, `StaticFiles`, `update_user_history_id`, `get_user_by_email`), and `build_initial_invoice_message` once a search confirms no caller.
 - **Live eval** (`python -m evals.run`) is due after groups 3 and 5, because templates and tools move. Never run it with production's Groq key or organisation: that once used up production's daily quota (user's memory note `agent-evals-setup`). Use `--pace 8`, `DATABASE_URL=`, a fake `SUPABASE_URL`, and `--out-dir` in the scratchpad with `--baseline evals/results/baseline.json`, so the user's uncommitted `evals/results/latest.*` aren't overwritten.
 - **Review another tool's commits before building on them.** Tests passing wasn't enough: of the regressions above, only the draft's would have failed a test. Compare each moved function with the original (AST-normalised diff) and check what a use case captures at import.
+
+### Release continuation
+
+- PR #33 live agent and summary evals passed. Its backend job exposed FastAPI 0.163.1's lazy included routers: the route contract's direct `app.routes` walk saw no API routes. Reproduced both failures with CI's FastAPI installed in an isolated target; switched only inspection to FastAPI's public `iter_route_contexts` when available. Expected routes are unchanged. Full suite: 988 passed, 13 skipped with both local FastAPI 0.135.3 and CI FastAPI 0.163.1.
+- Local Homebrew default Node is broken (missing simdjson dylib); use `PATH=/opt/homebrew/opt/node@22/bin:$PATH`. Frontend baseline: 178 passed, 6 skipped.

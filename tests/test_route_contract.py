@@ -40,7 +40,11 @@ EXPECTED_ROUTES = {
 
 def _routes():
     from api.index import app
-    return [(method, route.path) for route in app.routes
+    from fastapi import routing
+    # Newer FastAPI keeps included routers lazy. Its public iterator exposes
+    # their effective paths while retaining duplicates and registration order.
+    routes = routing.iter_route_contexts(app.routes) if hasattr(routing, "iter_route_contexts") else app.routes
+    return [(method, route.path) for route in routes
             for method in sorted(getattr(route, "methods", None) or []) if method not in {"HEAD", "OPTIONS"}]
 
 
