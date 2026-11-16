@@ -16,7 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from src.db import DatabaseUnavailable, InvoiceAlreadyExists
+from src.errors import DatabaseUnavailable, InvoiceAlreadyExists
 
 logger = logging.getLogger("invoicechaser")
 

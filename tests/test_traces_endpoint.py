@@ -102,7 +102,7 @@ async def test_a_guest_reads_their_own_traces(client, fake_db, scripted):
 
 @pytest.mark.asyncio
 async def test_traces_follow_a_guest_who_signs_in(client, fake_db):
-    from src.db import migrate_guest_to_user
+    from src.adapters.supabase import migrate_guest_to_user
     invoice = await create_invoice(client)
     guest_id = invoice["id"].split("__inv__")[0]
     seed_runs(fake_db, invoice["id"], 2, user_id=guest_id)
@@ -125,7 +125,7 @@ async def test_database_outage_is_a_503_not_a_crash(client, fake_db):
 @pytest.mark.asyncio
 async def test_signing_in_still_works_if_the_trace_table_is_unavailable(client, fake_db):
     """Traces are optional: a missing or down trace table must never block moving a guest's invoices."""
-    from src.db import migrate_guest_to_user
+    from src.adapters.supabase import migrate_guest_to_user
     invoice = await create_invoice(client)
     guest_id = invoice["id"].split("__inv__")[0]
     fake_db.users["user-9"] = {"id": "user-9", "email": "nine@example.com"}

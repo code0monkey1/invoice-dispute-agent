@@ -23,6 +23,7 @@ from cryptography.fernet import Fernet
 from supabase import create_client, Client
 
 from src.domain.invoice import build_invoice_storage_id, parse_public_invoice_id  # noqa: F401  (re-exported)
+from src.errors import Conflict, DatabaseUnavailable, InvoiceAlreadyExists
 
 # ---------------------------------------------------------------------------
 # Supabase client singleton
@@ -31,32 +32,6 @@ from src.domain.invoice import build_invoice_storage_id, parse_public_invoice_id
 logger = logging.getLogger("invoicechaser")
 
 _supabase_client: Optional[Client] = None
-
-
-class DatabaseUnavailable(RuntimeError):
-    """The database couldn't be reached or answered with a server error.
-
-    Raised instead of raw network errors so the API can tell the user to try
-    again, rather than failing with a bare "Internal Server Error".
-    ``retryable`` is False for timeouts: retrying a 20-second timeout would
-    push the request past the 60-second serverless limit.
-    """
-
-    def __init__(self, message: str, *, retryable: bool = True):
-        super().__init__(message)
-        self.retryable = retryable
-
-
-class Conflict(RuntimeError):
-    """The write broke a unique constraint (PostgREST answers 409)."""
-
-
-class InvoiceAlreadyExists(Conflict):
-    """This user already has an invoice with this number.
-
-    The routes check first, but two creates can race past that check; the
-    primary key on invoices.id (user + number) then stops the second insert.
-    """
 
 
 # Waits before retrying a read that hit a network blip.

@@ -298,7 +298,7 @@ def test_an_approval_with_different_words_is_recorded_as_an_edit():
 
 def test_trace_writes_use_a_short_timeout(monkeypatch):
     """A slow database must not push a finished request past the 60 s serverless limit."""
-    import src.db as db
+    from src.adapters import supabase as db
     seen = []
     monkeypatch.setenv("SUPABASE_URL", "http://supabase.invalid")
     monkeypatch.setattr(db, "_send", lambda request, timeout=None: seen.append(timeout) or "")

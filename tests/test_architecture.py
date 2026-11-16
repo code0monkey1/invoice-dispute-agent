@@ -27,11 +27,9 @@ INNER_LAYERS = {
 }
 
 # (file, imported module): policy and adapters reaching straight into the database layer.
-KNOWN_VIOLATIONS = {
-    ("src/services/conversation_summary.py", "src.db"),
-}
-DATABASE_MODULE = "src.db"
-MAY_IMPORT_DATABASE = ("src/db.py",)
+KNOWN_VIOLATIONS = set()
+DATABASE_MODULE = "src.adapters.supabase"
+MAY_IMPORT_DATABASE = ("src/adapters/supabase/",)
 
 
 def imports_of(path: Path) -> set[str]:

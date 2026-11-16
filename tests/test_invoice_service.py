@@ -120,7 +120,7 @@ def test_escalation_is_capped_at_legal(fake_db):
 
 def invoice_use_cases():
     from types import SimpleNamespace
-    from src import db
+    from src.adapters import supabase as db
     from src.usecases.invoices import InvoiceUseCases
     session = SimpleNamespace(update_state=lambda *a: None, get_state=lambda i: SimpleNamespace(values={}),
                               read_before_sync=lambda *a, **k: SimpleNamespace(sync_error=None))
@@ -128,7 +128,7 @@ def invoice_use_cases():
 
 
 def approval_use_cases():
-    from src import db
+    from src.adapters import supabase as db
     from src.usecases.approvals import ApprovalUseCases
     return ApprovalUseCases(db)
 

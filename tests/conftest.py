@@ -1,6 +1,6 @@
 """Pytest fixtures for backend tests.
 
-We patch the Supabase REST layer (`src.db._supabase_rest_request`) so tests
+We patch the Supabase REST adapter so tests
 never touch the real database. Each test gets a clean in-memory store of
 users, invoices, and storage uploads, isolated via the `fake_db` fixture.
 
@@ -58,7 +58,7 @@ def fake_db():
         return db.storage[object_path]
 
     # Import lazily so env vars are set first.
-    import src.db as db_module
+    from src.adapters import supabase as db_module
     with patch.object(db_module, "_supabase_rest_request", side_effect=fake_request), \
          patch.object(db_module, "upload_invoice_file", side_effect=fake_upload), \
          patch.object(db_module, "download_invoice_file", side_effect=fake_download):

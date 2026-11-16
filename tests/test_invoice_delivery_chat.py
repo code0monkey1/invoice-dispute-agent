@@ -140,7 +140,7 @@ def test_serialize_messages_flattens_structured_content():
 @pytest.mark.asyncio
 async def test_approved_delivery_email_attaches_invoice_file(client, fake_db, monkeypatch):
     import api.index as api_index
-    from src.db import build_invoice_storage_id
+    from src.domain.invoice import build_invoice_storage_id
 
     user_id = "user-123"
     storage_id = build_invoice_storage_id(user_id, "INV-ATTACH-1")

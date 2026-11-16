@@ -2,7 +2,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from src.db import DatabaseUnavailable, InvoiceAlreadyExists
+from src.errors import DatabaseUnavailable, InvoiceAlreadyExists
 from web.app import Deps, create_app
 from web.identity import Identity
 
@@ -92,3 +92,10 @@ def test_live_forwards_to_whatever_the_provider_returns_now():
     view = Live(lambda: holder.db)
     holder.db = SimpleNamespace(name="second")
     assert view.name == "second"
+
+
+def test_the_entry_point_logs_info_so_production_logs_keep_run_details():
+    """The old api/index.py configured INFO logging; Vercel shows nothing below WARNING otherwise."""
+    import logging
+    import api.index  # noqa: F401
+    assert logging.getLogger("invoicechaser").level == logging.INFO

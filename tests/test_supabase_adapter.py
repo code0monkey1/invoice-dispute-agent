@@ -2,7 +2,7 @@
 
 
 def test_legacy_database_module_is_the_supabase_adapter(monkeypatch):
-    import src.db as legacy
+    from src.adapters import supabase as legacy
     from src.adapters import supabase
 
     assert legacy is supabase

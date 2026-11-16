@@ -109,7 +109,7 @@ async def test_other_owners_cannot_read_or_refresh(client, fake_db, scripted, su
 
 @pytest.mark.asyncio
 async def test_guest_ownership_follows_invoice_after_signin(client, fake_db, scripted, summarizer):
-    from src.db import migrate_guest_to_user
+    from src.adapters.supabase import migrate_guest_to_user
     inv = await create_invoice(client)
     url = f"/api/invoices/{inv['id']}/summary"
     before = await client.post(url)
@@ -229,7 +229,7 @@ async def test_delta_escalation_and_resume_do_not_include_prior_messages(client,
 
 @pytest.mark.asyncio
 async def test_dashboard_never_returns_communication_bodies(client, fake_db, scripted):
-    from src.db import add_communication
+    from src.adapters.supabase import add_communication
     headers = signed_in(fake_db)
     inv = await create_invoice(client, headers)
     add_communication(inv['id'], 'client_reply', 'Sensitive subject', 'Sensitive client reply', direction='inbound')

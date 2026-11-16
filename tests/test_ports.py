@@ -14,7 +14,7 @@ from src.ports import (
 
 
 def test_fake_db_backed_database_satisfies_store_and_trace_ports(fake_db):
-    import src.db as database
+    from src.adapters import supabase as database
 
     assert isinstance(database, InvoiceStore)
     assert isinstance(database, UserStore)

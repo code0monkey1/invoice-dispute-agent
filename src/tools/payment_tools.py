@@ -20,7 +20,7 @@ def mark_invoice_pending(follow_up_date: str, runtime: ToolRuntime) -> Command:
                 tool_call_id=runtime.tool_call_id
             )]
         })
-    # Saved to the invoice once the user approves (invoice_service.apply_approved_outcome).
+    # Saved to the invoice once the user approves (ApprovalUseCases.apply_outcome in src/usecases/approvals.py).
     return Command(update={
         "status": "pending",
         "follow_up_date": parsed,

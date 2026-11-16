@@ -14,7 +14,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from src.db import _supabase_rest_request as real_rest_request  # captured before the fake is patched in
+from src.adapters.supabase import _supabase_rest_request as real_rest_request  # captured before the fake is patched in
 from tests.test_approve_sends_email import DRAFT, approve, create_invoice, fake_agent, sent, signed_in  # noqa: F401
 
 
@@ -27,8 +27,8 @@ async def lenient_client(fake_db):
 
 
 def database_down():
-    from src.db import DatabaseUnavailable
-    return patch("src.db._supabase_rest_request", side_effect=DatabaseUnavailable("network is unreachable"))
+    from src.errors import DatabaseUnavailable
+    return patch("src.adapters.supabase._supabase_rest_request", side_effect=DatabaseUnavailable("network is unreachable"))
 
 
 # ─── Database outage ─────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ async def test_database_outage_gives_a_clear_503(lenient_client, fake_db, method
 
 
 def test_reads_retry_a_network_blip_but_writes_do_not(monkeypatch):
-    from src import db
+    from src.adapters import supabase as db
     monkeypatch.setattr(db.time, "sleep", lambda s: None)
     calls = {"n": 0}
 
@@ -99,7 +99,7 @@ def test_reads_retry_a_network_blip_but_writes_do_not(monkeypatch):
     urllib.error.HTTPError("http://x", 503, "Service Unavailable", {}, BytesIO(b"<html>cloudflare</html>")),
 ])
 def test_network_and_server_failures_become_database_unavailable(monkeypatch, error):
-    from src import db
+    from src.adapters import supabase as db
     monkeypatch.setattr(db.time, "sleep", lambda s: None)
     with patch("urllib.request.urlopen", side_effect=error), pytest.raises(db.DatabaseUnavailable):
         real_rest_request("GET", "invoices")
@@ -200,8 +200,9 @@ async def test_no_route_returns_a_bare_500_or_leaks_internals(lenient_client, fa
     for method, path in _api_routes():
         url = (path.replace("{invoice_id}", invoice["id"]).replace("{full_path:path}", "x")
                    .replace("{token}", "t"))
-        with patch("src.db._supabase_rest_request",
-                   side_effect=__import__("src.db", fromlist=["x"]).DatabaseUnavailable("network is unreachable")
+        from src.errors import DatabaseUnavailable
+        with patch("src.adapters.supabase._supabase_rest_request",
+                   side_effect=DatabaseUnavailable("network is unreachable")
                    if failure == "database_down" else RuntimeError("supabase secret detail")):
             with patch.object(api_index.deps, "run_agent", side_effect=RuntimeError("gsk_live_key leaked")):
                 kwargs = {"headers": headers}
@@ -223,7 +224,7 @@ async def test_no_route_returns_a_bare_500_or_leaks_internals(lenient_client, fa
 @pytest.mark.parametrize("timeout_error", [TimeoutError("timed out"), urllib.error.URLError(socket.timeout("timed out"))])
 def test_a_read_that_timed_out_is_not_retried(monkeypatch, timeout_error):
     """Three 20-second timeouts would blow the 60-second function limit."""
-    from src import db
+    from src.adapters import supabase as db
     monkeypatch.setattr(db.time, "sleep", lambda s: None)
     calls = {"n": 0}
 
@@ -239,7 +240,7 @@ def test_a_read_that_timed_out_is_not_retried(monkeypatch, timeout_error):
 @pytest.mark.asyncio
 async def test_email_sent_then_everything_fails_still_reports_sent(client, fake_db, fake_agent, sent):
     """Gmail accepts the email, then both the AI step and the database fail."""
-    from src.db import DatabaseUnavailable
+    from src.errors import DatabaseUnavailable
     headers = signed_in(fake_db)
     invoice = await create_invoice(client, headers)
     fake_agent.ask_for_approval()

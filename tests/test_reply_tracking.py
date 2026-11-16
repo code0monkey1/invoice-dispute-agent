@@ -230,7 +230,7 @@ async def test_connect_gmail_requires_sign_in(client):
 
 
 def test_signing_in_again_keeps_an_existing_gmail_connection(fake_db):
-    from src import db
+    from src.adapters import supabase as db
     db.upsert_user("u-keep", "u@example.com", "U", "", access_token="acc", refresh_token="ref")
     db.upsert_user("u-keep", "u@example.com", "U", "", access_token=None, refresh_token=None)
     assert db.get_user_gmail_tokens("u-keep") == ("acc", "ref")

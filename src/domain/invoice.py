@@ -2,7 +2,7 @@
 escalation, and which client details can be saved.
 
 Pure functions over plain dicts. Reading and writing invoices is the
-caller's job (src/services/invoice_service.py).
+caller's job (src/usecases/).
 
 Status values: active (default) -> pending (client promised to pay by
 follow_up_date) -> paid (settled). Nothing leaves paid.

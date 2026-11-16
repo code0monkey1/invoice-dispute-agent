@@ -100,7 +100,7 @@ async def test_a_reply_after_settling_is_kept_but_the_agent_stays_quiet(client, 
 
 def test_only_the_first_of_two_racing_settles_counts(fake_db):
     """Two clicks at once must not both log 'settled' (the status change is conditional)."""
-    from src import db
+    from src.adapters import supabase as db
     fake_db.invoices["inv-1"] = {"id": "inv-1", "status": "active", "user_id": "u"}
     assert db.mark_invoice_settled("inv-1") is True
     assert db.mark_invoice_settled("inv-1") is False

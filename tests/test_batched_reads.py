@@ -21,7 +21,7 @@ def comm_reads(fake_db):
 
 
 def test_batch_helper_groups_communications_by_invoice(fake_db):
-    from src import db
+    from src.adapters import supabase as db
     for inv, ts in [("a", "2"), ("b", "1"), ("a", "1")]:
         db.add_communication(invoice_id=inv, comm_type="note", subject=f"{inv}{ts}", content="", direction="outbound")
         fake_db.communications[-1]["timestamp"] = ts

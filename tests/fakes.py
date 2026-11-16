@@ -39,7 +39,7 @@ class FakeDB:
         table = path_segments[0] if path_segments else ""
         self.requests.append((method, table, params))
         if table in self.down_tables:
-            from src.db import DatabaseUnavailable
+            from src.errors import DatabaseUnavailable
             raise DatabaseUnavailable(f"{table} is down (simulated)")
         if table == 'rpc/invoice_communication_overviews':
             results = []
@@ -201,7 +201,7 @@ class FakeDB:
             row.setdefault("status", "active")
             if row["id"] in self.invoices:
                 # invoices.id is the primary key: PostgREST answers 409.
-                from src.db import Conflict
+                from src.errors import Conflict
                 raise Conflict(f"duplicate key value violates unique constraint (id={row['id']})")
             self.invoices[row["id"]] = row
             return [row]

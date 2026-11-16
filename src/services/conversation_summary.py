@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from src import db
+from src.domain.invoice import parse_public_invoice_id
 
 logger = logging.getLogger(__name__)
 CHUNK_CHARS = 24_000
@@ -52,9 +52,9 @@ class Sources:
     empty: bool
 
 
-def collect(invoice_id: str, agent) -> Sources:
+def collect(invoice_id: str, agent, store) -> Sources:
     """Never sync/update agent state: even a read must preserve approval cards."""
-    invoice = db.get_invoice(invoice_id)
+    invoice = store.get_invoice(invoice_id)
     if invoice is None:
         raise ValueError('invoice_missing')
     snapshot = agent.get_state({'configurable': {'thread_id': f'invoice-{invoice_id}'}})
@@ -72,7 +72,7 @@ def collect(invoice_id: str, agent) -> Sources:
             messages.append({'id': getattr(message, 'id', None), 'role': role, 'participant': participant, 'text': text, 'proposed_tools': tools})
     communications = [
         {key: row.get(key) for key in ('id', 'type', 'subject', 'content', 'direction', 'timestamp')}
-        for row in db.get_summary_communications(invoice_id)
+        for row in store.get_summary_communications(invoice_id)
     ]
     # Keep equal timestamps deterministic; ids also distinguish repeated text.
     communications.sort(key=lambda r: (str(r.get('timestamp') or ''), int(r.get('id') or 0)))
@@ -86,7 +86,7 @@ def collect(invoice_id: str, agent) -> Sources:
     ]
     return Sources(
         version=hashlib.sha256(transcript.encode()).hexdigest(), communications=transcript,
-        invoice={**{key: invoice.get(key) for key in FACT_FIELDS}, 'id': db.parse_public_invoice_id(invoice_id)}, pending_approval=pending,
+        invoice={**{key: invoice.get(key) for key in FACT_FIELDS}, 'id': parse_public_invoice_id(invoice_id)}, pending_approval=pending,
         empty=not messages and not communications,
     )
 
@@ -117,12 +117,12 @@ def _present(invoice_id: str, row: dict | None, source: Sources | None) -> dict:
     }
 
 
-def read(invoice_id: str, agent) -> dict:
+def read(invoice_id: str, agent, store) -> dict:
     """Saved result and source freshness only; this can never call the model."""
     row = None
     try:
-        row = db.get_invoice_summary(invoice_id)
-        return _present(invoice_id, row, collect(invoice_id, agent))
+        row = store.get_invoice_summary(invoice_id)
+        return _present(invoice_id, row, collect(invoice_id, agent, store))
     except Exception as exc:
         logger.warning('Summary read unavailable: %s', type(exc).__name__)
         return _present(invoice_id, row, None)
@@ -145,20 +145,20 @@ def _call_model(payload: dict, model_name: str | None = None) -> str:
     return text
 
 
-def refresh(invoice_id: str, agent) -> dict:
+def refresh(invoice_id: str, agent, store) -> dict:
     """One bounded opening operation. No background or automatic second attempt."""
     deadline = time.monotonic() + REFRESH_BUDGET_SECONDS
     row = None
     token = None
     try:
-        row = db.get_invoice_summary(invoice_id)
-        source = collect(invoice_id, agent)
+        row = store.get_invoice_summary(invoice_id)
+        source = collect(invoice_id, agent, store)
         if source.empty or (row and row.get('source_version') == source.version):
             return _present(invoice_id, row, source)
         token = str(uuid.uuid4())
-        claim = db.claim_invoice_summary(invoice_id, source.version, token)
+        claim = store.claim_invoice_summary(invoice_id, source.version, token)
         if not claim:
-            return read(invoice_id, agent)
+            return read(invoice_id, agent, store)
         row = claim
         progress = row.get('progress') or {}
         input_hash = hashlib.sha256(_json({'invoice': source.invoice, 'pending': source.pending_approval}).encode()).hexdigest()
@@ -176,21 +176,38 @@ def refresh(invoice_id: str, agent) -> dict:
                 'chunk': cursor + 1, 'total_chunks': len(chunks),
             })
             cursor += 1
-            if not db.progress_invoice_summary(invoice_id, token, source.version,
-                                               {'next': cursor, 'text': text, 'input_hash': input_hash}):
-                return read(invoice_id, agent)
+            if not store.progress_invoice_summary(invoice_id, token, source.version,
+                                                  {'next': cursor, 'text': text, 'input_hash': input_hash}):
+                return read(invoice_id, agent, store)
         # A new communication during generation waits for a later opening.
-        latest = collect(invoice_id, agent)
+        latest = collect(invoice_id, agent, store)
         if latest.version == source.version and cursor == len(chunks):
-            db.publish_invoice_summary(invoice_id, token, source.version, text)
+            store.publish_invoice_summary(invoice_id, token, source.version, text)
         else:
-            db.release_invoice_summary(invoice_id, token)
-        return read(invoice_id, agent)
+            store.release_invoice_summary(invoice_id, token)
+        return read(invoice_id, agent, store)
     except Exception as exc:
         logger.warning('Summary refresh unavailable: %s', type(exc).__name__)
         if token:
             try:
-                db.release_invoice_summary(invoice_id, token, 'generation_failed')
+                store.release_invoice_summary(invoice_id, token, 'generation_failed')
             except Exception:
                 pass  # the lease expires; a later opening recovers it
-        return read(invoice_id, agent) if token else _present(invoice_id, row, None)
+        return read(invoice_id, agent, store) if token else _present(invoice_id, row, None)
+
+
+class ConversationSummaryService:
+    """Injected facade used by the conversation use cases."""
+
+    def __init__(self, store, agent_provider):
+        self._store = store
+        self._agent_provider = agent_provider
+
+    def collect(self, invoice_id: str) -> Sources:
+        return collect(invoice_id, self._agent_provider(), self._store)
+
+    def read(self, invoice_id: str) -> dict:
+        return read(invoice_id, self._agent_provider(), self._store)
+
+    def refresh(self, invoice_id: str) -> dict:
+        return refresh(invoice_id, self._agent_provider(), self._store)

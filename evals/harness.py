@@ -81,7 +81,7 @@ class EvalHarness:
 
     async def __aenter__(self) -> "EvalHarness":
         import api.index as api_index
-        import src.db as db_module
+        from src.adapters import supabase as db_module
         import src.services.gmail_service as gmail_module
         import src.tools.legal as legal
 
