@@ -1,4 +1,4 @@
-"""Email wording has one source: what the client is sent is what the model reads back."""
+"""Shared email wording preserves the distinct card and tool formatting contracts."""
 from types import SimpleNamespace
 
 import pytest
@@ -27,8 +27,8 @@ def test_an_unknown_tool_has_no_draft():
 
 
 @pytest.mark.parametrize("tool", DRAFT_TOOLS)
-def test_each_draft_tool_returns_the_card_text(tool):
-    """The tool result (what the model reads after an approval) matches the approval card."""
+def test_each_draft_tool_preserves_its_original_text(tool):
+    """Tools historically omit thousands separators; delivery already matches the card."""
     import src.tools.drafting as drafting
     from api.index import generate_draft_preview
     runtime = SimpleNamespace(state=dict(STATE), context=CONTEXT)
@@ -36,11 +36,34 @@ def test_each_draft_tool_returns_the_card_text(tool):
 
     from_tool = getattr(drafting, tool).func(runtime=runtime, **args)
 
-    assert from_tool == generate_draft_preview(tool, dict(STATE), CONTEXT, args)
+    expected = generate_draft_preview(tool, dict(STATE), CONTEXT, args)
+    if tool != "draft_invoice_delivery_email":
+        expected = expected.replace("$1,200.00", "$1200.00").replace("$1,000.00", "$1000.00")
+    assert from_tool == expected
     assert from_tool  # never an empty draft for a known tool
 
 
 def test_a_zero_balance_in_state_falls_back_to_the_computed_one():
-    """The card's rule, now the tool's too: a blank or zero balance_due means 'work it out'."""
+    """The card's original rule: a blank or zero balance_due means 'work it out'."""
     draft = render_draft("draft_polite_reminder", {**STATE, "balance_due": 0}, CONTEXT)
     assert "the remaining balance is $1,000.00" in draft
+
+
+@pytest.mark.parametrize("tool", DRAFT_TOOLS[1:])
+@pytest.mark.parametrize("balance", [0, None, -20])
+def test_tool_results_preserve_explicit_zero_and_clamp_negative_balances(tool, balance):
+    import src.tools.drafting as drafting
+    runtime = SimpleNamespace(state={**STATE, "balance_due": balance}, context=CONTEXT)
+    draft = getattr(drafting, tool).func(runtime=runtime)
+    assert "$0.00" in draft
+    assert "$1,000.00" not in draft
+    assert "$-20.00" not in draft
+
+
+@pytest.mark.parametrize("tool", DRAFT_TOOLS[1:])
+def test_tools_still_require_the_invoice_identifier(tool):
+    import src.tools.drafting as drafting
+    state = dict(STATE)
+    del state["invoice_id"]
+    with pytest.raises(KeyError, match="invoice_id"):
+        getattr(drafting, tool).func(runtime=SimpleNamespace(state=state, context=CONTEXT))

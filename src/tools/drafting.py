@@ -1,5 +1,5 @@
 """The draft tools. Their wording lives in src/domain/email_templates.py, so the
-text the model reads back is the text the approval card shows and the client gets."""
+shared wording preserves both the tool-result and approval-card contracts."""
 from langchain.tools import tool, ToolRuntime
 
 from src.domain.email_templates import (  # noqa: F401  (fill_* re-exported for existing callers)
@@ -25,16 +25,16 @@ def draft_invoice_delivery_email(subject: str, body: str, runtime: ToolRuntime) 
 @tool
 def draft_polite_reminder(runtime: ToolRuntime) -> str:
     """Draft a polite payment reminder email for an overdue invoice. Use at escalation level 1."""
-    return render_draft("draft_polite_reminder", runtime.state, runtime.context)
+    return render_draft("draft_polite_reminder", runtime.state, runtime.context, tool_result=True)
 
 
 @tool
 def draft_formal_demand_letter(runtime: ToolRuntime) -> str:
     """Draft a formal demand letter referencing the agreed payment terms. Use at escalation level 2."""
-    return render_draft("draft_formal_demand_letter", runtime.state, runtime.context)
+    return render_draft("draft_formal_demand_letter", runtime.state, runtime.context, tool_result=True)
 
 
 @tool
 def draft_final_notice(runtime: ToolRuntime) -> str:
     """Draft a final notice before legal action. Use at escalation level 3."""
-    return render_draft("draft_final_notice", runtime.state, runtime.context)
+    return render_draft("draft_final_notice", runtime.state, runtime.context, tool_result=True)

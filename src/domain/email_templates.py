@@ -1,8 +1,8 @@
 """The emails the agent drafts, in one place.
 
-The approval card shows this text, the send uses it (unless the user edited
-it), and the draft tool returns it to the model. Exact wording is pinned in
-tests/test_policy_golden.py.
+The approval card and draft tools share wording. Their historical amount
+formatting and balance interpretation remain distinct. Card wording is pinned
+in tests/test_policy_golden.py.
 
 *sender* is anything with freelancer_name, freelancer_email, business_name and
 default_payment_terms (src.state.FreelancerContext in the app).
@@ -92,20 +92,24 @@ def invoice_delivery_draft(state: dict, sender: Sender) -> str:
     return fill_draft_from_context(draft, state, sender)
 
 
-def render_draft(tool_name: str, state: dict, sender: Sender) -> str:
+def render_draft(tool_name: str, state: dict, sender: Sender, *, tool_result: bool = False) -> str:
     """The email *tool_name* drafts for this invoice state, or '' for a tool that drafts none.
 
     Raises if the state can't be formatted (an amount that isn't a number).
     """
-    client_name = state.get("client_name", "Client")
-    invoice_id = state.get("invoice_id", "N/A")
+    legacy_tool = tool_result and tool_name in DRAFT_TOOLS[1:]
+    money_format = ".2f" if legacy_tool else ",.2f"
+    client_name = state["client_name"] if legacy_tool else state.get("client_name", "Client")
+    invoice_id = state["invoice_id"] if legacy_tool else state.get("invoice_id", "N/A")
     invoice_amount = float(state.get("invoice_amount", 0) or 0)
     amount_paid = float(state.get("amount_paid", 0) or 0)
     balance_due = compute_balance(invoice_amount, amount_paid)
-    if "balance_due" in state:
+    if legacy_tool:
+        balance_due = max(0, float(state.get("balance_due", invoice_amount - amount_paid) or 0))
+    elif "balance_due" in state:
         balance_due = float(state.get("balance_due", balance_due) or balance_due)
-    days_overdue = state.get("days_overdue", 0)
-    jurisdiction = state.get("jurisdiction", "")
+    days_overdue = state["days_overdue"] if legacy_tool and tool_name != "draft_final_notice" else state.get("days_overdue", 0)
+    jurisdiction = state["jurisdiction"] if legacy_tool and tool_name == "draft_final_notice" else state.get("jurisdiction", "")
 
     if tool_name == "draft_invoice_delivery_email":
         return invoice_delivery_draft(state, sender)
@@ -114,8 +118,8 @@ def render_draft(tool_name: str, state: dict, sender: Sender) -> str:
             f"Subject: Friendly Reminder - Invoice #{invoice_id} Payment\n\n"
             f"Hi {client_name},\n\n"
             f"I hope this message finds you well. I wanted to kindly follow up on "
-            f"Invoice #{invoice_id}. The original invoice total was ${invoice_amount:,.2f}, "
-            f"and the remaining balance is ${balance_due:,.2f}, "
+            f"Invoice #{invoice_id}. The original invoice total was ${invoice_amount:{money_format}}, "
+            f"and the remaining balance is ${balance_due:{money_format}}, "
             f"which was due {days_overdue} days ago.\n\n"
             f"I understand things can get busy, and I'd appreciate it if you could "
             f"let me know the status of this payment at your earliest convenience.\n\n"
@@ -130,12 +134,12 @@ def render_draft(tool_name: str, state: dict, sender: Sender) -> str:
             f"Subject: FORMAL DEMAND - Overdue Invoice #{invoice_id}\n\n"
             f"Dear {client_name},\n\n"
             f"This letter constitutes a formal demand for payment of Invoice "
-            f"#{invoice_id}. The original invoice amount was ${invoice_amount:,.2f}; "
-            f"the remaining unpaid balance is ${balance_due:,.2f}, "
+            f"#{invoice_id}. The original invoice amount was ${invoice_amount:{money_format}}; "
+            f"the remaining unpaid balance is ${balance_due:{money_format}}, "
             f"which is now {days_overdue} days past due.\n\n"
             f"Per our agreed payment terms ({sender.default_payment_terms}), this invoice "
             f"was due for immediate payment.\n\n"
-            f"Total amount now due: ${balance_due:,.2f}\n\n"
+            f"Total amount now due: ${balance_due:{money_format}}\n\n"
             f"Please remit payment within 7 business days of receipt of this notice "
             f"to avoid further action.\n\n"
             f"This letter serves as formal documentation of this outstanding debt.\n\n"
@@ -150,9 +154,9 @@ def render_draft(tool_name: str, state: dict, sender: Sender) -> str:
             f"NOTICE: This is a final demand for payment before legal proceedings "
             f"are initiated in {jurisdiction}.\n\n"
             f"Despite previous communications, Invoice #{invoice_id} remains unpaid.\n\n"
-            f"Original amount: ${invoice_amount:,.2f}\n"
-            f"Amount paid: ${amount_paid:,.2f}\n"
-            f"TOTAL DUE: ${balance_due:,.2f}\n\n"
+            f"Original amount: ${invoice_amount:{money_format}}\n"
+            f"Amount paid: ${amount_paid:{money_format}}\n"
+            f"TOTAL DUE: ${balance_due:{money_format}}\n\n"
             f"If full payment is not received within 10 business days of this notice, "
             f"I will file a claim in small claims court in {jurisdiction}. "
             f"You may also be liable for court filing fees and additional costs.\n\n"

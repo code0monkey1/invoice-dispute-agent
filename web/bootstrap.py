@@ -79,7 +79,7 @@ class Runtime:
 
         self.deps = Deps(
             agent=agent_module.agent,
-            gmail_tokens=database.get_user_gmail_tokens,
+            gmail_tokens=lambda user_id: self.deps.db.get_user_gmail_tokens(user_id),
             gmail_client=GmailService,
             fetch_inbound_email=fetch_received_email,
             db=database,
