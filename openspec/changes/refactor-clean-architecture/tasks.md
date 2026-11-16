@@ -48,7 +48,7 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 - [x] 6.1 Add hook tests, then move API calls out of `Dashboard`, `InvoiceTable`, `InvoiceForm`, `TracePanel`, `InvoiceGeneratorPage` and `AuthContext` into hooks; verify existing component tests pass unchanged
 - [x] 6.2 Split `ChatPanel.tsx` into a container hook and presentational components; verify `ChatPanel.test.tsx` passes unchanged
 - [x] 6.3 Split `LandingPage.tsx` into section components with no logic change; verify `npm run build` and `npm run lint` pass
-- [ ] 6.4 Add a test that no file under `components/` imports `api.ts`; verify it passes
+- [x] 6.4 Add a test that no file under `components/` imports `api.ts`; verify it passes
 
 ## 7. Integration
 
