@@ -47,8 +47,8 @@
 - [x] 7.1 Use the failing unchanged sequence golden set as the red test; revise the shared summary prompt with general carry-forward rules for material financial history, corrected/withdrawn commitments, objections and current approval state. Preserve tool-free/injection/attribution rules and verify service tests.
 - [x] 7.2 Run the complete unchanged golden set with the independent different-family judge and unchanged 85% cohort gates; save reports and verify fixture hashes. Check additional synthetic holdout sequences without using their answers in the prompt.
 - [x] 7.3 Run backend/frontend checks and strict OpenSpec validation, review the complete prompt/evaluation diff independently and fix significant issues before committing.
-- [ ] 7.4 Commit only after local quality/verification pass, push PR #30, require successful GitHub backend/frontend/quality gates and merge to main without bypasses.
-- [ ] 7.5 Verify the merged SHA is ready on the production alias, exercise owned lazy summary creation/reuse/refresh and history/approval/access-control checks without sending email; record evidence and explain the prompt versus evaluation changes.
+- [x] 7.4 Commit only after local quality/verification pass, push PR #30, require successful GitHub backend/frontend/quality gates and merge to main without bypasses.
+- [x] 7.5 Verify the merged SHA is ready on the production alias, exercise owned lazy summary creation/reuse/refresh and history/approval/access-control checks without sending email; record evidence and explain the prompt versus evaluation changes.
 
 ## Workflow follow-up
 
