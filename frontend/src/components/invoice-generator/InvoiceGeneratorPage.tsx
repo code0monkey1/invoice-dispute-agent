@@ -10,7 +10,7 @@ import { TemplatePicker } from './TemplatePicker';
 import { PDFPreview } from './PDFPreview';
 import { computeTotals } from './pdf/shared/computeTotals';
 import { getTemplate } from './pdf';
-import { api } from '../../api';
+import { useInvoiceFiles } from '../../hooks/useInvoiceFiles';
 import type { InvoiceData, SenderProfile, LineItem, TemplateId } from '../../types';
 
 /** Debounce a value so consumers only see updates after `delayMs` of silence.
@@ -49,6 +49,7 @@ function seed(sender: SenderProfile): InvoiceData {
 
 export function InvoiceGeneratorPage() {
   const navigate = useNavigate();
+  const { saveGenerated } = useInvoiceFiles();
   const queryClient = useQueryClient();
   const { profile, loading: loadingProfile, save: saveProfile } = useSenderProfile();
   const [submitting, setSubmitting] = useState(false);
@@ -111,21 +112,16 @@ export function InvoiceGeneratorPage() {
       await saveProfile(data.sender).catch(() => { /* non-blocking */ });
 
       const blob = await buildBlob();
-      const { storage_path, file_name, file_size } =
-        await api.uploadGeneratedInvoicePdf(blob, data.meta.invoice_number);
       const totals = computeTotals(data);
-      const invoice = await api.createGeneratedInvoice({
+      const { invoice, fileName } = await saveGenerated(blob, {
         invoice_id: data.meta.invoice_number,
         client_name: data.client.name,
         client_email: data.client.email,
         invoice_amount_cents: totals.total_cents,
         due_date: data.meta.due_date,
         jurisdiction: undefined,
-        storage_path,
-        file_name,
-        file_size,
       });
-      triggerDownload(blob, file_name);
+      triggerDownload(blob, fileName);
       void queryClient.invalidateQueries({ queryKey: qk.invoices });
       navigate(`/invoice/${invoice.id}`);
     } catch (e) {
@@ -133,7 +129,7 @@ export function InvoiceGeneratorPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [buildBlob, data, navigate, queryClient, saveProfile]);
+  }, [buildBlob, data, navigate, queryClient, saveProfile, saveGenerated]);
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">

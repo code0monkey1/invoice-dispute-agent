@@ -24,8 +24,8 @@ Read this first if you are a new session continuing the work. Update the "State"
 
 - Branch: `refactor/clean-architecture`, cut from `main` at `ac060cb`.
 - Baseline before any change: backend 761 passed, 13 skipped; frontend 178 passed, 6 skipped.
-- Now: backend 988 passed, 13 skipped. `api/index.py` is the 19-line entry point; `web/bootstrap.py` is the composition root.
-- Done: groups 1-5 (backend). Next: group 6 (frontend), then group 7 (integration). Groups 1-5 ship as one pull request first; group 6 onwards is a follow-up branch.
+- Now: backend 1011 passed, 13 skipped; frontend 186 passed, 6 skipped; build and lint pass. `api/index.py` is the 19-line entry point; `web/bootstrap.py` is the composition root.
+- Done: groups 1-7, all 34 tasks. Backend ships in PR #33; frontend/integration follow in PR #34 on `refactor/clean-architecture-frontend`. Release target is the existing Vercel project (user confirmed); check PR gates and Vercel production deployment records for release status.
 - Live eval: a full local run on 2026-11-16 at `61e0f92` failed its gate on three cases. A/B runs on `main` vs the branch showed them to be model variance: identical captured model inputs, `l2-quality-dispute` flaky on `main` too, `l1-client-promises-date` 7/7 on `main` and 10/15 on the branch with the last 10 at 9/10; `l0-injected-reply` failed in the baseline as well. The PR's required `golden-set` CI check is the eval gate for the final code.
 - Tasks 5.6, 5.7 and a 5.8 draft were done by another tool (Codex) on 2026-11-16 in this same checkout. Reviewed against the original code: faithful except the 5.8 draft dropping INFO logging and the SPA comments (fixed in `cb46ace`). Agents must not share a checkout at the same time.
 
@@ -71,3 +71,14 @@ Accepted as-is: `src/db.py` was moved whole, not split, into one adapter module;
 - Local Homebrew default Node is broken (missing simdjson dylib); use `PATH=/opt/homebrew/opt/node@22/bin:$PATH`. Frontend baseline: 178 passed, 6 skipped.
 - Independent backend review found two compatibility gaps, both fixed with failing-first regression tests: Gmail token reads now follow a swapped `deps.db`; draft tools retain their original no-comma amount formatting and explicit-zero/negative balance rules while sharing wording with the unchanged approval preview. Full suite after fixes: 1001 passed, 13 skipped. Policy golden expectations and the route set remain unchanged.
 - User confirmed release target: existing Vercel project; no Netlify setup requested.
+
+### Frontend follow-up
+
+- Task 6.1: components with existing hooks keep them; InvoiceForm parsing and generated-invoice persistence now use useInvoiceFiles, and AuthProvider delegates to useAuthSession. Existing component tests unchanged. Added file-operation and session hook tests. Backend 988 passed/13 skipped; frontend 184 passed/6 skipped; production build passes.
+- Task 6.2: ChatPanel now composes a container hook, ChatConversation, ChatSidebar and shared settlement confirmation. Existing ChatPanel tests unchanged; all 184 frontend tests pass, production build and lint pass.
+- Task 6.3: LandingPage sections moved verbatim to components/landing, including the original timed demo and FAQ structured data. Backend 988 passed/13 skipped; frontend 184 passed/6 skipped; build and lint pass.
+- Task 6.4: AST-based frontend boundary test rejects static imports, re-exports and dynamic imports of api.ts under components and contexts. Frontend 186 passed/6 skipped, build and lint pass.
+- Task 7.1: backend architecture allow-list already empty; removed the remaining unused bootstrap import. Expanded CI classification to include moved policy/adapters/use cases/HTTP modules and summary seams; failing-first cases proved the old classifier skipped them. Full backend: 1011 passed/13 skipped; frontend: 186 passed/6 skipped, build and lint pass. Boundary check excludes component test fixtures (which intentionally import the mocked API).
+- Task 7.2: corrected CLAUDE.md for the new boundaries, Resend inbound replies and absent Telegram routes; validated 35 documented paths. Backend 1011 passed/13 skipped; frontend 186 passed/6 skipped; production build and lint pass.
+- Task 7.3: started the real app on localhost:8017 with isolated fake external dependencies; exercised health, create, chat, approved draft (one Gmail outbox send), escalation and settlement over HTTP. All returned 200; final status paid. Independent frontend review found no actionable findings. Backend draft-tool results also matched main in 216 amount/balance comparisons.
+- Task 7.4: isolated Vercel preview https://invoice-chaser-g39qhve3z-code0monkey1s-projects.vercel.app (source acbafc9) is READY. Health reports ok; SPA HTML, bundled JS and CSS served successfully. Automatic git previews have no preview env vars and fail startup; the isolated smoke deployment supplied a nonfunctional Groq key and fresh signing secret only for import/serving checks, with no external calls or project-wide config changes. Production baseline health was ok with Postgres. CI gates and merge/deploy records are linked from PR #33 and #34.

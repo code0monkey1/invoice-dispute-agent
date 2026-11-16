@@ -45,14 +45,14 @@ Baseline on 2026-11-15 before any change: `pytest` 761 passed, 13 skipped; `npx 
 
 ## 6. Frontend
 
-- [ ] 6.1 Add hook tests, then move API calls out of `Dashboard`, `InvoiceTable`, `InvoiceForm`, `TracePanel`, `InvoiceGeneratorPage` and `AuthContext` into hooks; verify existing component tests pass unchanged
-- [ ] 6.2 Split `ChatPanel.tsx` into a container hook and presentational components; verify `ChatPanel.test.tsx` passes unchanged
-- [ ] 6.3 Split `LandingPage.tsx` into section components with no logic change; verify `npm run build` and `npm run lint` pass
-- [ ] 6.4 Add a test that no file under `components/` imports `api.ts`; verify it passes
+- [x] 6.1 Add hook tests, then move API calls out of `Dashboard`, `InvoiceTable`, `InvoiceForm`, `TracePanel`, `InvoiceGeneratorPage` and `AuthContext` into hooks; verify existing component tests pass unchanged
+- [x] 6.2 Split `ChatPanel.tsx` into a container hook and presentational components; verify `ChatPanel.test.tsx` passes unchanged
+- [x] 6.3 Split `LandingPage.tsx` into section components with no logic change; verify `npm run build` and `npm run lint` pass
+- [x] 6.4 Add a test that no file under `components/` imports `api.ts`; verify it passes
 
 ## 7. Integration
 
-- [ ] 7.1 Empty the architecture-test allow-list and remove unused imports; verify the full backend and frontend suites pass
-- [ ] 7.2 Update the architecture section of `CLAUDE.md` to the new layout and correct its Gmail-webhook and Telegram descriptions against the code; verify every path it names exists
-- [ ] 7.3 Run the app locally and exercise create invoice, chat, approve a draft, escalate, settle and `/api/health`; verify each behaves as before
-- [ ] 7.4 Deploy a Vercel preview and verify `/api/health` responds and the SPA loads
+- [x] 7.1 Empty the architecture-test allow-list and remove unused imports; verify the full backend and frontend suites pass
+- [x] 7.2 Update the architecture section of `CLAUDE.md` to the new layout and correct its Gmail-webhook and Telegram descriptions against the code; verify every path it names exists
+- [x] 7.3 Run the app locally and exercise create invoice, chat, approve a draft, escalate, settle and `/api/health`; verify each behaves as before
+- [x] 7.4 Deploy a Vercel preview and verify `/api/health` responds and the SPA loads
