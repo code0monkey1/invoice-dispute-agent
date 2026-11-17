@@ -8,6 +8,9 @@ InvoiceChaser uses two projects in the `referfee` Sentry organization:
   unhandled promises, plus handled API network/5xx/invalid JSON failures. Upload
   requests use the same reporting path as JSON requests.
 
+Summary read/refresh fallbacks report their caught exceptions even though the
+HTTP request can complete successfully with a pending/failed summary result.
+
 Errors are sampled at 100%. Traces are sampled at 10% in production and 100% in
 development. Expected HTTP 4xx responses and browser request cancellation do not
 create issues. Missing DSNs disable monitoring. Tests use an in-memory transport;

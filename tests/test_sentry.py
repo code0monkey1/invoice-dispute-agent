@@ -114,6 +114,21 @@ def test_provider_exception_payloads_are_not_sent(captured):
         assert private not in payload
 
 
+@pytest.mark.parametrize("operation", ["read", "refresh"])
+def test_summary_fallbacks_still_report_the_caught_failure(captured, operation):
+    from types import SimpleNamespace
+    from src.services import conversation_summary
+
+    def unavailable(*args):
+        raise RuntimeError("private provider response")
+
+    result = getattr(conversation_summary, operation)("invoice", object(), SimpleNamespace(get_invoice_summary=unavailable))
+    assert result["summary"] is None
+    assert len(captured) == 1
+    assert captured[0]["exception"]["values"][0]["type"] == "RuntimeError"
+    assert "private provider response" not in json.dumps(captured)
+
+
 @pytest.mark.asyncio
 async def test_app_drains_telemetry_after_error_handler(captured):
     drained = []

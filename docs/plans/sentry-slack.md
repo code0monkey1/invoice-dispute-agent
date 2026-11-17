@@ -45,13 +45,15 @@ No prompts, agent tools, domain policy or evaluation thresholds change.
 - Frontend actual entry-point/React lifecycle smoke in jsdom:
   `INVOICE-DISPUTE-AGENT-FRONTEND-3` received. Temporary triggers removed.
 - Authenticated local source-map upload succeeded; zero `.map` files in output.
-- Full backend: 1021 passed, 13 skipped. Frontend: 194 passed, 6 skipped.
+- Full backend: 1023 passed, 13 skipped. Frontend: 194 passed, 6 skipped.
   Lint and build passed. Existing Pydantic/JWT test warnings and bundle-size warning remain.
 - Installed the requested official Slack skills plugin globally, outside Git.
   Its official docs say Codex installation does not include Slack MCP connectivity.
 - Independent review identified provider-error payload and singular invoice-page
   URL/transaction leaks. Added regression tests and fixed both; arbitrary exception
   values are excluded. Added a bounded request-end drain for Vercel invocations.
+- Summary read/refresh exceptions now emit error events while preserving their
+  existing fail-open responses; both paths have regression coverage.
 - Created active alert workflow `6360535`, scoped only to the two new projects,
   for first-seen errors and regressions, with email to the verified Sentry user.
   Disabled the two newly created default high-priority workflows to avoid duplicates.
