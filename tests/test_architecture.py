@@ -16,6 +16,7 @@ KNOWN_VIOLATIONS lists what breaks the rule today. It must match exactly, so
 fixing one means deleting its line here, and nobody can add a new one unnoticed.
 """
 import ast
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -38,9 +39,15 @@ def imports_of(path: Path) -> set[str]:
     for node in ast.walk(ast.parse(path.read_text(), filename=str(path))):
         if isinstance(node, ast.Import):
             found.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            found.add(node.module)
-            found.update(f"{node.module}.{alias.name}" for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level:
+                package = ".".join(path.relative_to(ROOT).parent.parts)
+                module = importlib.util.resolve_name("." * node.level + (node.module or ""), package)
+            else:
+                module = node.module
+            if module:
+                found.add(module)
+                found.update(f"{module}.{alias.name}" for alias in node.names)
     return found
 
 
@@ -74,12 +81,13 @@ def layer_violations(folder: str, allowed: tuple[str, ...]) -> list[str]:
 
 
 def test_domain_imports_only_the_standard_library_and_other_domain_modules():
-    assert layer_violations("src/domain", ()) == []
+    problems = layer_violations("src/domain", ())
+    assert not problems, "Domain may depend only on the standard library and domain modules:\n" + "\n".join(problems)
 
 
 def test_inner_layers_import_only_what_is_further_in():
     problems = [p for folder, allowed in INNER_LAYERS.items() for p in layer_violations(folder, allowed)]
-    assert problems == []
+    assert not problems, "Inner layers may depend only on domain and ports as appropriate:\n" + "\n".join(problems)
 
 
 def test_nothing_under_src_imports_the_http_layer():
@@ -194,3 +202,18 @@ def test_the_patch_rule_catches_every_spelling(tmp_path, monkeypatch):
 
     lines = [int(p.split(":")[1].split()[0]) for p in entry_module_patches(probe)]
     assert sorted(lines) == [4, 6, 7, 8, 12]
+
+
+def test_relative_imports_cannot_bypass_layer_boundaries(tmp_path, monkeypatch):
+    domain = tmp_path / "src" / "domain"
+    domain.mkdir(parents=True)
+    (domain / "rules.py").write_text(
+        "from ..adapters import supabase\n"
+        "from . import other\n"
+        "from .other import policy\n"
+    )
+    monkeypatch.setattr(sys.modules[__name__], "ROOT", tmp_path)
+
+    problems = layer_violations("src/domain", ())
+    assert any("src.adapters.supabase" in problem for problem in problems)
+    assert all("src.domain.other" not in problem for problem in problems)
