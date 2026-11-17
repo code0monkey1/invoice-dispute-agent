@@ -13,3 +13,19 @@ data/
 /public/
 frontend/coverage/
 .pytest_cache/
+graphify-out
+
+# Local credentials and environment backups
+.env.*
+!.env.example
+
+# Machine and personal tooling files
+.DS_Store
+/.agents/
+/.claude/
+/.codex/
+/.kiro/
+/.kombai/
+/.specify/
+/.vscode/
+/skills-lock.json
