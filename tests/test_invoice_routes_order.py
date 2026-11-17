@@ -1,9 +1,4 @@
-"""Invoice routes, pinned where the order of checks is visible to the caller.
-
-Written before the routes moved into web/routers/invoices.py (task 5.3): the
-check that answers first, and what is stored when a request is refused,
-must not change in the move.
-"""
+"""Invoice validation order and side effects visible to API callers."""
 import json
 
 import pytest

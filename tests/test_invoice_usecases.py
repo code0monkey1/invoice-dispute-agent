@@ -124,7 +124,7 @@ def test_the_invoice_is_kept_when_the_agent_cannot_start():
     result = invoices.create("u1", FIELDS)
     assert ID in store.invoices
     assert result["initialization_error"].startswith("The dispute was created")
-    assert "communication_history" not in result["invoice"]  # as before the move
+    assert "communication_history" not in result["invoice"]
 
 
 def test_exists_answers_for_the_owners_invoice_number():
