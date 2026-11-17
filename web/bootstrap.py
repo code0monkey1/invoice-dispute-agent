@@ -9,6 +9,11 @@ import logging
 import os
 from pathlib import Path
 
+from src.observability.sentry import flush_sentry, initialize_sentry
+
+# Before importing the agent/database: startup failures need monitoring too.
+initialize_sentry()
+
 from src import agent as agent_module
 from src.adapters import supabase as database
 from src.adapters.agent_session import LangGraphAgentSession
@@ -83,6 +88,7 @@ class Runtime:
             gmail_client=GmailService,
             fetch_inbound_email=fetch_received_email,
             db=database,
+            flush_telemetry=flush_sentry,
         )
         self.deps.agent_session = LangGraphAgentSession(lambda: self.deps.agent)
         self.identity = Identity(secret, store=lambda: self.deps.db)

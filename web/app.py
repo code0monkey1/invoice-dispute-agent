@@ -7,6 +7,7 @@ on the container and every caller sees the fake, wherever the code lives.
 import logging
 import math
 import os
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -36,6 +37,22 @@ class Deps:
     gmail_client: Any = None         # (user_id, access, refresh, persist_tokens) -> Gmail adapter
     fetch_inbound_email: Any = None  # (email_id) -> the received email
     db: Any = None                   # users, invoices, communications, traces and invoice files
+    flush_telemetry: Any = None      # bounded telemetry drain before a serverless invocation ends
+
+
+class MonitoredFastAPI(FastAPI):
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            # Outside ServerErrorMiddleware: even its final error log is queued
+            # before the drain. Read Deps now so tests can replace the callback.
+            flush = self.state.deps.flush_telemetry
+            if scope["type"] == "http" and flush is not None:
+                try:
+                    await asyncio.to_thread(flush)
+                except Exception:
+                    pass  # Monitoring failure must not change the HTTP response.
 
 
 class Live:
@@ -85,7 +102,7 @@ async def invoice_already_exists(request: Request, exc: InvoiceAlreadyExists):
 
 async def database_unavailable(request: Request, exc: DatabaseUnavailable):
     # A network blip or a database outage: say so plainly instead of a bare 500.
-    logger.warning("Database unavailable on %s %s: %s", request.method, request.url.path, exc)
+    logger.error("Database unavailable on %s %s: %s", request.method, request.url.path, exc, exc_info=exc)
     return JSONResponse(status_code=503, content={"detail": DATABASE_UNAVAILABLE_DETAIL}, headers={"Retry-After": "5"})
 
 
@@ -119,7 +136,7 @@ def cors_origins() -> list[str]:
 
 def create_app(deps: Deps, identity) -> FastAPI:
     """*identity* (web.identity.Identity) answers who is calling, for routes that ask via Depends(get_caller)."""
-    app = FastAPI(title="Invoice Dispute Agent API", default_response_class=SafeJSONResponse)
+    app = MonitoredFastAPI(title="Invoice Dispute Agent API", default_response_class=SafeJSONResponse)
     app.state.deps = deps
     app.state.identity = identity
 
