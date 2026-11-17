@@ -38,8 +38,6 @@ export function useChat(invoiceId: string) {
 
   const threadId = `invoice-${invoiceId}`
 
-  // Write an agent response into the cached history, so a revisit or a reload
-  // shows it without asking the server again.
   const writeResponse = useCallback((res: ChatResponse, targetId: string, targetVisit: number) => {
     setVisitMessages(prev => prev.id === targetId && prev.visit === targetVisit ? { id: targetId, visit: targetVisit, messages: [...prev.messages, ...res.messages] } : prev)
     qc.setQueryData<ChatResponse>(qk.history(targetId), prev => prev ? {

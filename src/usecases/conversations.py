@@ -1,6 +1,6 @@
 """Reading an invoice's conversation: history, a summary-first overview, summaries.
 
-Two rules live here (both used to be spread through the routes):
+Conversation reads preserve two rules:
 - reading history never syncs over a waiting interrupt, because any state
   write empties it (src/adapters/agent_session.py: read_before_sync);
 - a settled invoice shows no approval card.

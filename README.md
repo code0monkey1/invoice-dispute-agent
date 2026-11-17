@@ -100,7 +100,7 @@ sequenceDiagram
 Fixing it showed a deeper problem: invoice data was written from several places in `api/index.py`. The escalation level was written in three routes, one of which rewrote it after every approval. Payment changes were reconciled inside `/resume`. Settling lived in its own route. So the fix had two parts:
 
 1. **Promise to pay.** `mark_invoice_pending` now proposes `status: "pending"` and a validated `follow_up_date`. Approving it saves both on the invoice (`invoices.follow_up_date`). The agent sees the promise in its context, and the dashboard shows it.
-2. **One writer for invoice data.** Every change to an invoice's status, payments, promised date, escalation level or client details goes through `src/services/invoice_service.py`. Routes call it, and tools never touch the database.
+2. **Invoice writes belong to use cases.** `src/usecases/invoices.py` handles invoice lifecycle changes; `src/usecases/approvals.py` validates and saves approved payment outcomes. Routes call these use cases, and tools never touch the database.
 
 ### Approving a promise
 
@@ -302,7 +302,7 @@ When you approve, `/resume` reads the waiting draft **before** syncing invoice d
 ### State, memory and context
 
 - **Agent state** (`src/state.py`): client, amounts, days overdue, jurisdiction, escalation level and status, persisted per invoice thread (`invoice-{id}`) by the LangGraph checkpointer. With `DATABASE_URL` set, that's Postgres, so chats and waiting approvals survive restarts and are shared by every server instance. Without it, it's in-memory, and `/api/health` reports `degraded` in production.
-- **Source of truth:** the Supabase `invoices` table, written only through `src/services/invoice_service.py`. Only fields that have changed are written into the agent, so a waiting draft isn't wiped when you open an invoice.
+- **Source of truth:** the Supabase `invoices` table, written through the invoice and approval use cases in `src/usecases/`. Only fields that have changed are written into the agent, so a waiting draft isn't wiped when you open an invoice.
 - **Promise to pay:** `status: "pending"` plus `follow_up_date` (YYYY-MM-DD), saved when you approve `mark_invoice_pending` and shown in the agent's context.
 - **Indexes:** `invoices (user_id, created_at DESC)` serves "this user's invoices, newest first", which runs on every dashboard load and chat message.
 - **Runtime context** (`FreelancerContext`): your name, business and payment terms, injected per request.

@@ -2,12 +2,7 @@
 shared wording preserves both the tool-result and approval-card contracts."""
 from langchain.tools import tool, ToolRuntime
 
-from src.domain.email_templates import (  # noqa: F401  (fill_* re-exported for existing callers)
-    fill_draft_from_context,
-    fill_placeholders,
-    invoice_delivery_draft,
-    render_draft,
-)
+from src.domain.email_templates import invoice_delivery_draft, render_draft
 
 
 @tool
