@@ -13,9 +13,6 @@ import { getTemplate } from './pdf';
 import { useInvoiceFiles } from '../../hooks/useInvoiceFiles';
 import type { InvoiceData, SenderProfile, LineItem, TemplateId } from '../../types';
 
-/** Debounce a value so consumers only see updates after `delayMs` of silence.
- *  Used to throttle the data passed to <PDFViewer> — otherwise every keystroke
- *  re-renders the PDF iframe and the preview flickers. */
 function useDebouncedValue<T>(value: T, delayMs: number): T {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -58,10 +55,7 @@ export function InvoiceGeneratorPage() {
   const initial = useMemo(() => seed(profile), [profile]);
   const { data, errors, isValid, setField, setLineItems, setData } = useInvoiceGeneratorForm(initial);
 
-  // The form is driven by `data` (snappy typing). The PDF preview reads from
-  // `previewData`, which lags behind `data` by 400ms — long enough that the
-  // iframe doesn't re-render on every keystroke, short enough that the preview
-  // still feels live.
+  // Throttle PDF generation while typing.
   const previewData = useDebouncedValue(data, 400);
 
   useEffect(() => {

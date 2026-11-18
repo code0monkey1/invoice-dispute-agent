@@ -1,19 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { InvoiceGeneratorPage } from '../InvoiceGeneratorPage';
 import { withQueryClient } from '../../../test/queryClient';
 
-// PDFViewer needs an iframe (jsdom can't host it); pdf() returns a real stream.
-// We stub both so the test environment doesn't try to generate a real PDF.
+// Stub PDF byte generation; exercise the real form, preview and save flow.
 vi.mock('@react-pdf/renderer', async () => {
   const actual = await vi.importActual<typeof import('@react-pdf/renderer')>('@react-pdf/renderer');
   return {
     ...actual,
-    PDFViewer: ({ children }: { children: React.ReactNode }) => (
-      <div data-testid="pdf-viewer">{children}</div>
-    ),
     pdf: () => ({
       toBlob: async () => new Blob(['%PDF-1.4 fake'], { type: 'application/pdf' }),
     }),
@@ -69,41 +65,21 @@ beforeEach(() => {
     communication_history: [],
     status: 'active',
   });
-  // jsdom doesn't implement createObjectURL.
   URL.createObjectURL = vi.fn(() => 'blob:mock');
   URL.revokeObjectURL = vi.fn();
+  vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
 });
 
-// jsdom can't host the iframe @react-pdf/renderer needs, and its frozen
-// StyleSheet objects trip React 19's style-setter proxy. The component is
-// verified manually in the dev-server smoke pass.
-describe.skip('InvoiceGeneratorPage (skipped — jsdom incompatible with @react-pdf)', () => {
-  it('pre-fills sender from profile and shows the form', async () => {
-    renderPage();
-    await waitFor(() => expect((api.getSenderProfile as ReturnType<typeof vi.fn>)).toHaveBeenCalled());
-    expect(await screen.findByDisplayValue('Acme')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('jane@acme.example')).toBeInTheDocument();
-  });
+afterEach(() => vi.restoreAllMocks());
 
-  it('renders all three template options', async () => {
-    renderPage();
-    expect(await screen.findByRole('radio', { name: /modern/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /classic/i })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /minimal/i })).toBeInTheDocument();
-  });
-
-  it('disables Save when form is invalid', async () => {
-    (api.getSenderProfile as ReturnType<typeof vi.fn>).mockResolvedValue({});
-    renderPage();
-    await waitFor(() => expect((api.getSenderProfile as ReturnType<typeof vi.fn>)).toHaveBeenCalled());
-    const save = screen.getByRole('button', { name: /save & download/i });
-    expect(save).toBeDisabled();
-  });
-
+describe('InvoiceGeneratorPage', () => {
   it('Save & Download — uploads, creates row, navigates to /invoice/:id', async () => {
     const user = userEvent.setup();
     renderPage();
     await screen.findByDisplayValue('Acme');
+    expect(screen.getByDisplayValue('jane@acme.example')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /save & download/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /^download pdf$/i })).toBeDisabled();
 
     await user.type(screen.getByPlaceholderText(/client name/i), 'BigCorp');
     await user.type(screen.getByPlaceholderText(/client email/i), 'ap@bigcorp.example');
@@ -120,6 +96,15 @@ describe.skip('InvoiceGeneratorPage (skipped — jsdom incompatible with @react-
       expect((api.uploadGeneratedInvoicePdf as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
     });
     expect((api.createGeneratedInvoice as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+    expect(api.createGeneratedInvoice).toHaveBeenCalledWith(expect.objectContaining({
+      client_name: 'BigCorp', client_email: 'ap@bigcorp.example',
+      invoice_amount_cents: 15000, storage_path: 'generated/u1/INV-1-abc.pdf',
+      file_name: 'INV-1.pdf', file_size: 1234,
+    }));
+    expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce();
+    const download = vi.mocked(HTMLAnchorElement.prototype.click).mock.contexts[0] as HTMLAnchorElement;
+    expect(download.download).toBe('INV-1.pdf');
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:mock');
     expect(await screen.findByTestId('invoice-detail')).toBeInTheDocument();
   });
 
@@ -141,6 +126,8 @@ describe.skip('InvoiceGeneratorPage (skipped — jsdom incompatible with @react-
       expect(screen.getByText(/upload failed/i)).toBeInTheDocument();
     });
     expect((api.createGeneratedInvoice as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+    expect(HTMLAnchorElement.prototype.click).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('invoice-detail')).not.toBeInTheDocument();
   });
 
   it('Download-only button does NOT call upload or create — pure local download', async () => {
@@ -156,7 +143,7 @@ describe.skip('InvoiceGeneratorPage (skipped — jsdom incompatible with @react-
 
     await user.click(screen.getByRole('button', { name: /^download pdf$/i }));
 
-    await waitFor(() => expect(URL.createObjectURL).toHaveBeenCalled());
+    await waitFor(() => expect(HTMLAnchorElement.prototype.click).toHaveBeenCalledOnce());
     expect((api.uploadGeneratedInvoicePdf as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
     expect((api.createGeneratedInvoice as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });

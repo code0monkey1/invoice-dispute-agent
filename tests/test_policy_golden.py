@@ -1,13 +1,4 @@
-"""Policy that lives in the HTTP layer today, pinned exactly as it behaves.
-
-These are characterization tests for the restructure: the functions will move
-to the domain, and the words a client receives must not change on the way.
-Update the import below when a function moves; never the expected values.
-
-Already pinned elsewhere: the chat email preflight (test_email_card_routing),
-the chat topic guard (test_invoice_delivery_chat) and the top escalation
-level (test_escalate_invoice).
-"""
+"""Golden email wording, duplicate-send policy and paid-invoice protection."""
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -16,8 +7,6 @@ from src.state import FreelancerContext
 
 
 def generate_draft_preview(*args, **kwargs):
-    # Imported on use: tests/conftest.py must patch the database layer before
-    # api.index is first imported (it copies those names at import).
     from api.index import generate_draft_preview as preview
     return preview(*args, **kwargs)
 

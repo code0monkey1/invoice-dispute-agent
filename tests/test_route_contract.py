@@ -1,8 +1,4 @@
-"""The HTTP surface, pinned before the restructure.
-
-Routes may move between modules; this list may not change by accident. A
-route added or removed on purpose is a one-line edit here.
-"""
+"""Public routes, registration order and invoice ownership are API contracts."""
 import pytest
 from collections import Counter
 

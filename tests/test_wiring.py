@@ -1,9 +1,4 @@
-"""Use cases built at import must still see collaborators a test swaps on deps later.
-
-Group 2 made fakes reach code wherever it lives by having code read deps at
-call time. A use case holding the deps.db of import time would silently use
-the real one under a test that swapped it.
-"""
+"""Use cases read mutable Deps collaborators at call time."""
 import pytest
 
 from tests.fakes import Overrides

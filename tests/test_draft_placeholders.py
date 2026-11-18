@@ -3,7 +3,7 @@ invoice details, and any template placeholders it still writes must never reach 
 import pytest
 
 from src.state import FreelancerContext
-from src.tools.drafting import fill_placeholders
+from src.domain.email_templates import fill_placeholders
 
 LLM_DRAFT = """Hi [Client Name],
 
