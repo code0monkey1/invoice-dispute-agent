@@ -241,7 +241,7 @@ sequenceDiagram
     participant Agent as Agent + tracing middleware
     participant Trace as Trace sink / Supabase
     participant Sentry as Sentry
-    participant Slack as Slack webhook
+    participant Slack as Slack Web API / webhook
     UI->>HTTP: API request
     HTTP->>Agent: Start traced agent run
     Agent->>Trace: Record redacted run and steps
@@ -263,7 +263,7 @@ Agent traces and Sentry serve different purposes: traces explain agent runs; Sen
 
 **LangSmith.** Optional LangChain tracing runs alongside the built-in tracer. Set `LANGSMITH_TRACING` and `LANGSMITH_API_KEY`, then either `LANGSMITH_AGENT_ID` plus `LANGSMITH_AGENT_ENVIRONMENT`, or `LANGSMITH_PROJECT`. Search LangSmith metadata `trace_run_id` using the response's `X-Trace-Id`. Agent inputs can contain client data; `.env.example` documents options to hide inputs and outputs. Tests and evaluations disable LangSmith.
 
-**Sentry and Slack.** Optional frontend and backend Sentry projects capture runtime faults with request-data scrubbing; source maps can be uploaded during builds. Backend events and opted-in browser events can send an event-specific Sentry link to Slack through a server-side webhook. Alerts are best-effort and may be lost on a cold start; Sentry remains the issue tracker. Configuration, data handling and verification are in [the monitoring guide](docs/sentry.md).
+**Sentry and Slack.** Optional frontend and backend Sentry projects capture runtime faults with request-data scrubbing; source maps can be uploaded during builds. Backend events and opted-in browser events can send an event-specific Sentry link to Slack. Configure the server-side `SLACK_BOT_TOKEN` and `SLACK_ALERT_CHANNEL` for the Slack Web API, or use `SLACK_WEBHOOK_URL` as an alternative. Set `VITE_SLACK_ERROR_ALERTS=true` to enable browser alerts after configuring the server. The browser sends an event ID to the monitoring endpoint; Slack credentials and business payloads stay server-side. Alerts are best-effort and may be lost on a cold start; Sentry remains the issue tracker. Configuration, data handling and verification are in [the monitoring guide](docs/sentry.md).
 
 ### Golden evaluation gates
 
