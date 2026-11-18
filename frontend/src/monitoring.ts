@@ -53,7 +53,20 @@ export function initializeMonitoring(options: Pick<Sentry.BrowserOptions, 'dsn' 
       attributes: Object.fromEntries(Object.entries(span.attributes).filter(([key]) => ['sentry.op', 'sentry.origin', 'http.request.method', 'http.response.status_code'].includes(key))),
     }),
     beforeSendLog: (log) => ({ ...log, message: cleanText(String(log.message)), attributes: {} }),
-    beforeSend: scrubEvent,
+    beforeSend: (event) => {
+      const clean = scrubEvent(event)
+      if (import.meta.env.VITE_SLACK_ERROR_ALERTS === 'true' && clean.event_id) {
+        try {
+          // This endpoint accepts an ID only. The webhook stays server-side.
+          void fetch(`${import.meta.env.VITE_API_URL || ''}/api/monitoring/browser-error`, {
+            method: 'POST', credentials: 'include', keepalive: true,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ event_id: clean.event_id }),
+          }).catch(() => {})
+        } catch { /* Slack reporting cannot suppress the Sentry event. */ }
+      }
+      return clean
+    },
   })
 }
 

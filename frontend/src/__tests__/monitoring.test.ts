@@ -19,6 +19,7 @@ beforeEach(() => {
 afterEach(async () => {
   await Sentry.close()
   vi.unstubAllGlobals()
+  vi.unstubAllEnvs()
 })
 
 async function events() {
@@ -87,6 +88,23 @@ it('scrubs the real invoice page route, transaction and provider error details',
   expect(event.transaction).toBe('/invoice/:id')
   expect(JSON.stringify(event)).not.toContain('private')
   expect(JSON.stringify(event)).not.toContain('999.00')
+})
+
+it('reports only a Sentry event ID to the Slack relay when enabled', async () => {
+  vi.stubEnv('VITE_SLACK_ERROR_ALERTS', 'true')
+  const requests: { url: string; body: unknown }[] = []
+  vi.stubGlobal('fetch', async (url: string, options: RequestInit) => {
+    requests.push({ url, body: JSON.parse(String(options.body)) })
+    return new Response(null, { status: 202 })
+  })
+  Sentry.captureException(new Error('private exception body'))
+  const captured = await events()
+  expect(captured).toHaveLength(1)
+  expect(requests).toHaveLength(1)
+  expect(requests[0].url).toBe('/api/monitoring/browser-error')
+  expect(Object.keys(requests[0].body as object)).toEqual(['event_id'])
+  expect(requests[0].body).toEqual({ event_id: (captured[0] as Sentry.Event).event_id })
+  expect(JSON.stringify(requests)).not.toContain('private')
 })
 
 it('sends traces and sanitized logs without query strings or custom data', async () => {

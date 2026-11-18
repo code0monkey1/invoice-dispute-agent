@@ -38,6 +38,7 @@ class Deps:
     fetch_inbound_email: Any = None  # (email_id) -> the received email
     db: Any = None                   # users, invoices, communications, traces and invoice files
     flush_telemetry: Any = None      # bounded telemetry drain before a serverless invocation ends
+    slack_notifications: Any = None # optional free webhook alert queue
 
 
 class MonitoredFastAPI(FastAPI):

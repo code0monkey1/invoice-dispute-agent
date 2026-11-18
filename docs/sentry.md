@@ -64,24 +64,34 @@ Replay and AI prompt recording are not enabled. LangSmith remains the existing
 agent-observability system. Sentry reports runtime faults; silent business-logic
 mistakes still need tests or explicit failure reporting.
 
-## Slack alerts
+## Free Slack alerts
 
-Use Sentry's native Slack integration. It does not require Slack credentials in
-the application. Connect workspace `Software-Factory` (`T0CDB5RT4TH`) under
-Sentry organization settings, select an alert channel and grant the Sentry app
-access to it. Then create an alert scoped to these two project issue streams,
-triggered on first-seen issues and regressions, with the Slack channel action.
-Keep email alerts enabled as a fallback. Private channels require inviting Sentry.
+The user requires a free setup. Sentry's native Slack integration requires a paid
+plan, so the app supports Slack incoming webhooks instead. Authorize the alert
+app in `Software-Factory` (`T0CDB5RT4TH`) and select its destination channel.
+Save `SLACK_WEBHOOK_URL` as a server-only Vercel Secret. After that, enable
+`VITE_SLACK_ERROR_ALERTS=true` for the frontend build.
 
-Workflow `6360535` ("InvoiceChaser — new issues and regressions") already covers
-both projects and sends email to the verified Sentry account. Add Slack to this
-workflow after authorization; retain its email action. The two project-creation
-default high-priority workflows are disabled to avoid overlapping notifications.
+Backend Sentry events enqueue only their event ID, source and environment after
+scrubbing. The request-end drain posts a generic message with an event-specific
+Sentry link. Browser events send only their Sentry event ID to
+`POST /api/monitoring/browser-error`; the route checks origin, accepts at most 1KB,
+validates the ID and limits each caller to 10 reports per minute. No webhook
+credential or business payload enters the browser.
 
-Verify a fresh error in each project creates a Slack notification containing its
-Sentry link. An installed Slack desktop app or coding skills plugin does not prove
-this integration is connected. Slack's skills plugin currently installs only
-skills on Codex; see the [official guide](https://docs.slack.dev/ai/slack-skills-plugin/).
+Slack notifications are best-effort per error occurrence, with a bounded
+per-process queue, duplicate-event suppression and retry on a later invocation.
+Queue state is not durable across Vercel cold starts; Slack/network failures can
+lose notifications. Sentry remains the tracker, and email alerts remain enabled
+for grouped new issues and regressions. Workflow `6360535` ("InvoiceChaser — new
+issues and regressions") covers both projects and sends email to the verified
+Sentry account. The two project-creation default high-priority workflows are
+disabled to avoid overlapping notifications.
+
+Verify fresh backend and browser errors appear in Sentry and post their Sentry
+links in Slack. An installed Slack desktop app or coding skills plugin does not
+prove delivery. Slack's skills plugin currently installs only skills on Codex;
+see the [official guide](https://docs.slack.dev/ai/slack-skills-plugin/).
 
 ## Verification
 

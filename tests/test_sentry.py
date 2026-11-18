@@ -17,6 +17,7 @@ class MemoryTransport(Transport):
         super().__init__()
         self.events = []
         self.telemetry = []
+        self.alerts = []
 
     def capture_envelope(self, envelope):
         for item in envelope.items:
@@ -34,7 +35,7 @@ def telemetry():
         "SENTRY_DSN": "https://public@example.invalid/1",
         "SENTRY_ENVIRONMENT": "test",
         "SENTRY_RELEASE": "invoicechaser@test",
-    }, transport=transport)
+    }, transport=transport, on_event=transport.alerts.append)
     yield transport
     sentry_sdk.get_client().close()
     sentry_sdk.get_global_scope().set_client(previous)
@@ -112,6 +113,16 @@ def test_provider_exception_payloads_are_not_sent(captured):
     assert "RuntimeError" in payload
     for private in ["private-user-id", "INV-PRIVATE", "Client Name", "999.00"]:
         assert private not in payload
+
+
+def test_alert_sink_receives_only_the_scrubbed_event(telemetry):
+    try:
+        raise RuntimeError('private response body')
+    except RuntimeError:
+        logging.getLogger('invoicechaser').exception('Provider failed')
+    assert len(telemetry.alerts) == 1
+    assert 'private response body' not in json.dumps(telemetry.alerts)
+    assert telemetry.alerts[0]['event_id'] == telemetry.events[0]['event_id']
 
 
 @pytest.mark.parametrize("operation", ["read", "refresh"])

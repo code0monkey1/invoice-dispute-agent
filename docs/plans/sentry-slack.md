@@ -13,10 +13,12 @@ stack locations, exception types, environment and release for diagnosis. Upload
 hidden frontend source maps only when Sentry build credentials are available;
 delete maps from the published build in every case.
 
-Use native Sentry Slack alerts for new issues and regressions in both projects.
+Use free Slack incoming-webhook notifications linked to Sentry events, with native
+Sentry email alerts for grouped new issues and regressions. The user declined the
+paid Sentry plan required by the native Slack integration.
 The organization is `referfee`, and workspace is Software-Factory (`T0CDB5RT4TH`).
-The destination channel and Sentry Slack authorization remain pending. Live completion
-requires project DSNs, Sentry Slack authorization, Vercel configuration, a release
+The destination channel and Slack alert app authorization remain pending. Live completion
+requires project DSNs, Slack alert-app authorization, Vercel configuration, a release
 through a checked PR, and observed backend/browser smoke issues in Sentry and
 Slack. No permanent public error-trigger route is added.
 
@@ -45,7 +47,7 @@ No prompts, agent tools, domain policy or evaluation thresholds change.
 - Frontend actual entry-point/React lifecycle smoke in jsdom:
   `INVOICE-DISPUTE-AGENT-FRONTEND-3` received. Temporary triggers removed.
 - Authenticated local source-map upload succeeded; zero `.map` files in output.
-- Full backend: 1023 passed, 13 skipped. Frontend: 194 passed, 6 skipped.
+- Full backend: 1029 passed, 13 skipped. Frontend: 195 passed, 6 skipped.
   Lint and build passed. Existing Pydantic/JWT test warnings and bundle-size warning remain.
 - Installed the requested official Slack skills plugin globally, outside Git.
   Its official docs say Codex installation does not include Slack MCP connectivity.
@@ -57,6 +59,12 @@ No prompts, agent tools, domain policy or evaluation thresholds change.
 - Created active alert workflow `6360535`, scoped only to the two new projects,
   for first-seen errors and regressions, with email to the verified Sentry user.
   Disabled the two newly created default high-priority workflows to avoid duplicates.
-  Slack action remains pending native integration authorization and destination.
-- Pending: Slack OAuth/channel/alert delivery, reviewed PR release approval,
+  Native Slack integration was omitted because the user requires a free plan.
+- Added a free app-to-Slack notification adapter and browser event-ID-only relay.
+  Slack delivery is best-effort; Sentry email remains the grouped-alert fallback.
+- Preview build is Ready; preview API lacks all environment variables and fails
+  startup on missing GROQ_API_KEY. Production configuration exists separately.
+- PR #36 at f705a37 passed all CI and live agent/summary gates before the free Slack
+  extension. Re-run checks after the extension is committed.
+- Pending: Slack CLI login/app/channel/alert delivery, reviewed PR release approval,
   CI checks, production health and production source-map verification.

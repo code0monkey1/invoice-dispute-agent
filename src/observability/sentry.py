@@ -77,11 +77,21 @@ def scrub_log(log, hint):
     return log
 
 
-def initialize_sentry(environ=None, *, transport=None):
+def initialize_sentry(environ=None, *, transport=None, on_event=None):
     env = os.environ if environ is None else environ
     if not env.get("SENTRY_DSN"):
         return None
     environment = env.get("SENTRY_ENVIRONMENT") or env.get("VERCEL_ENV") or "development"
+
+    def before_send(event, hint):
+        event = scrub_event(event, hint)
+        if on_event is not None:
+            try:
+                on_event(event)
+            except Exception:
+                pass  # Notification failures must never drop the Sentry event.
+        return event
+
     return sentry_sdk.init(
         dsn=env["SENTRY_DSN"],
         environment=environment,
@@ -105,7 +115,7 @@ def initialize_sentry(environ=None, *, transport=None):
             LoggingIntegration(level=None, event_level=logging.ERROR, sentry_logs_level=logging.WARNING),
             DedupeIntegration(), ExcepthookIntegration(), ThreadingIntegration(), AtexitIntegration(),
         ],
-        before_send=scrub_event,
+        before_send=before_send,
         before_send_transaction=scrub_transaction,
         before_send_log=scrub_log,
         transport=transport,

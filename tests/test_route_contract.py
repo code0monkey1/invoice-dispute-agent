@@ -11,6 +11,7 @@ FRAMEWORK_PATHS = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
 
 EXPECTED_ROUTES = {
     ("GET", "/api/health"),
+    ("POST", "/api/monitoring/browser-error"),
     ("GET", "/api/auth/google/url"),
     ("GET", "/api/auth/gmail/connect-url"),
     ("POST", "/api/auth/google/callback"),
