@@ -13,12 +13,12 @@ stack locations, exception types, environment and release for diagnosis. Upload
 hidden frontend source maps only when Sentry build credentials are available;
 delete maps from the published build in every case.
 
-Use free Slack incoming-webhook notifications linked to Sentry events, with native
+Use free Slack bot notifications linked to Sentry events, with native
 Sentry email alerts for grouped new issues and regressions. The user declined the
 paid Sentry plan required by the native Slack integration.
 The organization is `referfee`, and workspace is Software-Factory (`T0CDB5RT4TH`).
-The destination channel and Slack alert app authorization remain pending. Live completion
-requires project DSNs, Slack alert-app authorization, Vercel configuration, a release
+The destination is `#invoicechaser-alerts` (`C0CJJPTLWM9`), with the installed
+`InvoiceChaser Alerts` app (`A0CKKBJDQ9E`). Live completion requires a release
 through a checked PR, and observed backend/browser smoke issues in Sentry and
 Slack. No permanent public error-trigger route is added.
 
@@ -47,8 +47,9 @@ No prompts, agent tools, domain policy or evaluation thresholds change.
 - Frontend actual entry-point/React lifecycle smoke in jsdom:
   `INVOICE-DISPUTE-AGENT-FRONTEND-3` received. Temporary triggers removed.
 - Authenticated local source-map upload succeeded; zero `.map` files in output.
-- Full backend: 1029 passed, 13 skipped. Frontend: 195 passed, 6 skipped.
-  Lint and build passed. Existing Pydantic/JWT test warnings and bundle-size warning remain.
+- Full checks after bot support and synchronization with main: 1011 backend
+  tests passed, 13 skipped; 190 frontend tests passed; lint/build passed.
+  Existing Pydantic/JWT test warnings and bundle-size warning remain.
 - Installed the requested official Slack skills plugin globally, outside Git.
   Its official docs say Codex installation does not include Slack MCP connectivity.
 - Independent review identified provider-error payload and singular invoice-page
@@ -64,7 +65,16 @@ No prompts, agent tools, domain policy or evaluation thresholds change.
   Slack delivery is best-effort; Sentry email remains the grouped-alert fallback.
 - Preview build is Ready; preview API lacks all environment variables and fails
   startup on missing GROQ_API_KEY. Production configuration exists separately.
-- PR #36 at f705a37 passed all CI and live agent/summary gates before the free Slack
-  extension. Re-run checks after the extension is committed.
-- Pending: Slack CLI login/app/channel/alert delivery, reviewed PR release approval,
-  CI checks, production health and production source-map verification.
+- Slack CLI authenticated to Software-Factory; app and channel provisioned.
+  Saved the bot token as a Vercel Production Secret, channel ID as configuration,
+  and enabled the frontend relay for the next production build.
+- November 18 live backend and actual React lifecycle errors reached Sentry.
+  Slack acknowledged both deliveries in the configured channel. Local-only
+  triggers were removed. No channel-history access was granted.
+- Final focused independent review found no actionable issues; 83 targeted
+  Slack/Sentry/eval invariant tests passed.
+- PR #36 at f705a37 passed all live gates. A later agent evaluation failed two
+  placeholder-tone cases, with level 2 below its baseline. Summary gates passed.
+  Preserve thresholds and require current gates before release.
+- Pending: final CI checks, reviewed PR release approval, production health,
+  production Slack delivery and production source-map verification.

@@ -67,16 +67,25 @@ mistakes still need tests or explicit failure reporting.
 ## Free Slack alerts
 
 The user requires a free setup. Sentry's native Slack integration requires a paid
-plan, so the app supports Slack incoming webhooks instead. Authorize the alert
-app in `Software-Factory` (`T0CDB5RT4TH`) and select its destination channel.
-Save `SLACK_WEBHOOK_URL` as a server-only Vercel Secret. After that, enable
-`VITE_SLACK_ERROR_ALERTS=true` for the frontend build.
+plan, so the app posts through the free Slack Web API instead. `InvoiceChaser
+Alerts` (`A0CKKBJDQ9E`) is installed in `Software-Factory` (`T0CDB5RT4TH`) and
+posts to `#invoicechaser-alerts` (`C0CJJPTLWM9`). Vercel Production has
+`SLACK_BOT_TOKEN` as a server-only Secret, `SLACK_ALERT_CHANNEL=C0CJJPTLWM9`, and
+`VITE_SLACK_ERROR_ALERTS=true` for the frontend build. These settings take effect
+in the next production deployment. The app has `chat:write`, `channels:read` and
+`channels:manage` scopes for posting and channel provisioning; it cannot read
+channel history. No always-on bot hosting is needed.
+
+For another installation, authorize a Slack app with `chat:write`, add it to the
+destination channel, and configure the same variables. An incoming webhook is
+also supported through server-only `SLACK_WEBHOOK_URL` when bot credentials are
+absent. Never prefix either credential with `VITE_`.
 
 Backend Sentry events enqueue only their event ID, source and environment after
 scrubbing. The request-end drain posts a generic message with an event-specific
 Sentry link. Browser events send only their Sentry event ID to
 `POST /api/monitoring/browser-error`; the route checks origin, accepts at most 1KB,
-validates the ID and limits each caller to 10 reports per minute. No webhook
+validates the ID and limits each caller to 10 reports per minute. No Slack
 credential or business payload enters the browser.
 
 Slack notifications are best-effort per error occurrence, with a bounded
@@ -90,7 +99,10 @@ disabled to avoid overlapping notifications.
 
 Verify fresh backend and browser errors appear in Sentry and post their Sentry
 links in Slack. An installed Slack desktop app or coding skills plugin does not
-prove delivery. Slack's skills plugin currently installs only skills on Codex;
+prove delivery. On November 18, 2026, real local backend and React lifecycle smoke
+errors reached Sentry and Slack returned `ok: true` for both messages in the
+configured channel. Production delivery still requires the reviewed deployment.
+Slack's skills plugin currently installs only skills on Codex;
 see the [official guide](https://docs.slack.dev/ai/slack-skills-plugin/).
 
 ## Verification

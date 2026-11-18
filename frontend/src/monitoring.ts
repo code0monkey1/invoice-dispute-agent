@@ -55,9 +55,9 @@ export function initializeMonitoring(options: Pick<Sentry.BrowserOptions, 'dsn' 
     beforeSendLog: (log) => ({ ...log, message: cleanText(String(log.message)), attributes: {} }),
     beforeSend: (event) => {
       const clean = scrubEvent(event)
-      if (import.meta.env.VITE_SLACK_ERROR_ALERTS === 'true' && clean.event_id) {
+      if (import.meta.env.MODE !== 'test' && import.meta.env.VITE_SLACK_ERROR_ALERTS === 'true' && clean.event_id) {
         try {
-          // This endpoint accepts an ID only. The webhook stays server-side.
+          // This endpoint accepts an ID only. Slack credentials stay server-side.
           void fetch(`${import.meta.env.VITE_API_URL || ''}/api/monitoring/browser-error`, {
             method: 'POST', credentials: 'include', keepalive: true,
             headers: { 'Content-Type': 'application/json' },

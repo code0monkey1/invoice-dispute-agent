@@ -1,4 +1,4 @@
-"""Free Slack incoming-webhook alerts containing only Sentry event references."""
+"""Free Slack bot/webhook alerts containing only Sentry event references."""
 import json
 import re
 import threading
@@ -10,11 +10,14 @@ from urllib.parse import urlencode, urlsplit
 
 
 class SlackNotifications:
-    def __init__(self, webhook_url, organization, projects, *, environment="development"):
+    def __init__(self, webhook_url, organization, projects, *, environment="development", bot_token="", channel=""):
         url = urlsplit(webhook_url)
-        self._enabled = bool(url.scheme == "https" and url.netloc == "hooks.slack.com"
-                             and url.path.startswith("/services/") and re.fullmatch(r"[a-z0-9-]+", organization))
-        self._url = webhook_url
+        self._bot_mode = bool(bot_token and re.fullmatch(r"[CG][A-Z0-9]+", channel))
+        self._enabled = bool((self._bot_mode or (url.scheme == "https" and url.netloc == "hooks.slack.com"
+                             and url.path.startswith("/services/"))) and re.fullmatch(r"[a-z0-9-]+", organization))
+        self._url = "https://slack.com/api/chat.postMessage" if self._bot_mode else webhook_url
+        self._bot_token = bot_token
+        self._channel = channel
         self._organization = organization
         self._projects = projects
         self._environment = environment
@@ -56,11 +59,17 @@ class SlackNotifications:
             link = f"https://{self._organization}.sentry.io/issues/?{query}"
             environment = re.sub(r"[^a-zA-Z0-9_.-]", "", str(event["environment"]))[:32]
             text = f"InvoiceChaser {environment}: {event['source']} error\n<{link}|View in Sentry>"
-            request = urllib.request.Request(self._url, data=json.dumps({"text": text}).encode(),
-                                             headers={"Content-Type": "application/json"}, method="POST")
+            payload = {"text": text}
+            headers = {"Content-Type": "application/json"}
+            if self._bot_mode:
+                payload["channel"] = self._channel
+                headers["Authorization"] = f"Bearer {self._bot_token}"
+            request = urllib.request.Request(self._url, data=json.dumps(payload).encode(), headers=headers, method="POST")
             try:
                 with urllib.request.urlopen(request, timeout=2) as response:
-                    response.read()
+                    body = response.read()
+                    if self._bot_mode and not json.loads(body).get("ok"):
+                        raise RuntimeError("Slack rejected notification")
                 self._next_send = time.monotonic() + 1
             except Exception as exc:
                 # A later invocation can retry. Never log the credential-bearing

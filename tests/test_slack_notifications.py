@@ -35,6 +35,24 @@ def test_missing_webhook_disables_notifications(monkeypatch):
     notifier.flush()
 
 
+def test_bot_alerts_keep_token_out_of_message_body(monkeypatch):
+    from src.adapters.slack_notifications import SlackNotifications
+    sent = []
+    def deliver(request, timeout):
+        sent.append(request)
+        return io.BytesIO(b'{"ok":true}')
+    monkeypatch.setattr('urllib.request.urlopen', deliver)
+    notifier = SlackNotifications('', 'referfee', {'server': '1'}, bot_token='private-token', channel='C0123456789')
+    notifier.enqueue({'event_id': 'a' * 32})
+    notifier.flush()
+    assert len(sent) == 1
+    assert sent[0].full_url == 'https://slack.com/api/chat.postMessage'
+    assert sent[0].get_header('Authorization') == 'Bearer private-token'
+    body = json.loads(sent[0].data)
+    assert body['channel'] == 'C0123456789'
+    assert 'private-token' not in str(body)
+
+
 def test_failed_delivery_is_retried_without_changing_app_behavior(monkeypatch):
     from src.adapters.slack_notifications import SlackNotifications
     attempts = []

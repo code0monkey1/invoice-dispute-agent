@@ -91,6 +91,7 @@ it('scrubs the real invoice page route, transaction and provider error details',
 })
 
 it('reports only a Sentry event ID to the Slack relay when enabled', async () => {
+  vi.stubEnv('MODE', 'development')
   vi.stubEnv('VITE_SLACK_ERROR_ALERTS', 'true')
   const requests: { url: string; body: unknown }[] = []
   vi.stubGlobal('fetch', async (url: string, options: RequestInit) => {

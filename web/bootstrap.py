@@ -106,6 +106,7 @@ class Runtime:
                 {"server": urlsplit(os.getenv("SENTRY_DSN", "")).path.strip("/"),
                  "frontend": urlsplit(os.getenv("VITE_SENTRY_DSN", "")).path.strip("/")},
                 environment=os.getenv("SENTRY_ENVIRONMENT") or os.getenv("VERCEL_ENV") or "development",
+                bot_token=os.getenv("SLACK_BOT_TOKEN", ""), channel=os.getenv("SLACK_ALERT_CHANNEL", ""),
             ),
         )
         _monitoring.deps = self.deps
