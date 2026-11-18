@@ -12,6 +12,7 @@ from src.state import InvoiceDisputeState, FreelancerContext
 from src.middleware.dynamic_tools import dynamic_tool_middleware, enforce_tool_gate
 from src.middleware.dynamic_prompts import escalation_prompt
 from src.middleware.tracing import tracing_middleware
+from src.middleware.reply_details import fill_reply_details
 
 from src.tools.drafting import (
     draft_invoice_delivery_email,
@@ -86,6 +87,7 @@ def build_agent(model, checkpointer):
                 interrupt_on=APPROVAL_REQUIRED,
                 description_prefix="APPROVAL REQUIRED: Review this draft before sending",
             ),
+            fill_reply_details,
             # Listed after HITL so its after_model runs first: refused calls never reach approval.
             enforce_tool_gate,
         ],

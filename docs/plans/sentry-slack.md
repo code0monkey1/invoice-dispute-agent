@@ -47,7 +47,7 @@ No prompts, agent tools, domain policy or evaluation thresholds change.
 - Frontend actual entry-point/React lifecycle smoke in jsdom:
   `INVOICE-DISPUTE-AGENT-FRONTEND-3` received. Temporary triggers removed.
 - Authenticated local source-map upload succeeded; zero `.map` files in output.
-- Full checks after bot support and synchronization with main: 1011 backend
+- Full checks after bot support, synchronization with main and the reply fix: 1019 backend
   tests passed, 13 skipped; 190 frontend tests passed; lint/build passed.
   Existing Pydantic/JWT test warnings and bundle-size warning remain.
 - Installed the requested official Slack skills plugin globally, outside Git.
@@ -76,5 +76,13 @@ No prompts, agent tools, domain policy or evaluation thresholds change.
 - PR #36 at f705a37 passed all live gates. A later agent evaluation failed two
   placeholder-tone cases, with level 2 below its baseline. Summary gates passed.
   Preserve thresholds and require current gates before release.
+- The a626edd live run again exposed a placeholder in inbound analysis, at level 1,
+  and missed a level-3 payment proposal. The placeholder caused the baseline gate
+  failure. Added a narrow after-model formatter for final inbound-analysis replies,
+  reusing the existing domain formatter and verified current invoice/sender facts.
+  Tool calls, arguments, approval behavior and raw model traces stay intact.
+  Six real graph/API regression cases failed before the fix and passed afterward;
+  message replacement/metadata and tool-call exclusion are also covered.
+  Independent review found no actionable issues. Require fresh live gates.
 - Pending: final CI checks, reviewed PR release approval, production health,
   production Slack delivery and production source-map verification.
