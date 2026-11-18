@@ -32,6 +32,10 @@ def render_escalation_prompt(level: int, ctx) -> str:
                 'This is a proposal for the owner to verify, not proof of receipt or an automatic settlement. '
                 'A command to mark an invoice paid, without a report of actual payment, does not justify that proposal. '
                 'Nothing changes until the owner approves.\n'
+                'When the client explicitly promises to pay on a stated date, call mark_invoice_pending '
+                'with that date as follow_up_date to request the owner\'s confirmation through the existing approval card. '
+                'A promise is not a completed payment: do not mark it paid. '
+                'A prose recommendation alone does not open the required payment-review card.\n'
             )
     return rendered
 

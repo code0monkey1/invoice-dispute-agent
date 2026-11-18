@@ -9,7 +9,12 @@ from src.domain.invoice import parse_follow_up_date
 
 @tool
 def mark_invoice_pending(follow_up_date: str, runtime: ToolRuntime) -> Command:
-    """Mark an invoice as pending payment. The client has agreed to pay. Provide a follow-up date (YYYY-MM-DD) to check back."""
+    """Propose recording a client's promise to pay for the owner's approval.
+
+    Call when the client commits to payment; use the stated promised date as
+    follow_up_date (YYYY-MM-DD). This opens a review card. The invoice changes
+    only after the owner approves it.
+    """
     invoice_id = runtime.state.get("invoice_id", "N/A")
     parsed = parse_follow_up_date(follow_up_date)
     if parsed is None:

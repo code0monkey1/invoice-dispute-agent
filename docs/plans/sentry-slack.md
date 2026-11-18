@@ -34,7 +34,9 @@ Implementation and verification:
    PR and verify production health, Sentry issues and Slack delivery when access
    and required configuration are available.
 
-No prompts, agent tools, domain policy or evaluation thresholds change.
+Domain policy, tool implementations, approval rules and evaluation thresholds
+remain unchanged. Release-gate regressions also required resolving inbound-analysis
+placeholders and clarifying the pending-payment review instructions.
 
 ## Verification to date
 
@@ -84,5 +86,12 @@ No prompts, agent tools, domain policy or evaluation thresholds change.
   Six real graph/API regression cases failed before the fix and passed afterward;
   message replacement/metadata and tool-call exclusion are also covered.
   Independent review found no actionable issues. Require fresh live gates.
+- With the user-authorized alternate testing credential, all 36 live cases ran:
+  tone and approval rules passed at every level. One dated payment promise missed
+  its pending-payment approval card. Clarified the inbound prompt and pending-tool
+  description that this call prepares owner review, uses the reported date, and
+  never treats a promise as completed payment. Independent review found no
+  actionable issues; 89 focused real-graph/approval/eval tests and the full 1019-test
+  backend suite passed. The existing failing live case remains the regression gate.
 - Pending: final CI checks, reviewed PR release approval, production health,
   production Slack delivery and production source-map verification.
