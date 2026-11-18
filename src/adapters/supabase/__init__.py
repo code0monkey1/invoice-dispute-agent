@@ -20,44 +20,15 @@ from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 from cryptography.fernet import Fernet
-from supabase import create_client, Client
 
-from src.domain.invoice import build_invoice_storage_id, parse_public_invoice_id  # noqa: F401  (re-exported)
 from src.errors import Conflict, DatabaseUnavailable, InvoiceAlreadyExists
 
-# ---------------------------------------------------------------------------
-# Supabase client singleton
-# ---------------------------------------------------------------------------
-
 logger = logging.getLogger("invoicechaser")
-
-_supabase_client: Optional[Client] = None
 
 
 # Waits before retrying a read that hit a network blip.
 _READ_RETRY_DELAYS = (0.3, 1.0)
 _SUPABASE_TIMEOUT_SECONDS = 20
-
-
-def _create_supabase_client() -> Client:
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    if not url or not key:
-        raise RuntimeError("SUPABASE_URL and SUPABASE_KEY must be set in environment")
-    return create_client(url, key)
-
-
-def get_supabase() -> Client:
-    global _supabase_client
-
-    # In Vercel serverless, reusing the same HTTP client across warm invocations
-    # can trigger transient socket errors. A fresh client per call is more stable.
-    if os.environ.get("VERCEL"):
-        return _create_supabase_client()
-
-    if _supabase_client is None:
-        _supabase_client = _create_supabase_client()
-    return _supabase_client
 
 
 def _supabase_rest_url(table: str, query: Optional[Sequence[tuple[str, str]]] = None) -> str:
@@ -160,15 +131,6 @@ def decrypt_token(encrypted: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Schema
-# ---------------------------------------------------------------------------
-
-def init_db() -> None:
-    """No-op: Supabase tables are pre-created via supabase/schema.sql."""
-    pass
-
-
-# ---------------------------------------------------------------------------
 # User helpers
 # ---------------------------------------------------------------------------
 
@@ -221,16 +183,6 @@ def get_user(user_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
-def get_user_by_email(email: str) -> Optional[dict]:
-    """Return the user row matching *email* as a ``dict``, or ``None``."""
-    rows = _supabase_rest_request(
-        "GET",
-        "users",
-        query=[("select", "*"), ("email", f"eq.{email}")],
-    ) or []
-    return rows[0] if rows else None
-
-
 def get_user_gmail_tokens(user_id: str) -> Optional[tuple[str, str]]:
     """
     Return ``(access_token, refresh_token)`` for *user_id* with tokens
@@ -263,16 +215,6 @@ def update_user_gmail_tokens(
         "users",
         query=[("id", f"eq.{user_id}")],
         payload=updates,
-    )
-
-
-def update_user_history_id(user_id: str, history_id: str) -> None:
-    """Persist the latest Gmail history ID for *user_id*."""
-    _supabase_rest_request(
-        "PATCH",
-        "users",
-        query=[("id", f"eq.{user_id}")],
-        payload={"gmail_history_id": history_id},
     )
 
 

@@ -103,8 +103,9 @@ jobs:
           exit 1
 
   summary-evaluation:
-    needs: changes
-    if: needs.changes.outputs.summary == 'true' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
+    # Share the evaluation quota sequentially with the chasing-agent run.
+    needs: [changes, agent-evaluation]
+    if: always() && !cancelled() && needs.changes.result == 'success' && needs.changes.outputs.summary == 'true' && (github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

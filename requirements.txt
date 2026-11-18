@@ -17,7 +17,6 @@ google-auth-oauthlib>=1.2.0
 google-api-python-client>=2.130.0
 cryptography>=42.0.0
 PyJWT>=2.8.0
-supabase>=2.10.0
 pypdf>=5.0.0
 python-docx>=1.1.2
 python-multipart>=0.0.12

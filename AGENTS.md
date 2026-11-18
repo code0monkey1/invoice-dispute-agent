@@ -12,6 +12,11 @@ For architecture, deployment setup and external services, read [CLAUDE.md](CLAUD
 
 ## Verification
 
+When a review or agent correction exposes a recurring failure, prefer a focused
+architecture check or behavioral regression test where it can enforce the lesson
+reliably. Test the check with both forbidden and legitimate examples. Keep
+judgment in review when the rule cannot distinguish the cases reliably.
+
 Run from the repository root:
 
 ```bash

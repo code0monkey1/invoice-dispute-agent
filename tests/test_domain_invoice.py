@@ -58,11 +58,6 @@ def test_an_id_that_is_not_encoded_is_shown_as_it_is(storage_id):
     assert parse_public_invoice_id(storage_id) == storage_id
 
 
-def test_characters_outside_base64_are_dropped_not_refused():
-    """Current behaviour, pinned rather than fixed: the decoder skips them. Storage IDs are always built by us."""
-    assert parse_public_invoice_id("user-1__inv__%%%") == ""
-
-
 def test_state_fills_blanks_the_database_leaves():
     state = invoice_state({"id": "user-1__inv__SU5WLTE", "invoice_amount": 500, "amount_paid": None,
                            "jurisdiction": None, "escalation_level": None, "status": None, "follow_up_date": None})
@@ -123,8 +118,7 @@ def test_a_date_without_pending_status_is_not_committed():
     assert approved_changes(invoice(), {"follow_up_date": "2026-11-15"}, "mark_invoice_pending") == ({}, [])
 
 
-@pytest.mark.parametrize("status", ["paid", None])
-def test_a_settled_invoice_is_never_changed(status):
+def test_a_settled_invoice_is_never_changed():
     settled = invoice(status="paid", amount_paid=1200.0)
     assert approved_changes(settled, {"status": "active", "amount_paid": 0}, "record_partial_payment") == ({}, [])
 

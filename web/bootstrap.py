@@ -53,7 +53,7 @@ from web import presentation
 from web.agent_context import AgentContexts
 from web.agent_runs import AgentRuns
 from web.app import Deps, Live, create_app
-from web.approval import ApprovalFlow, resume_trace_inputs, send_trace_inputs, send_trace_outputs
+from web.approval import ApprovalFlow, resume_trace_inputs, send_trace_inputs
 from web.email_sender import create_gmail_sender
 from web.identity import DEFAULT_SECRET_KEY, Identity, assert_secret_configured, get_caller
 from web.inbound_reply import InboundReplyAgent, reply_trace_inputs
@@ -93,7 +93,6 @@ class Runtime:
     def __init__(self):
         secret = os.getenv("SECRET_KEY", DEFAULT_SECRET_KEY)
         assert_secret_configured(secret, os.environ)
-        database.init_db()
 
         self.deps = Deps(
             agent=agent_module.agent,
