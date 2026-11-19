@@ -16,7 +16,7 @@ from src.state import FreelancerContext
 @pytest.mark.parametrize('blocks', [False, True])
 async def test_inbound_analysis_fills_names_before_history_without_taking_action(case_id, blocks):
     case = next(case for case in load_cases() if case.id == case_id)
-    text = 'Hi [Client Name], please clarify the issue [incl. tax]. Best, [Your Name]'
+    text = 'Hi [Client Name], please clarify the issue [incl. tax]. Best, [Your Name]\n[date]'
     model = ScriptedModel()
     model.replies = [AIMessage(content=[{'type': 'text', 'text': text}] if blocks else text)]
     async with EvalHarness() as harness:

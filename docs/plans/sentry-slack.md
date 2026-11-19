@@ -34,7 +34,7 @@ Implementation and verification:
    PR and verify production health, Sentry issues and Slack delivery when access
    and required configuration are available.
 
-Domain policy, tool implementations, approval rules and evaluation thresholds
+Invoice-state rules, tool implementations, approval rules and evaluation thresholds
 remain unchanged. Release-gate regressions also required resolving inbound-analysis
 placeholders and clarifying the pending-payment review instructions.
 
@@ -49,7 +49,7 @@ placeholders and clarifying the pending-payment review instructions.
 - Frontend actual entry-point/React lifecycle smoke in jsdom:
   `INVOICE-DISPUTE-AGENT-FRONTEND-3` received. Temporary triggers removed.
 - Authenticated local source-map upload succeeded; zero `.map` files in output.
-- Full checks after bot support, synchronization with main and the reply fix: 1019 backend
+- Full checks after bot support, synchronization with main and the reply fixes: 1023 backend
   tests passed, 13 skipped; 190 frontend tests passed; lint/build passed.
   Existing Pydantic/JWT test warnings and bundle-size warning remain.
 - Installed the requested official Slack skills plugin globally, outside Git.
@@ -93,5 +93,11 @@ placeholders and clarifying the pending-payment review instructions.
   never treats a promise as completed payment. Independent review found no
   actionable issues; 89 focused real-graph/approval/eval tests and the full 1019-test
   backend suite passed. The existing failing live case remains the regression gate.
+- The next complete live cohort passed every tool and approval check; one injected
+  reply retained an unresolved date label. Exact empty mappings now omit only
+  `date`, `payment date` and `due date` labels without inventing a date. Concrete
+  bracketed dates remain intact. Regression tests failed before the fix and passed
+  afterward. Review caught and corrected an overly broad match; the final focused
+  review found no further issues, with 33 targeted tests passing.
 - Pending: final CI checks, reviewed PR release approval, production health,
   production Slack delivery and production source-map verification.

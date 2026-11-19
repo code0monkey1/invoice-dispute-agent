@@ -41,6 +41,17 @@ def test_normal_brackets_in_text_are_left_alone():
     assert fill_placeholders(text, **SENDER) == text
 
 
+@pytest.mark.parametrize('placeholder', ['[date]', '[Payment Date]', '[Due Date]'])
+def test_unresolved_date_fields_are_omitted_without_inventing_a_date(placeholder):
+    text = f'Please confirm the next step.\n{placeholder}\nThe reference date is [2026-12-01].'
+    assert fill_placeholders(text, **SENDER) == 'Please confirm the next step.\nThe reference date is [2026-12-01].'
+
+
+def test_bracketed_payment_facts_keep_their_concrete_date():
+    text = 'The client promised payment [due date: 2026-12-01].'
+    assert fill_placeholders(text, **SENDER) == text
+
+
 def test_draft_preview_never_shows_placeholders():
     import api.index as api_index
     state = {"client_name": "Uncle Sam", "invoice_id": "inv-07881", "invoice_amount": 2980}
