@@ -1,3 +1,5 @@
+import './instrument'
+import { reactErrorHandler } from '@sentry/react'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
@@ -9,7 +11,11 @@ import App from './App'
 import { CACHE_MAX_AGE, cacheBuster, persister, queryClient, shouldPersistQuery } from './queryClient'
 import './index.css'
 
-createRoot(document.getElementById('root')!).render(
+createRoot(document.getElementById('root')!, {
+  onUncaughtError: reactErrorHandler(),
+  onCaughtError: reactErrorHandler(),
+  onRecoverableError: reactErrorHandler(),
+}).render(
   <StrictMode>
     {/* Restores the cache saved on this device before any query runs, then
         refreshes stale entries in the background. */}

@@ -8,10 +8,27 @@ assembled ASGI app and a small compatibility surface for tests and evals.
 import logging
 import os
 from pathlib import Path
+from types import SimpleNamespace
+from urllib.parse import urlsplit
+
+from src.observability.sentry import flush_sentry, initialize_sentry
+
+_monitoring = SimpleNamespace(deps=None)
+
+
+def _queue_sentry_alert(event):
+    deps = _monitoring.deps
+    if deps is not None and deps.slack_notifications is not None:
+        deps.slack_notifications.enqueue(event)
+
+
+# Before importing the agent/database: startup failures need monitoring too.
+initialize_sentry(on_event=_queue_sentry_alert)
 
 from src import agent as agent_module
 from src.adapters import supabase as database
 from src.adapters.agent_session import LangGraphAgentSession
+from src.adapters.slack_notifications import SlackNotifications
 from src.domain.invoice import invoice_state as invoice_state_from_db
 from src.observability import tracer
 from src.observability.tracer import langsmith_status
@@ -62,6 +79,7 @@ from web.routers.conversations import create_conversations_router
 from web.routers.health import create_health_router
 from web.routers.inbound import create_inbound_router
 from web.routers.invoices import create_invoices_router
+from web.routers.monitoring import create_monitoring_router
 from web.routers.traces import create_traces_router
 from web.spa import register_spa
 
@@ -82,7 +100,16 @@ class Runtime:
             gmail_client=GmailService,
             fetch_inbound_email=fetch_received_email,
             db=database,
+            flush_telemetry=self.flush_telemetry,
+            slack_notifications=SlackNotifications(
+                os.getenv("SLACK_WEBHOOK_URL", ""), os.getenv("SENTRY_ORG", "referfee"),
+                {"server": urlsplit(os.getenv("SENTRY_DSN", "")).path.strip("/"),
+                 "frontend": urlsplit(os.getenv("VITE_SENTRY_DSN", "")).path.strip("/")},
+                environment=os.getenv("SENTRY_ENVIRONMENT") or os.getenv("VERCEL_ENV") or "development",
+                bot_token=os.getenv("SLACK_BOT_TOKEN", ""), channel=os.getenv("SLACK_ALERT_CHANNEL", ""),
+            ),
         )
+        _monitoring.deps = self.deps
         self.deps.agent_session = LangGraphAgentSession(lambda: self.deps.agent)
         self.identity = Identity(secret, store=lambda: self.deps.db)
         live_db = Live(lambda: self.deps.db)
@@ -118,6 +145,7 @@ class Runtime:
         )
 
         self.app = create_app(self.deps, self.identity)
+        self.app.include_router(create_monitoring_router(self.deps, get_caller))
         self.app.include_router(create_health_router(
             checkpointer_status=lambda: agent_module.checkpointer_status,
             trace_stats=tracer.stats,
@@ -213,6 +241,11 @@ class Runtime:
             "_unfence": _unfence,
             "EMAIL_LOG_LABELS": EMAIL_LOG_LABELS,
         }
+
+    def flush_telemetry(self):
+        flush_sentry()
+        if self.deps.slack_notifications is not None:
+            self.deps.slack_notifications.flush()
 
 
 runtime = Runtime()

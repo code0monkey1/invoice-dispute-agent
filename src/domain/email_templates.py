@@ -49,6 +49,8 @@ def fill_placeholders(text: str, *, client_name: str, freelancer_name: str,
         "your email": freelancer_email, "your email address": freelancer_email,
         "email": freelancer_email, "contact information": freelancer_email,
         "your contact information": freelancer_email, "your contact info": freelancer_email,
+        # No verified date is supplied here; omit unresolved field labels only.
+        "date": "", "payment date": "", "due date": "",
     }
 
     def replace(match: re.Match) -> str:

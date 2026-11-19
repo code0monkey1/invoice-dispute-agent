@@ -124,7 +124,7 @@ def read(invoice_id: str, agent, store) -> dict:
         row = store.get_invoice_summary(invoice_id)
         return _present(invoice_id, row, collect(invoice_id, agent, store))
     except Exception as exc:
-        logger.warning('Summary read unavailable: %s', type(exc).__name__)
+        logger.error('Summary read unavailable: %s', type(exc).__name__, exc_info=exc)
         return _present(invoice_id, row, None)
 
 
@@ -187,7 +187,7 @@ def refresh(invoice_id: str, agent, store) -> dict:
             store.release_invoice_summary(invoice_id, token)
         return read(invoice_id, agent, store)
     except Exception as exc:
-        logger.warning('Summary refresh unavailable: %s', type(exc).__name__)
+        logger.error('Summary refresh unavailable: %s', type(exc).__name__, exc_info=exc)
         if token:
             try:
                 store.release_invoice_summary(invoice_id, token, 'generation_failed')

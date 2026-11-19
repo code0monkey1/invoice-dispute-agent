@@ -26,6 +26,9 @@ from dotenv import load_dotenv
 # Load .env first: load_dotenv never overrides, so a placeholder set here first
 # would hide the real key and every model call would fail with 401.
 load_dotenv()
+# Offline eval errors must never become production issues or Slack alerts.
+for _telemetry_key in ("SENTRY_DSN", "SLACK_BOT_TOKEN", "SLACK_WEBHOOK_URL"):
+    os.environ[_telemetry_key] = ""
 for _key, _value in {
     "SUPABASE_URL": "http://supabase.invalid",
     "SUPABASE_KEY": "eval-harness",

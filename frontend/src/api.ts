@@ -1,4 +1,5 @@
 import { clearCache } from './queryClient';
+import { monitoredFetch, monitoredJson } from './monitoring';
 
 const BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -39,7 +40,7 @@ export function errorMessage(body: string): string {
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await monitoredFetch(`${BASE_URL}${path}`, path, {
     credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
@@ -59,11 +60,11 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     }
     throw new Error(errorMessage(await res.text()));
   }
-  return res.json();
+  return monitoredJson<T>(res, path);
 }
 
 async function requestForm<T>(path: string, formData: FormData): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await monitoredFetch(`${BASE_URL}${path}`, path, {
     method: 'POST',
     credentials: 'include',
     headers: {
@@ -80,7 +81,7 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
     }
     throw new Error(errorMessage(await res.text()));
   }
-  return res.json();
+  return monitoredJson<T>(res, path);
 }
 
 export const api = {
