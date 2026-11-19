@@ -14,7 +14,9 @@ An AI assistant for chasing unpaid invoices. Upload or generate an invoice, ask 
 - Saves an AI conversation summary when an invoice is opened and its communications have changed. Full history remains available on request.
 - Supports a guest/demo experience, agent traces, optional LangSmith tracing and golden-set evaluations.
 
-<p align="center"><img src="docs/how-it-works.svg" alt="Invoice lifecycle: add an invoice, request a draft, approve sending, review the reply and choose the next step." width="100%"></p>
+<p align="center"><img src="docs/how-it-works.gif" alt="Invoice lifecycle: add an invoice, request a draft, approve sending, review the reply and choose the next step." width="100%"></p>
+
+[Static lifecycle diagram](docs/how-it-works.svg)
 
 ## Clean architecture
 
@@ -154,7 +156,9 @@ Invalid signatures are rejected; events without a matching token are ignored. Ma
 
 ### 4. Payment, escalation and settlement
 
-<p align="center"><img src="docs/promise-to-pay.svg" alt="A payment promise is proposed, reviewed, validated and saved through the approval use case." width="100%"></p>
+<p align="center"><img src="docs/promise-to-pay.gif" alt="A payment promise is proposed, reviewed, validated and saved through the approval use case." width="100%"></p>
+
+[Static promise-to-pay diagram](docs/promise-to-pay.svg)
 
 ```mermaid
 sequenceDiagram
@@ -176,7 +180,7 @@ sequenceDiagram
     Flow->>UC: Apply approved tool outcome
     UC->>Policy: Validate allowed fields and values
     UC->>DB: Write permitted changes only
-    Note over UC,DB: Email approvals do not commit payment fields; paid invoices cannot be reopened by a late approval.
+    Note over UC,DB: Email approvals do not commit payment fields. Paid invoices cannot be reopened by a late approval.
     opt Owner chooses Escalate
         Owner->>HTTP: POST /api/invoices/{id}/escalate
         HTTP->>Policy: Determine next level
