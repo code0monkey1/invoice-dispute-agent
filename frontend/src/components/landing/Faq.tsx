@@ -49,7 +49,7 @@ const FAQ_JSON_LD = JSON.stringify({
 
 export function Faq() {
   return (
-    <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28 grid lg:grid-cols-[1fr_1.6fr] gap-8 lg:gap-16">
+    <section id="faq" className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28 grid lg:grid-cols-[1fr_1.6fr] gap-8 lg:gap-16 scroll-mt-4">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: FAQ_JSON_LD }} />
       <h2 className="text-[34px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em] max-w-[14ch]">
         Questions before you connect Gmail

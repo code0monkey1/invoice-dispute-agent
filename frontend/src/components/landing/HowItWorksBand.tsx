@@ -12,7 +12,7 @@ const BAND_STEPS = [
 
 export function HowItWorksBand() {
   return (
-    <section aria-labelledby="how-title" className="bg-ink text-white">
+    <section id="how-it-works" aria-labelledby="how-title" className="bg-ink text-white scroll-mt-4">
       <div className="max-w-[1180px] mx-auto px-4 sm:px-8 py-12 sm:py-14">
         <h2 id="how-title" className="sr-only">How it works</h2>
         <ol className="grid md:grid-cols-3 gap-8 md:gap-10">

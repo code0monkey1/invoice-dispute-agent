@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/auth'
 import { Zap, Check, X, ShieldCheck } from 'lucide-react'
 import { CtaButtons, StickyCta } from './landing/CallToAction'
-import { demoButton } from './landing/styles'
 import { WhoDoesWhat } from './landing/WhoDoesWhat'
 import { InvoiceGenerator } from './landing/InvoiceGenerator'
 import { SituationSelector } from './landing/SituationSelector'
@@ -13,6 +12,7 @@ import { Testimonials } from './landing/Testimonials'
 import { Faq } from './landing/Faq'
 import { GuestModal } from './landing/GuestModal'
 import { AgentRun } from './landing/AgentRun'
+import { HeroCards } from './landing/HeroCards'
 
 
 // Verified benefits only: each one is something the product does today.
@@ -55,25 +55,25 @@ export default function LandingPage() {
           </span>
           <span className="font-bold text-[19px] tracking-tight">Invoice<span className="text-coral-text">Chaser</span></span>
         </a>
-        <div className="flex items-center gap-4">
-          <button onClick={cta.onGoogle} className="hidden sm:inline text-[15px] font-semibold hover:underline underline-offset-4">
+        <nav aria-label="Main" className="flex items-center gap-4 sm:gap-6 text-[14px]">
+          <a href="#how-it-works" className="hidden sm:inline text-body hover:text-ink">How it works</a>
+          <a href="#faq" className="hidden sm:inline text-body hover:text-ink">FAQ</a>
+          <button onClick={cta.onGoogle} className="rounded-lg bg-card border border-line-2 px-4 py-2 font-semibold text-ink hover:border-ink">
             Sign in
           </button>
-          <button onClick={cta.onGuest} className={`${demoButton} text-[15px] px-4 py-2`}>
-            Try the demo
-          </button>
-        </div>
+        </nav>
       </header>
 
       <main>
         {/* Two columns on desktop so the product is visible next to the promise. */}
-        <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pt-4 sm:pt-8 pb-20 sm:pb-28 grid lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-10 lg:gap-14 items-start">
+        <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pt-4 sm:pt-8 pb-20 sm:pb-28 grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-10 lg:gap-14 items-start">
           <div className="lg:pt-6">
-            <h1 className="text-[42px] sm:text-[56px] lg:text-[52px] font-extrabold leading-[1.02] tracking-[-0.035em] max-w-[15ch]">
-              Stop chasing unpaid invoices. An agent does it, you approve.
+            <h1 className="text-[42px] sm:text-[56px] lg:text-[50px] font-extrabold leading-[1.1] tracking-[-0.02em] sm:max-w-[16ch] lg:max-w-none">
+              Overdue invoices, chased{' '}
+              <span className="font-serif italic font-normal text-coral-text">automatically.</span>
             </h1>
-            <p className="mt-6 text-[18px] sm:text-[20px] leading-[1.55] text-muted max-w-[42ch]">
-              Drop in an overdue invoice. The agent drafts each reminder and suggests when to get firmer. Nothing sends without you.
+            <p className="mt-6 text-[18px] sm:text-[20px] leading-[1.5] text-body max-w-[42ch]">
+              The agent drafts each reminder and escalates when needed. Your only step is approving an email before it sends.
             </p>
             <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[15px] font-medium">
               {HERO_POINTS.map((point) => (
@@ -92,7 +92,14 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
-          <AgentRun />
+          <HeroCards />
+        </section>
+
+        <section aria-label="Live example" className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted mb-4">See a full run on one invoice</p>
+          <div className="max-w-[760px]">
+            <AgentRun />
+          </div>
         </section>
 
         <HowItWorksBand />
