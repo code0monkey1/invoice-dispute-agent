@@ -23,15 +23,15 @@ export function WhoDoesWhat() {
         The agent does the chasing. You keep the final say.
       </h2>
       <div className="mt-10 grid lg:grid-cols-[1.6fr_1fr] gap-4 items-start">
-        <div className="rounded-[16px] bg-white border border-[#F1E4D8] p-6 sm:p-8">
+        <div className="rounded-xl bg-white border border-line p-6 sm:p-8">
           <h3 className="text-[20px] font-semibold flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-[#111827]" />
+            <span className="w-2.5 h-2.5 rounded-full bg-ink" />
             The agent
           </h3>
           <ul className="mt-5 grid sm:grid-cols-2 gap-x-8 gap-y-4 text-[16px] leading-[1.4]">
             {AGENT_JOBS.map(([Icon, text]) => (
               <li key={text} className="flex items-center gap-3">
-                <span className="w-9 h-9 shrink-0 rounded-[10px] bg-[#111827] text-white flex items-center justify-center">
+                <span className="w-9 h-9 shrink-0 rounded-lg bg-ink text-white flex items-center justify-center">
                   <Icon className="w-[18px] h-[18px]" />
                 </span>
                 {text}
@@ -39,9 +39,9 @@ export function WhoDoesWhat() {
             ))}
           </ul>
         </div>
-        <div className="rounded-[16px] bg-[#FF6B35] text-[#111827] p-6 sm:p-8">
+        <div className="rounded-xl bg-coral text-ink p-6 sm:p-8">
           <h3 className="text-[20px] font-semibold flex items-center gap-2.5">
-            <span className="w-2.5 h-2.5 rounded-[3px] bg-[#111827]" />
+            <span className="w-2.5 h-2.5 rounded-sm bg-ink" />
             You
           </h3>
           <p className="mt-5 text-[28px] sm:text-[32px] font-bold leading-[1.15] tracking-[-0.01em]">

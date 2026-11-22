@@ -58,15 +58,15 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
   return (
     <>
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col bg-white border border-gray-200/80 rounded-2xl overflow-hidden shadow-sm">
+      <div className="flex-1 flex flex-col bg-white border border-gray-200/80 rounded-xl overflow-hidden shadow-card">
         {/* Chat Header */}
         <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 bg-gradient-to-r from-white to-orange-50/30">
-          <Link to="/" className="text-gray-400 hover:text-[#FF6B35] transition-colors p-1 rounded-lg hover:bg-orange-50">
+          <Link to="/" className="text-gray-400 hover:text-coral-text transition-colors p-1 rounded-lg hover:bg-orange-50">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="flex-1">
-            <h2 className="text-sm font-bold text-gray-800 font-[family-name:var(--font-heading)]">
-              Invoice <span className="font-mono text-[#FF6B35] bg-orange-50 px-1.5 py-0.5 rounded-md">#{displayInvoiceId}</span>
+            <h2 className="text-sm font-bold text-gray-800">
+              Invoice <span className="font-mono text-coral-text bg-orange-50 px-1.5 py-0.5 rounded-md">#{displayInvoiceId}</span>
               {agentState?.client_name && (
                 <span className="text-gray-400 font-normal font-sans"> — {agentState.client_name}</span>
               )}
@@ -90,13 +90,13 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
               aria-controls={`panel-${id}`}
               onClick={() => setView(id)}
               className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 -mb-px transition-colors ${
-                view === id ? 'border-[#FF6B35] text-[#FF6B35]' : 'border-transparent text-gray-400 hover:text-gray-600'
+                view === id ? 'border-coral text-coral-text' : 'border-transparent text-gray-400 hover:text-gray-600'
               }`}
             >
               <Icon className="w-3.5 h-3.5" aria-hidden />
               {label}
               {id === 'chat' && view !== 'chat' && interrupt && APPROVAL_TOOLS.includes(interrupt.tool) && (
-                <span className="rounded-full bg-amber-100 text-amber-700 px-1.5 text-[10px]">1 waiting</span>
+                <span className="rounded-full bg-amber-100 text-amber-700 px-1.5 text-xs">1 waiting</span>
               )}
             </button>
           ))}
@@ -116,7 +116,7 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
               <button type="button" onClick={fullHistoryVisible ? hideHistory : viewHistory}
                 aria-expanded={Boolean(fullHistoryVisible)} aria-controls="conversation-history"
                 disabled={!hasSavedConversation}
-                className="text-xs font-semibold text-[#FF6B35] hover:text-[#e55a2b] underline underline-offset-4 disabled:text-gray-400 disabled:no-underline focus-visible:outline-2 focus-visible:outline-offset-4">
+                className="text-xs font-semibold text-coral-text hover:text-ink underline underline-offset-4 disabled:text-gray-400 disabled:no-underline focus-visible:outline-2 focus-visible:outline-offset-4">
                 {fullHistoryVisible ? 'Hide conversation history' : 'View conversation history'}
               </button>
             </div>
@@ -127,14 +127,14 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
           </section>
           {fullHistoryLoading && <p role="status" className="mx-5 text-sm text-gray-500">Loading conversation history…</p>}
           {fullHistoryError && <div role="alert" className="mx-5 text-sm text-gray-600">
-            Could not load conversation history. <button type="button" onClick={() => void retryHistory()} className="underline text-[#FF6B35]">Retry history</button>
+            Could not load conversation history. <button type="button" onClick={() => void retryHistory()} className="underline text-coral-text">Retry history</button>
           </div>}
           {messages.length === 0 && !loading && !showFirstOpenActions && !hasSavedConversation && (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
-              <div className="w-14 h-14 bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] rounded-2xl flex items-center justify-center mb-4 shadow-lg shadow-orange-200/40">
-                <ArrowUpCircle className="w-7 h-7 text-white" />
+              <div className="w-14 h-14 bg-gradient-to-br from-coral to-coral-2 rounded-xl flex items-center justify-center mb-4 shadow-card">
+                <ArrowUpCircle className="w-7 h-7 text-ink" />
               </div>
-              <p className="text-gray-600 text-sm font-semibold font-[family-name:var(--font-heading)]">
+              <p className="text-gray-600 text-sm font-semibold">
                 Send a message to start working on this invoice dispute.
               </p>
               <p className="text-gray-400 text-xs mt-2 font-medium">
@@ -143,9 +143,9 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
             </div>
           )}
           {showFirstOpenActions && (
-            <div className="mx-5 mb-4 rounded-2xl border border-orange-200 bg-white shadow-sm overflow-hidden animate-fade-up">
+            <div className="mx-5 mb-4 rounded-xl border border-orange-200 bg-white shadow-card overflow-hidden animate-fade-up">
               <div className="px-5 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
-                <p className="text-sm font-bold text-gray-800 font-[family-name:var(--font-heading)]">
+                <p className="text-sm font-bold text-gray-800">
                   Start with this invoice
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
@@ -157,7 +157,7 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
                   type="button"
                   onClick={handleCreateDeliveryDraft}
                   disabled={loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#FF6B35] to-[#FF8F65] px-4 py-3 text-sm font-bold text-white shadow-md shadow-orange-200/40 disabled:opacity-50 font-[family-name:var(--font-heading)]"
+                  className="inline-flex items-center justify-center gap-2 btn-coral rounded-xl px-4 py-3 text-sm font-bold shadow-card"
                 >
                   <FileText className="w-4 h-4" />
                   Create invoice email draft
@@ -166,7 +166,7 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
                   type="button"
                   onClick={handleChatAboutInvoice}
                   disabled={loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50 font-[family-name:var(--font-heading)]"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 >
                   <MessageSquare className="w-4 h-4" />
                   Chat about this invoice
@@ -201,9 +201,9 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
           {loading && !interrupt && (
             <div className="flex items-center gap-2.5 px-5 py-3">
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#FF6B35] animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 rounded-full bg-[#FF6B35] animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 rounded-full bg-[#FF6B35] animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-2 h-2 rounded-full bg-coral animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 rounded-full bg-coral animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 rounded-full bg-coral animate-bounce" style={{ animationDelay: '300ms' }} />
               </div>
               <span className="text-gray-400 text-sm font-medium">Agent is thinking...</span>
             </div>
@@ -212,9 +212,9 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
             <div className={`mx-5 my-3 animate-fade-up`}>
               <div role="status" className={`inline-flex items-start gap-2.5 px-4 py-2.5 rounded-xl text-sm font-semibold ${
                 lastEmailSent.sent
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
+                  ? 'bg-green-bg text-green border border-green/20'
                   : lastEmailSent.status === 'demo'
-                    ? 'bg-white text-gray-700 border border-[#F1E4D8]'
+                    ? 'bg-white text-gray-700 border border-line'
                     : 'bg-rose-50 text-rose-700 border border-rose-200/60'
               }`}>
                 {lastEmailSent.sent ? (
@@ -285,12 +285,12 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
               onKeyDown={handleKeyDown}
               placeholder={interrupt && APPROVAL_TOOLS.includes(interrupt.tool) ? 'Approve or reject the draft above...' : chatFocused ? 'Ask about this invoice or your other invoices...' : 'Type your message...'}
               disabled={loading || !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))}
-              className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35]/50 disabled:opacity-50 transition-all"
+              className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral/50 disabled:opacity-50 transition-all"
             />
             <button
               onClick={handleSend}
               disabled={loading || !input.trim() || !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))}
-              className="btn-gradient disabled:opacity-50 text-white rounded-xl px-4 py-2.5 transition-all shadow-md shadow-orange-200/40"
+              className="btn-coral rounded-xl px-4 py-2.5 shadow-card"
             >
               <Send className="w-4 h-4" />
             </button>

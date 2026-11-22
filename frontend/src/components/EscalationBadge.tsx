@@ -1,9 +1,10 @@
-// Same level colours as the landing page: green, amber, red.
+// Level colours use the status pairs and rise in intensity: neutral, amber, red.
+// Green is reserved for paid.
 const LEVELS: Record<number, { label: string; text: string; bg: string; dot: string }> = {
-  0: { label: 'Setting up', text: 'text-[#6B7280]', bg: 'bg-[#F6EDE3]', dot: 'bg-[#C9B8A6]' },
-  1: { label: 'Friendly', text: 'text-[#1F7A55]', bg: 'bg-[#E7F4EC]', dot: 'bg-[#1F7A55]' },
-  2: { label: 'Formal', text: 'text-[#8A4F00]', bg: 'bg-[#FDF1DE]', dot: 'bg-[#A35E00]' },
-  3: { label: 'Legal', text: 'text-[#B3261E]', bg: 'bg-[#FBE8E6]', dot: 'bg-[#B3261E]' },
+  0: { label: 'Setting up', text: 'text-body', bg: 'bg-tint', dot: 'bg-line-2' },
+  1: { label: 'Friendly', text: 'text-body', bg: 'bg-tint', dot: 'bg-muted' },
+  2: { label: 'Formal', text: 'text-[#8A4F00]', bg: 'bg-amber-bg', dot: 'bg-amber' },
+  3: { label: 'Legal', text: 'text-red', bg: 'bg-red-bg', dot: 'bg-red' },
 }
 
 export default function EscalationBadge({ level, size = 'sm' }: { level: number; size?: 'sm' | 'md' }) {

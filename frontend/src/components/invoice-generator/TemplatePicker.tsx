@@ -39,12 +39,12 @@ export function TemplatePicker({ value, onChange }: Props) {
             }}
             className={`group flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all ${
               active
-                ? 'border-violet-500 bg-violet-50 shadow-md'
+                ? 'border-ink bg-tint shadow-card'
                 : 'border-slate-200 bg-white hover:border-slate-300'
             }`}
           >
             <div className="w-full h-16 rounded" style={{ background: t.swatch }} />
-            <span className={`text-sm font-medium ${active ? 'text-violet-700' : 'text-slate-700'}`}>
+            <span className={`text-sm font-medium ${active ? 'text-ink' : 'text-slate-700'}`}>
               {t.label}
             </span>
           </button>

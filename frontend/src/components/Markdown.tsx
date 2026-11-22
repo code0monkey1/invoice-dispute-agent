@@ -24,7 +24,7 @@ const components: Components = {
   img: ({ alt }) => (alt ? <span className="italic text-gray-500">[{alt}]</span> : null),
   hr: () => <hr className="my-3 border-gray-100" />,
   a: ({ href, children }) => (
-    <a href={href} target="_blank" rel="noopener noreferrer" className="text-[#FF6B35] underline underline-offset-2 hover:text-[#e55a2b]">
+    <a href={href} target="_blank" rel="noopener noreferrer" className="text-coral-text underline underline-offset-2 hover:text-ink">
       {children}
     </a>
   ),

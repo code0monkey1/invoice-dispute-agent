@@ -12,15 +12,15 @@ const BAND_STEPS = [
 
 export function HowItWorksBand() {
   return (
-    <section aria-labelledby="how-title" className="bg-[#111827] text-white">
+    <section aria-labelledby="how-title" className="bg-ink text-white">
       <div className="max-w-[1180px] mx-auto px-4 sm:px-8 py-12 sm:py-14">
         <h2 id="how-title" className="sr-only">How it works</h2>
         <ol className="grid md:grid-cols-3 gap-8 md:gap-10">
           {BAND_STEPS.map((step, i) => (
             <li key={step.title} className="flex gap-4">
               <span
-                className={`w-10 h-10 shrink-0 rounded-[10px] flex items-center justify-center text-[17px] font-bold ${
-                  step.you ? 'bg-[#FF6B35] text-[#111827]' : 'bg-white text-[#111827]'
+                className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center text-[17px] font-bold ${
+                  step.you ? 'bg-coral text-ink' : 'bg-white text-ink'
                 }`}
               >
                 {i + 1}

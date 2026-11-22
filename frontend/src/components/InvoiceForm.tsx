@@ -90,18 +90,18 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
 
   return (
     <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl w-full max-w-lg shadow-2xl shadow-orange-200/30 border border-orange-100/50 animate-fade-up overflow-hidden">
-        <div className="bg-gradient-to-r from-[#FF6B35] to-[#FF8F65] px-6 py-5 relative overflow-hidden">
+      <div className="bg-white rounded-3xl w-full max-w-lg shadow-pop border border-orange-100/50 animate-fade-up overflow-hidden">
+        <div className="bg-gradient-to-r from-coral to-coral-2 px-6 py-5 relative overflow-hidden">
           <div className="absolute inset-0 opacity-10">
             <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-white/20" />
             <div className="absolute -left-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
           </div>
           <div className="flex items-center justify-between relative">
             <div>
-              <h2 className="text-lg font-bold text-white font-[family-name:var(--font-heading)]">New Invoice Dispute</h2>
-              <p className="text-white/70 text-xs mt-0.5">Upload an invoice or enter the details manually</p>
+              <h2 className="text-lg font-bold text-ink">New Invoice Dispute</h2>
+              <p className="text-ink/70 text-xs mt-0.5">Upload an invoice or enter the details manually</p>
             </div>
-            <button onClick={onClose} className="text-white/60 hover:text-white transition-colors p-1 rounded-lg hover:bg-white/10">
+            <button onClick={onClose} className="text-ink/60 hover:text-ink transition-colors p-1 rounded-lg hover:bg-white/20">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -123,11 +123,11 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={parsing || loading}
-            className="w-full border-2 border-dashed border-orange-200 bg-orange-50/50 hover:bg-orange-50 disabled:opacity-60 rounded-2xl px-4 py-4 text-left transition-colors"
+            className="w-full border-2 border-dashed border-orange-200 bg-orange-50/50 hover:bg-orange-50 disabled:opacity-60 rounded-xl px-4 py-4 text-left transition-colors"
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-white border border-orange-100 flex items-center justify-center">
-                {uploadedFile ? <FileText className="w-5 h-5 text-[#FF6B35]" /> : <Upload className="w-5 h-5 text-[#FF6B35]" />}
+                {uploadedFile ? <FileText className="w-5 h-5 text-coral-text" /> : <Upload className="w-5 h-5 text-coral-text" />}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-bold text-gray-800">
@@ -170,7 +170,7 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
                   placeholder={placeholder}
                   value={form[key]}
                   onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-[#FF6B35]/30 focus:border-[#FF6B35]/50 transition-all"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral/50 transition-all"
                 />
               </div>
             ))}
@@ -184,7 +184,7 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
           <button
             type="submit"
             disabled={loading || parsing}
-            className="w-full btn-gradient disabled:opacity-50 text-white font-bold rounded-xl py-3.5 text-sm transition-all flex items-center justify-center gap-2 shadow-lg shadow-orange-300/40 hover:shadow-orange-400/50 mt-3 font-[family-name:var(--font-heading)]"
+            className="w-full btn-coral font-bold rounded-xl py-3.5 text-sm flex items-center justify-center gap-2 shadow-card mt-3"
           >
             <Sparkles className="w-4 h-4" />
             {loading ? 'Creating Dispute...' : parsing ? 'Reading Invoice...' : 'Start AI-Powered Dispute'}

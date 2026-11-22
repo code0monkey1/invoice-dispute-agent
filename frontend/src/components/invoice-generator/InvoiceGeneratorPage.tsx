@@ -142,7 +142,7 @@ export function InvoiceGeneratorPage() {
             type="button"
             onClick={onSaveAndDownload}
             disabled={!isValid || submitting}
-            className="px-4 py-2 text-sm font-medium text-white bg-violet-600 rounded-md hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="btn-coral px-4 py-2 text-sm font-medium rounded-md"
           >
             {submitting ? 'Saving…' : 'Save & Download'}
           </button>

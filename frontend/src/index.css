@@ -1,20 +1,46 @@
 @import "tailwindcss";
 
 @theme {
-  --font-heading: "Outfit", sans-serif;
-  --font-body: "Plus Jakarta Sans", sans-serif;
-}
+  --font-sans: "Schibsted Grotesk", system-ui, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, serif;
 
-* {
-  font-family: var(--font-body);
-}
+  /* Design-system tokens, copied by hand from the Paper file
+     "InvoiceChaser — Design System". Keep names and values in sync. */
+  --color-ink: #111827;
+  --color-body: #374151;
+  --color-muted: #6B7280;
+  --color-page: #FFF7F0;
+  --color-card: #FFFAF5;
+  --color-tint: #FFF1E6;
+  --color-line: #F1E4D8;
+  --color-line-2: #E9D9C8;
+  --color-coral: #FF6B35;
+  --color-coral-2: #FF8F65;
+  --color-coral-hover: #F2551C;
+  /* Coral used as text; plain coral is for fills, borders and icons. */
+  --color-coral-text: #C2410C;
+  --color-green: #1F7A55;
+  --color-green-bg: #E7F4EC;
+  --color-red: #B3261E;
+  --color-red-bg: #FBE8E6;
+  --color-amber: #A35E00;
+  --color-amber-bg: #FDF1DE;
+  --color-on-coral: #FFFFFF;
 
-h1, h2, h3, h4, h5, h6 {
-  font-family: var(--font-heading);
+  /* Paper's spacing, radius and small text sizes equal Tailwind's defaults.
+     Its larger text sizes (lg 20, xl 28, 2xl 52) differ from them and are
+     not registered, so existing headings keep their size. */
+  --shadow-card: 0 1px 2px rgba(17, 24, 39, 0.06), 0 2px 8px rgba(17, 24, 39, 0.05);
+  --shadow-pop: 0 8px 30px -8px rgba(17, 24, 39, 0.18);
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
 }
 
 body {
-  background: #FFF7F0;
+  background: var(--color-page);
   min-height: 100vh;
 }
 
@@ -22,9 +48,7 @@ body {
 .bg-mesh {
   background:
     radial-gradient(ellipse at 10% 20%, rgba(255, 107, 53, 0.08) 0%, transparent 50%),
-    radial-gradient(ellipse at 90% 80%, rgba(13, 148, 136, 0.06) 0%, transparent 50%),
-    radial-gradient(ellipse at 50% 50%, rgba(124, 58, 237, 0.04) 0%, transparent 60%),
-    #FFF7F0;
+    var(--color-page);
 }
 
 /* Subtle noise texture overlay */
@@ -57,13 +81,6 @@ body {
 .glow-coral {
   box-shadow: 0 4px 24px -4px rgba(255, 107, 53, 0.25);
 }
-.glow-teal {
-  box-shadow: 0 4px 24px -4px rgba(13, 148, 136, 0.2);
-}
-.glow-violet {
-  box-shadow: 0 4px 24px -4px rgba(124, 58, 237, 0.2);
-}
-
 /* Card hover lift */
 .card-lift {
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -73,17 +90,20 @@ body {
   box-shadow: 0 8px 30px -8px rgba(0, 0, 0, 0.1);
 }
 
-/* Animated gradient for buttons */
-@keyframes shimmer {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
+/* Primary / approval button: coral gradient, ink label (>= 4.5:1 on every
+   stop), static fill with a hover shift. Used for every primary action and
+   for approving a drafted email, so chat and landing cannot drift apart. */
+.btn-coral {
+  background-image: linear-gradient(to right, var(--color-coral), var(--color-coral-2));
+  color: var(--color-ink);
+  transition: background-image 0.2s ease, box-shadow 0.2s ease;
 }
-
-.btn-gradient {
-  background: linear-gradient(135deg, #FF6B35, #FF8F65, #FF6B35);
-  background-size: 200% 200%;
-  animation: shimmer 3s ease infinite;
+.btn-coral:hover:not(:disabled) {
+  background-image: linear-gradient(to right, var(--color-coral-hover), var(--color-coral));
+}
+.btn-coral:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 /* Fade in animation */
@@ -146,19 +166,25 @@ body {
   transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* ─── Landing page (scoped so the app screens keep their own type) ─── */
-.lp,
-.lp * {
-  font-family: "Schibsted Grotesk", system-ui, sans-serif;
+/* ─── Interaction states (whole app) ─── */
+:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
 }
-.lp .lp-serif,
-.lp .lp-serif * {
-  font-family: "Source Serif 4", Georgia, serif;
+button:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
 }
-.lp :focus-visible {
-  outline: 2px solid #111827;
-  outline-offset: 3px;
+
+/* Continuous and entrance motion is off when the user asks for less. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse-dot,
+  .animate-middleware-pulse,
+  .animate-fade-up {
+    animation: none;
+  }
 }
+
 @keyframes runIn {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }

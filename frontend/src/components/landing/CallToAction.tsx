@@ -49,7 +49,7 @@ export function StickyCta({ onGoogle, onGuest }: CtaProps) {
   return (
     <div
       aria-hidden={!visible}
-      className={`fixed bottom-4 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-50 rounded-xl bg-white border border-[#F1E4D8] shadow-xl shadow-orange-200/40 p-2 sm:pl-5 flex items-center gap-3 sm:gap-6 transition-all duration-300 motion-reduce:transition-none ${
+      className={`fixed bottom-4 inset-x-4 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 z-50 rounded-xl bg-white border border-line shadow-card p-2 sm:pl-5 flex items-center gap-3 sm:gap-6 transition-all duration-300 motion-reduce:transition-none ${
         visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
       }`}
     >

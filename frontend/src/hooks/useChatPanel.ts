@@ -119,7 +119,7 @@ export function useChatPanel() {
   const quickActionsBusy = loading || draftWaiting
   const atHighestLevel = (agentState?.escalation_level ?? 0) >= 3
 
-  const quickActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-[#FF6B35]/50 hover:bg-orange-50 hover:text-[#FF6B35] disabled:opacity-50 disabled:pointer-events-none transition-colors'
+  const quickActionClass = 'shrink-0 inline-flex items-center gap-1.5 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:border-coral/50 hover:bg-orange-50 hover:text-coral-text disabled:opacity-50 disabled:pointer-events-none transition-colors'
 
   const handleCreateDeliveryDraft = () => {
     if (loading || interrupt) return
