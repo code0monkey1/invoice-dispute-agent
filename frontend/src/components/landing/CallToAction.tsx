@@ -15,11 +15,11 @@ export function CtaButtons({ onGoogle, onGuest }: CtaProps) {
     <div className="flex flex-col sm:flex-row sm:items-center gap-3">
       <button onClick={onGuest} className={`${demoButton} text-[16px] px-5 py-3.5`}>
         <Play className="w-4 h-4" fill="currentColor" />
-        Try the demo
+        See a demo
       </button>
       <button onClick={onGoogle} className={`${googleButton} text-[16px] px-5 py-3.5`}>
         <GoogleIcon />
-        Sign in with Google
+        Continue with Google
       </button>
     </div>
   )
