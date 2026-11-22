@@ -54,14 +54,14 @@ export function Faq() {
       <h2 className="text-[34px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em] max-w-[14ch]">
         Questions before you connect Gmail
       </h2>
-      <div className="border-y border-[#E9D9C8] divide-y divide-[#E9D9C8]">
+      <div className="border-y border-line-2 divide-y divide-line-2">
         {FAQS.map(({ question, answer }) => (
           <details key={question} className="group">
             <summary className="flex items-center justify-between gap-4 py-5 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[17px] font-semibold">
               {question}
-              <Plus className="w-5 h-5 shrink-0 text-[#6B7280] transition-transform group-open:rotate-45 motion-reduce:transition-none" />
+              <Plus className="w-5 h-5 shrink-0 text-muted transition-transform group-open:rotate-45 motion-reduce:transition-none" />
             </summary>
-            <p className="pb-5 -mt-1 text-[16px] leading-[1.6] text-[#6B7280] max-w-[62ch]">{answer}</p>
+            <p className="pb-5 -mt-1 text-[16px] leading-[1.6] text-muted max-w-[62ch]">{answer}</p>
           </details>
         ))}
       </div>

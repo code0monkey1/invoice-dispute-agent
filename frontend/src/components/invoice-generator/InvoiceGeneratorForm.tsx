@@ -11,7 +11,7 @@ interface Props {
   onLineItemsChange: (items: LineItem[]) => void;
 }
 
-const field = 'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none';
+const field = 'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-ink focus:ring-1 focus:ring-ink outline-none';
 const legend = 'text-xs uppercase font-semibold text-slate-500 tracking-wider mb-2';
 
 export function InvoiceGeneratorForm({ data, errors, onSenderChange, onField, onLineItemsChange }: Props) {

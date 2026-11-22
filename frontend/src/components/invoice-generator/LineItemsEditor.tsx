@@ -124,7 +124,7 @@ export function LineItemsEditor({ items, onChange }: Props) {
       <button
         type="button"
         onClick={addRow}
-        className="mt-3 inline-flex items-center gap-1 text-sm text-violet-600 hover:text-violet-700 font-medium"
+        className="mt-3 inline-flex items-center gap-1 text-sm text-coral-text hover:text-ink font-medium"
       >
         <Plus className="w-4 h-4" /> Add line
       </button>

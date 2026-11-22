@@ -35,11 +35,11 @@ export default function MessageBubble({ message }: { message: Message }) {
   if (isAI && !content && message.tool_calls?.length) {
     return (
       <div className="flex items-center gap-2 text-xs text-gray-400 py-1.5 px-5 font-medium">
-        <div className="w-5 h-5 rounded-md bg-violet-50 flex items-center justify-center">
-          <Wrench className="w-3 h-3 text-violet-400" />
+        <div className="w-5 h-5 rounded-md bg-tint flex items-center justify-center">
+          <Wrench className="w-3 h-3 text-muted" />
         </div>
         Using {message.tool_calls.map(tc => (
-          <span key={tc.name} className="text-violet-500 font-semibold">{tc.name}</span>
+          <span key={tc.name} className="text-body font-semibold">{tc.name}</span>
         ))}...
       </div>
     )
@@ -59,10 +59,10 @@ export default function MessageBubble({ message }: { message: Message }) {
 
     return (
       <div className="flex justify-start px-5 mb-4">
-        <div className="max-w-[75%] bg-white border border-indigo-100 border-l-4 border-l-indigo-500 rounded-xl p-4 shadow-sm">
+        <div className="max-w-[75%] bg-white border border-line border-l-4 border-l-ink rounded-xl p-4 shadow-card">
           <div className="flex items-center gap-2 mb-2">
-            <Mail className="w-4 h-4 text-indigo-400" />
-            <span className="text-xs font-semibold text-indigo-500 uppercase tracking-wider">Client Reply</span>
+            <Mail className="w-4 h-4 text-ink" />
+            <span className="text-xs font-semibold text-ink uppercase tracking-wider">Client reply</span>
           </div>
           {fromLine && <p className="text-xs text-gray-400 mb-1">From: {fromLine}</p>}
           {subjectLine && <p className="text-sm font-semibold text-gray-700 mb-2">{subjectLine}</p>}
@@ -76,8 +76,8 @@ export default function MessageBubble({ message }: { message: Message }) {
   if (isTool) {
     return (
       <div className="mx-5 my-2">
-        <div className="bg-gradient-to-br from-violet-50/80 to-purple-50/50 border border-violet-100 rounded-xl px-4 py-3 text-xs">
-          <div className="flex items-center gap-1.5 text-violet-500 mb-2 font-semibold uppercase tracking-wider text-[10px]">
+        <div className="bg-tint border border-line rounded-xl px-4 py-3 text-xs">
+          <div className="flex items-center gap-1.5 text-body mb-2 font-semibold uppercase tracking-wider text-xs">
             <Wrench className="w-3 h-3" />
             {message.name || 'Tool Result'}
           </div>
@@ -93,19 +93,19 @@ export default function MessageBubble({ message }: { message: Message }) {
   return (
     <div className={`flex gap-3 px-5 py-3 ${isUser ? 'justify-end' : ''}`}>
       {!isUser && (
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-orange-200/40">
-          <Bot className="w-4 h-4 text-white" />
+        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-coral to-coral-2 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-card">
+          <Bot className="w-4 h-4 text-ink" />
         </div>
       )}
-      <div className={`max-w-[75%] min-w-0 rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+      <div className={`max-w-[75%] min-w-0 rounded-xl px-4 py-3 text-sm leading-relaxed ${
         isUser
-          ? 'bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] text-white shadow-md shadow-orange-200/30 rounded-br-md'
-          : 'bg-white text-gray-700 border border-gray-100 shadow-sm rounded-bl-md'
+          ? 'bg-gradient-to-br from-coral to-coral-2 text-ink shadow-card rounded-br-md'
+          : 'bg-white text-gray-700 border border-gray-100 shadow-card rounded-bl-md'
       }`}>
         {isAI ? <Markdown>{content}</Markdown> : <p className="whitespace-pre-wrap">{content}</p>}
       </div>
       {isUser && (
-        <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-500 flex items-center justify-center flex-shrink-0 mt-0.5 shadow-md shadow-teal-200/40">
+        <div className="w-8 h-8 rounded-xl bg-ink flex items-center justify-center flex-shrink-0 mt-0.5">
           <User className="w-4 h-4 text-white" />
         </div>
       )}

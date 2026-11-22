@@ -20,11 +20,11 @@ const FILTERS: { id: Filter; label: string; match: (kind: InvoiceStatusKind) => 
 ]
 
 const STATUS_STYLE: Record<InvoiceStatusKind, { dot: string; text: string }> = {
-  you: { dot: 'bg-[#FF6B35]', text: 'text-[#B4410E] font-semibold' },
-  client: { dot: 'bg-[#111827]', text: 'text-[#111827] font-semibold' },
-  agent: { dot: 'bg-[#C9B8A6]', text: 'text-[#6B7280]' },
-  promised: { dot: 'bg-[#2563EB]', text: 'text-[#1D4ED8] font-semibold' },
-  paid: { dot: 'bg-[#1F7A55]', text: 'text-[#1F7A55] font-semibold' },
+  you: { dot: 'bg-coral', text: 'text-[#B4410E] font-semibold' },
+  client: { dot: 'bg-ink', text: 'text-ink font-semibold' },
+  agent: { dot: 'bg-[#C9B8A6]', text: 'text-muted' },
+  promised: { dot: 'bg-ink', text: 'text-ink font-semibold' },
+  paid: { dot: 'bg-green', text: 'text-green font-semibold' },
 }
 
 interface InvoiceTableProps {
@@ -72,20 +72,20 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                 onClick={() => setFilter(f.id)}
                 aria-pressed={selected}
                 className={`rounded-full px-3.5 py-1.5 text-[14px] font-semibold border transition-colors ${
-                  selected ? 'bg-[#111827] text-white border-[#111827]' : 'bg-white border-[#F1E4D8] text-[#374151] hover:border-[#111827]'
+                  selected ? 'bg-ink text-white border-ink' : 'bg-white border-line text-body hover:border-ink'
                 }`}
               >
-                {f.label} <span className={`tabular-nums ${selected ? 'text-white/70' : 'text-[#6B7280]'}`}>{count}</span>
+                {f.label} <span className={`tabular-nums ${selected ? 'text-white/70' : 'text-muted'}`}>{count}</span>
               </button>
             )
           })}
         </div>
       </div>
 
-      <div className="mt-4 rounded-[16px] bg-white border border-[#F1E4D8] overflow-hidden">
+      <div className="mt-4 rounded-xl bg-white border border-line overflow-hidden">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-[#F1E4D8] text-[14px] text-[#6B7280]">
+            <tr className="border-b border-line text-[14px] text-muted">
               <th className="font-medium px-5 py-3">Client</th>
               <th className="font-medium px-5 py-3 hidden md:table-cell">Invoice</th>
               <th className="font-medium px-5 py-3 text-right">Balance</th>
@@ -105,7 +105,7 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                   onClick={() => navigate(`/invoice/${inv.id}`)}
                   onMouseEnter={() => prefetch(inv.id)}
                   onFocus={() => prefetch(inv.id)}
-                  className="border-b last:border-b-0 border-[#F6EDE3] hover:bg-[#FFFAF5] cursor-pointer group"
+                  className="border-b last:border-b-0 border-[#F6EDE3] hover:bg-card cursor-pointer group"
                 >
                   <td className="px-5 py-4">
                     <Link
@@ -115,20 +115,20 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                     >
                       {inv.client_name}
                     </Link>
-                    <p className="text-[14px] text-[#6B7280] truncate max-w-[26ch]">{inv.client_email}</p>
+                    <p className="text-[14px] text-muted truncate max-w-[26ch]">{inv.client_email}</p>
                     <p className={`sm:hidden mt-1 text-[14px] flex items-center gap-1.5 ${style.text}`}>
                       <span className={`w-2 h-2 rounded-full ${style.dot}`} />
                       {status.label}
                     </p>
                   </td>
-                  <td className="px-5 py-4 hidden md:table-cell text-[15px] text-[#374151] tabular-nums">{inv.invoice_id || inv.id}</td>
+                  <td className="px-5 py-4 hidden md:table-cell text-[15px] text-body tabular-nums">{inv.invoice_id || inv.id}</td>
                   <td className="px-5 py-4 text-right">
                     <span className="text-[16px] font-semibold tabular-nums">{formatMoney(inv.balance_due ?? inv.invoice_amount)}</span>
                     {inv.amount_paid > 0 && (
-                      <p className="text-[13px] text-[#6B7280] tabular-nums">{formatMoney(inv.amount_paid)} paid</p>
+                      <p className="text-[13px] text-muted tabular-nums">{formatMoney(inv.amount_paid)} paid</p>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-right hidden md:table-cell text-[15px] text-[#374151] tabular-nums">
+                  <td className="px-5 py-4 text-right hidden md:table-cell text-[15px] text-body tabular-nums">
                     {formatOverdue(inv.days_overdue)}
                   </td>
                   <td className="px-5 py-4 hidden lg:table-cell">
@@ -147,13 +147,13 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                           <button
                             onClick={() => settle(inv.id)}
                             disabled={settlingId === inv.id}
-                            className="rounded-full px-3 py-1.5 text-[13px] font-semibold bg-[#1F7A55] text-white hover:bg-[#17603F] disabled:opacity-60"
+                            className="rounded-full px-3 py-1.5 text-[13px] font-semibold bg-green text-white hover:bg-[#17603F] disabled:opacity-60"
                           >
                             {settlingId === inv.id ? 'Settling…' : 'Yes, settled'}
                           </button>
                           <button
                             onClick={() => setConfirmingId(null)}
-                            className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-[#374151] hover:bg-[#F6EDE3]"
+                            className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-body hover:bg-[#F6EDE3]"
                           >
                             Cancel
                           </button>
@@ -162,14 +162,14 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                         <button
                           onClick={() => { setSettleError(null); setConfirmingId(inv.id) }}
                           title="The agent stops all work on this invoice"
-                          className="rounded-full px-3 py-1.5 text-[13px] font-semibold border border-[#F1E4D8] text-[#374151] hover:border-[#1F7A55] hover:text-[#1F7A55]"
+                          className="rounded-full px-3 py-1.5 text-[13px] font-semibold border border-line text-body hover:border-green hover:text-green"
                         >
                           Mark settled
                         </button>
                       )}
                     </td>
                   )}
-                  <td className="px-3 py-4 text-[#C9B8A6] group-hover:text-[#111827]">
+                  <td className="px-3 py-4 text-[#C9B8A6] group-hover:text-ink">
                     <ChevronRight className="w-5 h-5" />
                   </td>
                 </tr>
@@ -178,10 +178,10 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
           </tbody>
         </table>
         {settleError && (
-          <p role="alert" className="px-5 py-3 text-[14px] text-[#B42318] border-t border-[#F1E4D8]">{settleError}</p>
+          <p role="alert" className="px-5 py-3 text-[14px] text-[#B42318] border-t border-line">{settleError}</p>
         )}
         {visible.length === 0 && (
-          <p className="px-5 py-8 text-center text-[15px] text-[#6B7280]">No invoices here.</p>
+          <p className="px-5 py-8 text-center text-[15px] text-muted">No invoices here.</p>
         )}
       </div>
     </section>

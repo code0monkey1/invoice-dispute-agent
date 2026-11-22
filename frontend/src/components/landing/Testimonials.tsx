@@ -53,7 +53,7 @@ function Author({ t, size }: { t: Testimonial; size: 'lg' | 'sm' }) {
       />
       <div className="min-w-0">
         <p className="text-[16px] font-semibold">{t.name}</p>
-        <p className="text-[14px] text-[#6B7280]">{t.role}, {t.location}</p>
+        <p className="text-[14px] text-muted">{t.role}, {t.location}</p>
       </div>
     </figcaption>
   )
@@ -67,18 +67,18 @@ export function Testimonials() {
         <h2 className="text-[34px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em]">
           Loved by people who hate chasing
         </h2>
-        <p className="mt-4 text-[18px] leading-[1.6] text-[#6B7280]">
+        <p className="mt-4 text-[18px] leading-[1.6] text-muted">
           Freelancers who stopped writing "just following up" emails.
         </p>
       </div>
       <div className="mt-12 grid lg:grid-cols-[1.25fr_1fr] gap-10 lg:gap-16">
-        <figure className="border-l-4 border-[#FF6B35] pl-6 sm:pl-8 flex flex-col justify-between gap-8">
+        <figure className="border-l-4 border-coral pl-6 sm:pl-8 flex flex-col justify-between gap-8">
           <blockquote className="text-[24px] sm:text-[30px] font-semibold leading-[1.3] tracking-[-0.015em] max-w-[30ch]">
             “{FEATURED_TESTIMONIAL.quote}”
           </blockquote>
           <Author t={FEATURED_TESTIMONIAL} size="lg" />
         </figure>
-        <div className="divide-y divide-[#E9D9C8]">
+        <div className="divide-y divide-line-2">
           {TESTIMONIALS.map((t) => (
             <figure key={t.name} className="py-7 first:pt-0 last:pb-0 flex flex-col gap-5">
               <blockquote className="text-[17px] leading-[1.55]">“{t.quote}”</blockquote>

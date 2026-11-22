@@ -6,7 +6,7 @@ interface Props {
   errors?: Record<string, string>;
 }
 
-const fieldClasses = 'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-violet-500 focus:ring-1 focus:ring-violet-500 outline-none';
+const fieldClasses = 'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-ink focus:ring-1 focus:ring-ink outline-none';
 
 export function SenderProfileSection({ value, onChange, errors = {} }: Props) {
   const set = <K extends keyof SenderProfile>(key: K, v: SenderProfile[K]) =>

@@ -78,4 +78,34 @@ describe('MessageBubble', () => {
     expect(screen.getByText('**urgent** will pay Friday')).toBeInTheDocument();
     expect(container.querySelector('strong')).toBeNull();
   });
+
+  it('marks a client reply by structure (ink rule, mail icon, label), not by hue', () => {
+    const { container } = render(
+      <MessageBubble
+        message={{
+          type: 'HumanMessage',
+          content: '[INCOMING CLIENT REPLY]\nFrom: client@example.com\nSubject: Re: Invoice\n\nWe will pay Friday.',
+        }}
+      />,
+    );
+    expect(screen.getByText('Client reply')).toBeInTheDocument();
+    const bubble = container.querySelector('.border-l-ink');
+    expect(bubble).not.toBeNull();
+    expect(bubble).toHaveClass('border-l-4');
+    expect(bubble?.querySelector('svg')).not.toBeNull();
+    expect(container.innerHTML).not.toMatch(/violet|indigo|purple/);
+  });
+
+  it('shows tool calls and tool results on neutral surfaces', () => {
+    const { container } = render(
+      <>
+        <MessageBubble message={{ type: 'AIMessage', content: '', tool_calls: [{ name: 'draft_reminder', args: {} }] }} />
+        <MessageBubble message={{ type: 'ToolMessage', name: 'draft_reminder', content: 'done' }} />
+      </>,
+    );
+    expect(screen.getByText('draft_reminder', { selector: 'span' })).toBeInTheDocument();
+    expect(container.innerHTML).toMatch(/bg-tint/);
+    expect(container.innerHTML).not.toMatch(/violet|purple|teal|indigo/);
+  });
 });
+

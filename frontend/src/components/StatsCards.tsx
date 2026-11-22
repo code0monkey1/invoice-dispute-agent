@@ -14,10 +14,10 @@ export default function StatsCards({ invoices }: { invoices: Invoice[] }) {
   ]
 
   return (
-    <dl className="grid grid-cols-1 sm:grid-cols-3 border-y border-[#F1E4D8] divide-y sm:divide-y-0 sm:divide-x divide-[#F1E4D8]">
+    <dl className="grid grid-cols-1 sm:grid-cols-3 border-y border-line divide-y sm:divide-y-0 sm:divide-x divide-line">
       {figures.map((f) => (
         <div key={f.label} className="py-5 sm:px-6 sm:first:pl-0">
-          <dt className="text-[15px] text-[#6B7280]">{f.label}</dt>
+          <dt className="text-[15px] text-muted">{f.label}</dt>
           <dd className="mt-1 text-[28px] font-bold tracking-[-0.02em] tabular-nums">{f.value}</dd>
         </div>
       ))}

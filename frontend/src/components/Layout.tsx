@@ -9,14 +9,14 @@ export default function Layout({ children }: { children: ReactNode }) {
   const { user, isGuest, signOut } = useAuth()
 
   return (
-    <div className="lp min-h-screen bg-[#FFF7F0] text-[#111827]">
-      <header className="sticky top-0 z-50 bg-[#FFF7F0]/90 backdrop-blur border-b border-[#F1E4D8]">
+    <div className="lp min-h-screen bg-page text-ink">
+      <header className="sticky top-0 z-50 bg-page/90 backdrop-blur border-b border-line">
         <div className="max-w-[1180px] mx-auto px-4 sm:px-8 h-16 flex items-center justify-between gap-4">
           <Link to="/dashboard" className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-[10px] bg-gradient-to-br from-[#FF6B35] to-[#FF8F65] text-white shadow-md shadow-orange-300/40 flex items-center justify-center">
+            <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-coral to-coral-2 text-ink shadow-card flex items-center justify-center">
               <Zap className="w-4 h-4" strokeWidth={2.5} />
             </span>
-            <span className="font-bold text-[19px] tracking-tight">Invoice<span className="text-[#FF6B35]">Chaser</span></span>
+            <span className="font-bold text-[19px] tracking-tight">Invoice<span className="text-coral-text">Chaser</span></span>
           </Link>
 
           {user && (
@@ -28,17 +28,17 @@ export default function Layout({ children }: { children: ReactNode }) {
                   <User className="w-4 h-4" />
                 </span>
               )}
-              <span className="hidden sm:inline text-[15px] text-[#374151]">
+              <span className="hidden sm:inline text-[15px] text-body">
                 {isGuest ? (
                   <>
                     {user.name || 'Guest'}
-                    <span className="ml-2 rounded-full bg-[#F6EDE3] text-[#6B7280] text-[13px] font-medium px-2 py-0.5">Demo</span>
+                    <span className="ml-2 rounded-full bg-[#F6EDE3] text-muted text-[13px] font-medium px-2 py-0.5">Demo</span>
                   </>
                 ) : (
                   user.email
                 )}
               </span>
-              <button onClick={signOut} className="text-[15px] font-medium text-[#6B7280] hover:text-[#111827]">
+              <button onClick={signOut} className="text-[15px] font-medium text-muted hover:text-ink">
                 {isGuest ? 'Exit demo' : 'Sign out'}
               </button>
             </div>

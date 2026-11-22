@@ -17,9 +17,9 @@ const KIND_LABELS: Record<string, string> = {
 }
 
 const STATUS_STYLES: Record<string, { label: string; className: string }> = {
-  ok: { label: 'Done', className: 'bg-emerald-50 text-emerald-700' },
-  interrupted: { label: 'Waiting for approval', className: 'bg-amber-50 text-amber-700' },
-  error: { label: 'Failed', className: 'bg-red-50 text-red-700' },
+  ok: { label: 'Done', className: 'bg-green-bg text-green' },
+  interrupted: { label: 'Waiting for approval', className: 'bg-amber-bg text-amber' },
+  error: { label: 'Failed', className: 'bg-red-bg text-red' },
 }
 
 const DECISION_LABELS: Record<string, string> = {
@@ -78,7 +78,7 @@ function describeStep(step: TraceStep): StepView {
       const tokens = formatTokens(step.input_tokens, step.output_tokens)
       return {
         icon: Cpu,
-        tone: 'text-violet-600 bg-violet-50',
+        tone: 'text-coral-text bg-tint',
         title: 'Model call',
         detail: calls.length ? `→ calls ${calls.map((c) => c.name).join(', ')}` : snippet(p.response || p.error || ''),
         meta: [`${offered.length} tools offered`, `level ${p.level ?? '?'}`, ...meta, ...(tokens ? [tokens] : [])],
@@ -86,23 +86,23 @@ function describeStep(step: TraceStep): StepView {
     }
     case 'tool_call':
       return p.status === 'error'
-        ? { icon: Wrench, tone: 'text-red-600 bg-red-50', title: `Tool ${step.name} failed`, detail: snippet(p.error ?? p.result), meta }
-        : { icon: Wrench, tone: 'text-sky-600 bg-sky-50', title: `Tool ${step.name}`, detail: snippet(p.result), meta }
+        ? { icon: Wrench, tone: 'text-red bg-red-bg', title: `Tool ${step.name} failed`, detail: snippet(p.error ?? p.result), meta }
+        : { icon: Wrench, tone: 'text-body bg-tint', title: `Tool ${step.name}`, detail: snippet(p.result), meta }
     case 'gate_blocked':
       return {
         icon: ShieldAlert,
-        tone: 'text-red-600 bg-red-50',
+        tone: 'text-red bg-red-bg',
         title: `Refused ${step.name}: not available at level ${p.level ?? '?'}`,
         meta,
       }
     case 'interrupt':
-      return { icon: PauseCircle, tone: 'text-amber-600 bg-amber-50', title: `Waiting for approval: ${step.name}`, meta }
+      return { icon: PauseCircle, tone: 'text-amber bg-amber-bg', title: `Waiting for approval: ${step.name}`, meta }
     case 'human_decision': {
       const decision = String(p.decision ?? '')
       const similarity = typeof p.similarity === 'number' ? ` (${Math.round(p.similarity * 100)}% unchanged)` : ''
       return {
         icon: UserCheck,
-        tone: 'text-emerald-600 bg-emerald-50',
+        tone: 'text-green bg-green-bg',
         title: `${DECISION_LABELS[decision] ?? decision}${similarity}`,
         detail: p.feedback ? `“${snippet(p.feedback)}”` : step.name ?? undefined,
         meta,
@@ -112,14 +112,14 @@ function describeStep(step: TraceStep): StepView {
       const status = String(p.status ?? '')
       return {
         icon: Mail,
-        tone: status === 'sent' ? 'text-teal-600 bg-teal-50' : 'text-gray-600 bg-gray-100',
+        tone: status === 'sent' ? 'text-green bg-green-bg' : 'text-body bg-tint',
         title: EMAIL_LABELS[status] ?? `Email: ${status}`,
         detail: p.subject ? String(p.subject) : undefined,
         meta,
       }
     }
     default:
-      return { icon: Cpu, tone: 'text-gray-600 bg-gray-100', title: `${step.type} ${step.name ?? ''}`.trim(), meta }
+      return { icon: Cpu, tone: 'text-body bg-tint', title: `${step.type} ${step.name ?? ''}`.trim(), meta }
   }
 }
 
@@ -140,12 +140,12 @@ function RunCard({ run }: { run: TraceRun }) {
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-orange-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B35]/40"
+        className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-orange-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-coral/40"
       >
         {open ? <ChevronDown className="w-4 h-4 text-gray-400" aria-hidden /> : <ChevronRight className="w-4 h-4 text-gray-400" aria-hidden />}
         <span className="text-sm font-bold text-gray-800">{KIND_LABELS[run.kind] ?? run.kind}</span>
-        <span className={`text-[10px] font-bold uppercase tracking-wider rounded-md px-1.5 py-0.5 ${status.className}`}>{status.label}</span>
-        <span className="ml-auto flex flex-wrap items-center gap-x-3 text-[11px] font-medium text-gray-500 tabular-nums">
+        <span className={`text-xs font-bold uppercase tracking-wider rounded-md px-1.5 py-0.5 ${status.className}`}>{status.label}</span>
+        <span className="ml-auto flex flex-wrap items-center gap-x-3 text-xs font-medium text-gray-500 tabular-nums">
           {run.level_start != null && <span>Level {run.level_start}</span>}
           {latency && <span>{latency}</span>}
           {tokens && <span>{tokens}</span>}
@@ -175,7 +175,7 @@ function RunCard({ run }: { run: TraceRun }) {
                       <p className="text-xs font-bold text-gray-700">{view.title}</p>
                       {view.detail && <p className="mt-0.5 text-xs text-gray-500 break-words">{view.detail}</p>}
                       {view.meta.length > 0 && (
-                        <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wider text-gray-400">{view.meta.join(' · ')}</p>
+                        <p className="mt-0.5 text-xs font-medium uppercase tracking-wider text-gray-400">{view.meta.join(' · ')}</p>
                       )}
                     </div>
                   </li>
@@ -185,7 +185,7 @@ function RunCard({ run }: { run: TraceRun }) {
           ) : (
             <p className="text-xs italic text-gray-400">No steps were recorded for this run.</p>
           )}
-          <p className="mt-3 text-[10px] text-gray-400 font-mono break-all">
+          <p className="mt-3 text-xs text-gray-400 font-mono break-all">
             run {run.id}{run.prompt_version ? ` · prompt ${run.prompt_version}` : ''}{run.model ? ` · ${run.model}` : ''}
           </p>
         </div>

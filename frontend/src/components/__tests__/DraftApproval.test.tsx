@@ -100,3 +100,27 @@ describe('DraftApproval notes', () => {
     expect(onApprove).toHaveBeenCalledExactlyOnceWith(draft);
   });
 });
+
+describe('DraftApproval approval treatment', () => {
+  it('uses the coral approval button, not green, for draft and payment approvals', () => {
+    const { unmount } = render(
+      <DraftApproval interrupt={interrupt} onApprove={vi.fn()} onReject={vi.fn()} loading={false} />,
+    );
+    const approve = screen.getByRole('button', { name: /approve & send/i });
+    expect(approve).toHaveClass('btn-coral');
+    expect(approve.className).not.toMatch(/emerald|green/);
+    unmount();
+
+    render(
+      <DraftApproval
+        interrupt={{ tool: 'mark_invoice_pending', args: {}, description: '' }}
+        onApprove={vi.fn()}
+        onReject={vi.fn()}
+        loading={false}
+      />,
+    );
+    const confirm = screen.getByRole('button', { name: /confirm/i });
+    expect(confirm).toHaveClass('btn-coral');
+    expect(confirm.className).not.toMatch(/emerald|green/);
+  });
+});
