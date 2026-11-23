@@ -101,7 +101,7 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
               <h2 className="text-lg font-bold text-ink">New Invoice Dispute</h2>
               <p className="text-ink/70 text-xs mt-0.5">Upload an invoice or enter the details manually</p>
             </div>
-            <button onClick={onClose} className="text-ink/60 hover:text-ink transition-colors p-1 rounded-lg hover:bg-white/20">
+            <button type="button" onClick={onClose} aria-label="Close" className="text-ink/60 hover:text-ink transition-colors p-2.5 -m-2.5 rounded-lg hover:bg-white/20">
               <X className="w-5 h-5" />
             </button>
           </div>
@@ -130,10 +130,10 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
                 {uploadedFile ? <FileText className="w-5 h-5 text-coral-text" /> : <Upload className="w-5 h-5 text-coral-text" />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-gray-800">
+                <p className="text-sm font-bold text-ink">
                   {uploadedFile ? uploadedFile.name : 'Upload PDF or DOCX invoice'}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-muted mt-0.5">
                   {parsing ? 'Reading invoice...' : 'Extracted fields can be reviewed before creating the dispute'}
                 </p>
               </div>
@@ -161,8 +161,9 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {fields.map(({ key, label, placeholder, type, required }) => (
               <div key={key} className={key === 'client_email' ? 'sm:col-span-2' : undefined}>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{label}</label>
+                <label htmlFor={`inv-${key}`} className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1.5">{label}</label>
                 <input
+                  id={`inv-${key}`}
                   type={type}
                   required={required}
                   min={type === 'number' ? 0 : undefined}
@@ -170,7 +171,7 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
                   placeholder={placeholder}
                   value={form[key]}
                   onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral/50 transition-all"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral/50 transition-colors"
                 />
               </div>
             ))}

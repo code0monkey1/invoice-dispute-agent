@@ -13,9 +13,9 @@ import { usePrefetchConversation } from '../hooks/usePrefetchConversation'
 import type { Invoice } from '../types'
 
 const primaryButton =
-  'inline-flex items-center justify-center gap-2 btn-coral rounded-lg font-semibold text-[15px] px-4 py-2.5 shadow-card'
+  'inline-flex items-center justify-center gap-2 btn-coral rounded-lg font-semibold text-[16px] px-4 py-2.5 shadow-card'
 const secondaryButton =
-  'inline-flex items-center justify-center gap-2 rounded-lg bg-white border border-line text-ink font-semibold text-[15px] px-4 py-2.5 hover:border-ink'
+  'inline-flex items-center justify-center gap-2 rounded-lg bg-white border border-line text-ink font-semibold text-[16px] px-4 py-2.5 hover:border-ink'
 
 // ─── Waiting for you ─────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ function ApprovalQueue({ invoices }: { invoices: Invoice[] }) {
       <h2 id="queue-title" className="text-[20px] font-semibold flex items-center gap-2.5">
         Waiting for you
         {waiting.length > 0 && (
-          <span className="rounded-full bg-coral text-ink text-[13px] font-semibold px-2 py-0.5 tabular-nums">{waiting.length}</span>
+          <span className="rounded-full bg-coral text-ink text-[14px] font-semibold px-2 py-0.5 tabular-nums">{waiting.length}</span>
         )}
       </h2>
 
@@ -45,11 +45,11 @@ function ApprovalQueue({ invoices }: { invoices: Invoice[] }) {
             return (
               <li
                 key={inv.id}
-                className="rounded-xl bg-white border border-[#FFCFB8] border-l-4 border-l-coral px-5 py-4 grid sm:grid-cols-[1fr_auto] gap-3 sm:gap-6 items-center"
+                className="rounded-xl bg-white border border-coral/50 px-5 py-4 grid sm:grid-cols-[1fr_auto] gap-3 sm:gap-6 items-center"
               >
                 <div className="min-w-0">
                   <p className="text-[16px] font-semibold">{status.label}</p>
-                  <p className="mt-0.5 text-[15px] text-muted truncate">
+                  <p className="mt-0.5 text-[16px] text-muted truncate">
                     <span className="font-medium text-body">{inv.client_name}</span>
                     {`, ${inv.invoice_id}, ${formatMoney(inv.balance_due ?? inv.invoice_amount)} outstanding`}
                   </p>
@@ -83,7 +83,7 @@ function EmptyState({ onChase, onCreate }: { onChase: () => void; onCreate: () =
         <h2 className="text-[28px] sm:text-[34px] font-bold leading-[1.1] tracking-[-0.02em] max-w-[18ch]">
           Start with the invoice you already sent
         </h2>
-        <p className="mt-3 text-[17px] leading-[1.6] text-muted max-w-[44ch]">
+        <p className="mt-3 text-[18px] leading-[1.6] text-muted max-w-[44ch]">
           Drop in the PDF and the agent fills in the client, amount and due date, then starts chasing. You approve every email before it's sent.
         </p>
         <div className="mt-6 flex flex-col sm:flex-row gap-3">
@@ -104,7 +104,7 @@ function EmptyState({ onChase, onCreate }: { onChase: () => void; onCreate: () =
         <span className="w-12 h-12 rounded-lg bg-white border border-line flex items-center justify-center">
           <FileUp className="w-5 h-5 text-coral-text" />
         </span>
-        <span className="text-[17px] font-semibold">Drop in an invoice PDF</span>
+        <span className="text-[18px] font-semibold">Drop in an invoice PDF</span>
         <span className="text-[14px] text-muted">PDF or DOCX, up to 10 MB</span>
       </button>
     </section>
@@ -159,7 +159,7 @@ export default function Dashboard() {
           <h1 className="text-[34px] sm:text-[40px] font-bold leading-[1.1] tracking-[-0.025em]">
             {firstName ? `Hi ${firstName}.` : 'Hi there.'}
           </h1>
-          <p className="mt-2 text-[17px] text-muted">Here's where your invoices stand.</p>
+          <p className="mt-2 text-[18px] text-muted">Here's where your invoices stand.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-3">
           <button onClick={openForm} className={primaryButton}>
@@ -175,7 +175,7 @@ export default function Dashboard() {
 
       {isGuest && (
         <div className="rounded-xl bg-white border border-line px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
-          <p className="flex items-start gap-2.5 text-[15px] leading-[1.5] text-body flex-1">
+          <p className="flex items-start gap-2.5 text-[16px] leading-[1.5] text-body flex-1">
             <Info className="w-4 h-4 mt-1 shrink-0 text-muted" />
             You're trying the demo. Your invoices stay in this browser session, and no emails are sent.
           </p>
@@ -187,7 +187,7 @@ export default function Dashboard() {
 
       {!isGuest && user && !user.gmail_connected && (
         <div className="rounded-xl bg-white border border-line px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
-          <p className="flex items-start gap-2.5 text-[15px] leading-[1.5] text-body flex-1">
+          <p className="flex items-start gap-2.5 text-[16px] leading-[1.5] text-body flex-1">
             <Mail className="w-4 h-4 mt-1 shrink-0 text-muted" />
             Connect Gmail so approved emails go out from your own address. InvoiceChaser only asks permission to send, never to read your inbox.
           </p>
@@ -200,7 +200,7 @@ export default function Dashboard() {
       {fetchLoading ? (
         <div className="py-16 text-center" role="status">
           <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-line border-t-coral animate-spin motion-reduce:animate-none" />
-          <p className="text-[15px] text-muted">Loading your invoices…</p>
+          <p className="text-[16px] text-muted">Loading your invoices…</p>
         </div>
       ) : invoices.length === 0 ? (
         <EmptyState onChase={openForm} onCreate={openGenerator} />

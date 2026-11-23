@@ -75,11 +75,11 @@ export function SituationSelector() {
                   selected ? `bg-white border-line ${item.edge} shadow-card` : 'bg-transparent border-transparent hover:bg-white/60'
                 }`}
               >
-                <span className="flex items-center gap-2 text-[17px] font-semibold">
+                <span className="flex items-center gap-2 text-[18px] font-semibold">
                   <span className={`w-2.5 h-2.5 rounded-full ${item.solid}`} />
                   {item.label}
                 </span>
-                <span className="mt-0.5 block text-[15px] text-muted">{item.pain}</span>
+                <span className="mt-0.5 block text-[16px] text-muted">{item.pain}</span>
               </button>
             )
           })}
@@ -97,13 +97,13 @@ export function SituationSelector() {
               <s.icon className="w-4 h-4" />
             </span>
             <span className="text-[18px] font-semibold">Level {s.level}: {s.name}</span>
-            <span className="text-[15px] text-body">{s.when}</span>
+            <span className="text-[16px] text-body">{s.when}</span>
           </div>
 
           <div className="mt-5 grid lg:grid-cols-[1.4fr_1fr] gap-6">
             <div className="rounded-lg border border-line bg-card">
               <p className="px-4 pt-3 text-[14px] text-muted">To sam@clientco.com</p>
-              <p className="px-4 pt-0.5 text-[15px] font-semibold">{s.email.subject}</p>
+              <p className="px-4 pt-0.5 text-[16px] font-semibold">{s.email.subject}</p>
               <div className="font-serif px-4 pt-2 pb-4 text-[16px] leading-[1.6] space-y-1.5">
                 {s.email.body.map((line) => <p key={line}>{line}</p>)}
               </div>
@@ -120,7 +120,7 @@ export function SituationSelector() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-5 flex items-center gap-2 text-[15px] font-semibold">
+              <p className="mt-5 flex items-center gap-2 text-[16px] font-semibold">
                 <ShieldCheck className="w-4 h-4 text-green" />
                 You approve before it sends
               </p>

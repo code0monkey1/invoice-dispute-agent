@@ -79,7 +79,7 @@ describe('MessageBubble', () => {
     expect(container.querySelector('strong')).toBeNull();
   });
 
-  it('marks a client reply by structure (ink rule, mail icon, label), not by hue', () => {
+  it('marks a client reply by structure (ink border, mail icon, label), not by hue', () => {
     const { container } = render(
       <MessageBubble
         message={{
@@ -89,9 +89,9 @@ describe('MessageBubble', () => {
       />,
     );
     expect(screen.getByText('Client reply')).toBeInTheDocument();
-    const bubble = container.querySelector('.border-l-ink');
+    const bubble = container.querySelector('.border-ink\\/40');
     expect(bubble).not.toBeNull();
-    expect(bubble).toHaveClass('border-l-4');
+    expect(bubble).not.toHaveClass('border-l-4');
     expect(bubble?.querySelector('svg')).not.toBeNull();
     expect(container.innerHTML).not.toMatch(/violet|indigo|purple/);
   });

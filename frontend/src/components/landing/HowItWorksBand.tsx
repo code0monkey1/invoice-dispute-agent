@@ -19,7 +19,7 @@ export function HowItWorksBand() {
           {BAND_STEPS.map((step, i) => (
             <li key={step.title} className="flex gap-4">
               <span
-                className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center text-[17px] font-bold ${
+                className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center text-[18px] font-bold ${
                   step.you ? 'bg-coral text-ink' : 'bg-white text-ink'
                 }`}
               >

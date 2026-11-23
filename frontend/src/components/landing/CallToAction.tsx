@@ -53,12 +53,12 @@ export function StickyCta({ onGoogle, onGuest }: CtaProps) {
         visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
       }`}
     >
-      <p className="hidden md:block text-[15px] font-semibold whitespace-nowrap">Have an overdue invoice?</p>
+      <p className="hidden md:block text-[16px] font-semibold whitespace-nowrap">Have an overdue invoice?</p>
       <div className="flex flex-1 sm:flex-none gap-2">
-        <button onClick={onGuest} tabIndex={visible ? 0 : -1} className={`${demoButton} flex-1 sm:flex-none text-[15px] px-4 py-2.5`}>
+        <button onClick={onGuest} tabIndex={visible ? 0 : -1} className={`${demoButton} flex-1 sm:flex-none text-[16px] px-4 py-2.5`}>
           Try the demo
         </button>
-        <button onClick={onGoogle} tabIndex={visible ? 0 : -1} className={`${googleButton} flex-1 sm:flex-none text-[15px] px-4 py-2.5`}>
+        <button onClick={onGoogle} tabIndex={visible ? 0 : -1} className={`${googleButton} flex-1 sm:flex-none text-[16px] px-4 py-2.5`}>
           <GoogleIcon />
           Sign in
         </button>

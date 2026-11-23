@@ -34,7 +34,7 @@ export default function MessageBubble({ message }: { message: Message }) {
   // Tool call trigger (no content, just calling tools)
   if (isAI && !content && message.tool_calls?.length) {
     return (
-      <div className="flex items-center gap-2 text-xs text-gray-400 py-1.5 px-5 font-medium">
+      <div className="flex items-center gap-2 text-xs text-muted py-1.5 px-5 font-medium">
         <div className="w-5 h-5 rounded-md bg-tint flex items-center justify-center">
           <Wrench className="w-3 h-3 text-muted" />
         </div>
@@ -59,14 +59,14 @@ export default function MessageBubble({ message }: { message: Message }) {
 
     return (
       <div className="flex justify-start px-5 mb-4">
-        <div className="max-w-[75%] bg-white border border-line border-l-4 border-l-ink rounded-xl p-4 shadow-card">
+        <div className="max-w-[75%] bg-white border border-ink/40 rounded-xl p-4 shadow-card">
           <div className="flex items-center gap-2 mb-2">
             <Mail className="w-4 h-4 text-ink" />
             <span className="text-xs font-semibold text-ink uppercase tracking-wider">Client reply</span>
           </div>
-          {fromLine && <p className="text-xs text-gray-400 mb-1">From: {fromLine}</p>}
-          {subjectLine && <p className="text-sm font-semibold text-gray-700 mb-2">{subjectLine}</p>}
-          {bodyText && <p className="text-sm text-gray-600 whitespace-pre-wrap leading-relaxed">{bodyText}</p>}
+          {fromLine && <p className="text-xs text-muted mb-1">From: {fromLine}</p>}
+          {subjectLine && <p className="text-sm font-semibold text-body mb-2">{subjectLine}</p>}
+          {bodyText && <p className="text-sm text-body whitespace-pre-wrap leading-relaxed">{bodyText}</p>}
         </div>
       </div>
     )
@@ -81,7 +81,7 @@ export default function MessageBubble({ message }: { message: Message }) {
             <Wrench className="w-3 h-3" />
             {message.name || 'Tool Result'}
           </div>
-          <pre className="text-gray-600 whitespace-pre-wrap font-mono leading-relaxed text-[13px]">
+          <pre className="text-body whitespace-pre-wrap font-mono leading-relaxed text-[14px]">
             {content}
           </pre>
         </div>
@@ -100,7 +100,7 @@ export default function MessageBubble({ message }: { message: Message }) {
       <div className={`max-w-[75%] min-w-0 rounded-xl px-4 py-3 text-sm leading-relaxed ${
         isUser
           ? 'bg-gradient-to-br from-coral to-coral-2 text-ink shadow-card rounded-br-md'
-          : 'bg-white text-gray-700 border border-gray-100 shadow-card rounded-bl-md'
+          : 'bg-white text-body border border-gray-100 shadow-card rounded-bl-md'
       }`}>
         {isAI ? <Markdown>{content}</Markdown> : <p className="whitespace-pre-wrap">{content}</p>}
       </div>

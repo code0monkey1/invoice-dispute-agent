@@ -12,7 +12,7 @@ interface Props {
 }
 
 const field = 'w-full rounded border border-slate-300 px-3 py-2 text-sm focus:border-ink focus:ring-1 focus:ring-ink outline-none';
-const legend = 'text-xs uppercase font-semibold text-slate-500 tracking-wider mb-2';
+const legend = 'text-xs uppercase font-semibold text-muted tracking-wider mb-2';
 
 export function InvoiceGeneratorForm({ data, errors, onSenderChange, onField, onLineItemsChange }: Props) {
   return (
@@ -34,24 +34,24 @@ export function InvoiceGeneratorForm({ data, errors, onSenderChange, onField, on
       <fieldset className="grid grid-cols-2 gap-3">
         <legend className={`${legend} col-span-2`}>Invoice details</legend>
         <div>
-          <label className="block text-xs text-slate-600 mb-1">Invoice number *</label>
+          <label className="block text-xs text-body mb-1">Invoice number *</label>
           <input className={field} value={data.meta.invoice_number}
                  onChange={e => onField('meta.invoice_number', e.target.value)} />
         </div>
         <div>
-          <label className="block text-xs text-slate-600 mb-1">Currency</label>
+          <label className="block text-xs text-body mb-1">Currency</label>
           <select className={field} value={data.meta.currency}
                   onChange={e => onField('meta.currency', e.target.value)}>
             {['USD','EUR','GBP','INR','CAD','AUD'].map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div>
-          <label className="block text-xs text-slate-600 mb-1">Issue date *</label>
+          <label className="block text-xs text-body mb-1">Issue date *</label>
           <input className={field} type="date" value={data.meta.issue_date}
                  onChange={e => onField('meta.issue_date', e.target.value)} />
         </div>
         <div>
-          <label className="block text-xs text-slate-600 mb-1">Due date *</label>
+          <label className="block text-xs text-body mb-1">Due date *</label>
           <input className={field} type="date" value={data.meta.due_date}
                  onChange={e => onField('meta.due_date', e.target.value)} />
           {errors['meta.due_date'] && <p className="text-xs text-rose-600">{errors['meta.due_date']}</p>}
@@ -67,7 +67,7 @@ export function InvoiceGeneratorForm({ data, errors, onSenderChange, onField, on
       <fieldset className="grid grid-cols-3 gap-3">
         <legend className={`${legend} col-span-3`}>Totals adjustments</legend>
         <div>
-          <label className="block text-xs text-slate-600 mb-1">Tax rate (%)</label>
+          <label className="block text-xs text-body mb-1">Tax rate (%)</label>
           <input className={field} inputMode="decimal" value={data.tax_rate_pct ?? ''}
                  onChange={e => {
                    const v = e.target.value;
@@ -76,7 +76,7 @@ export function InvoiceGeneratorForm({ data, errors, onSenderChange, onField, on
           {errors['tax_rate_pct'] && <p className="text-xs text-rose-600">{errors['tax_rate_pct']}</p>}
         </div>
         <div>
-          <label className="block text-xs text-slate-600 mb-1">Discount</label>
+          <label className="block text-xs text-body mb-1">Discount</label>
           <select className={field} value={data.discount?.kind ?? ''}
                   onChange={e => {
                     if (!e.target.value) onField('discount', undefined);
@@ -88,7 +88,7 @@ export function InvoiceGeneratorForm({ data, errors, onSenderChange, onField, on
           </select>
         </div>
         <div>
-          <label className="block text-xs text-slate-600 mb-1">Discount value</label>
+          <label className="block text-xs text-body mb-1">Discount value</label>
           <input className={field} inputMode="decimal" disabled={!data.discount}
                  value={data.discount?.value ?? ''}
                  onChange={e => onField('discount.value', Number(e.target.value))} />

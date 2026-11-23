@@ -14,7 +14,7 @@ export function InvoiceGenerator({ onTry }: { onTry: () => void }) {
           <h2 className="text-[30px] sm:text-[38px] font-bold leading-[1.1] tracking-[-0.02em] max-w-[16ch]">
             No invoice PDF yet? Make one here.
           </h2>
-          <p className="mt-4 text-[17px] leading-[1.6] text-muted max-w-[48ch]">
+          <p className="mt-4 text-[18px] leading-[1.6] text-muted max-w-[48ch]">
             Pick a template, add line items and a Stripe, Lemon Squeezy or PayPal link. The PDF goes straight to the agent.
           </p>
           <button onClick={onTry} className="mt-6 text-[16px] font-semibold underline underline-offset-4 decoration-ink/30 hover:decoration-ink">
@@ -51,7 +51,7 @@ export function InvoiceGenerator({ onTry }: { onTry: () => void }) {
             </div>
             <p className="mt-3 text-muted">Pay online: <span className="text-ink underline underline-offset-2">buy.stripe.com/…</span></p>
           </div>
-          <p className="mt-4 flex items-center gap-2 text-[15px] font-semibold text-green">
+          <p className="mt-4 flex items-center gap-2 text-[16px] font-semibold text-green">
             <FileDown className="w-4 h-4" />
             Downloaded. INV-043 is now with the agent.
           </p>

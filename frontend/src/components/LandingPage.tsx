@@ -52,7 +52,7 @@ export default function LandingPage() {
           <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-coral to-coral-2 text-ink shadow-card flex items-center justify-center">
             <Zap className="w-4 h-4" strokeWidth={2.5} />
           </span>
-          <span className="font-bold text-[19px] tracking-tight">Invoice<span className="text-coral-text">Chaser</span></span>
+          <span className="font-bold text-[20px] tracking-tight">Invoice<span className="text-coral-text">Chaser</span></span>
         </a>
         <nav aria-label="Main" className="flex items-center gap-4 sm:gap-6 text-[14px]">
           <a href="#how-it-works" className="hidden sm:inline text-body hover:text-ink">How it works</a>
@@ -74,7 +74,7 @@ export default function LandingPage() {
             <p className="mt-6 text-[18px] sm:text-[20px] leading-[1.5] text-body max-w-[42ch]">
               The agent drafts each reminder and escalates when needed. Your only step is approving an email before it sends.
             </p>
-            <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[15px] font-medium">
+            <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[16px] font-medium">
               {HERO_POINTS.map((point) => (
                 <li key={point} className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-green" strokeWidth={2.5} />
@@ -84,7 +84,7 @@ export default function LandingPage() {
             </ul>
             <div className="mt-8">
               <CtaButtons {...cta} />
-              <p className="mt-3 text-[15px] font-medium">Free to use. No credit card.</p>
+              <p className="mt-3 text-[16px] font-medium">Free to use. No credit card.</p>
               <p className="mt-3 flex gap-2 text-[14px] leading-[1.5] text-muted max-w-[44ch]">
                 <ShieldCheck className="w-4 h-4 mt-0.5 shrink-0" />
                 Send-only Gmail access. We can't read your inbox.
@@ -109,7 +109,7 @@ export default function LandingPage() {
               <h2 className="text-[32px] sm:text-[44px] font-bold leading-[1.08] tracking-[-0.02em] max-w-[18ch]">
                 Hand your next overdue invoice to the agent.
               </h2>
-              <p className="mt-3 text-[17px] text-line">No sign-up for the demo. You approve every email.</p>
+              <p className="mt-3 text-[18px] text-line">No sign-up for the demo. You approve every email.</p>
             </div>
             <CtaButtons {...cta} />
           </div>
@@ -117,7 +117,7 @@ export default function LandingPage() {
       </main>
 
       <footer className="max-w-[1180px] mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row gap-2 sm:gap-6 sm:items-center justify-between text-[14px] text-muted">
-        <span className="font-semibold text-ink text-[15px]">InvoiceChaser</span>
+        <span className="font-semibold text-ink text-[16px]">InvoiceChaser</span>
         <span className="flex flex-wrap gap-x-6 gap-y-1">
           <span>Made for freelancers and small studios</span>
           <span>Built with LangGraph, Groq, FastAPI and React</span>
@@ -129,10 +129,10 @@ export default function LandingPage() {
 
       {signInError && (
         <div role="alert" className="fixed bottom-4 inset-x-4 sm:inset-x-auto sm:right-6 sm:max-w-[420px] z-[110] rounded-xl bg-ink text-white px-5 py-4 shadow-pop flex items-start gap-4">
-          <p className="text-[15px] leading-[1.5]">
+          <p className="text-[16px] leading-[1.5]">
             Google sign-in isn't available right now. Try again in a moment, or try the demo.
           </p>
-          <button onClick={() => setSignInError(false)} aria-label="Dismiss" className="shrink-0 p-1 -m-1 text-white/70 hover:text-white">
+          <button onClick={() => setSignInError(false)} aria-label="Dismiss" className="shrink-0 p-2.5 -m-2.5 text-white/70 hover:text-white">
             <X className="w-5 h-5" />
           </button>
         </div>
