@@ -212,6 +212,12 @@ export default function Dashboard() {
         <EmptyState onChase={openForm} onCreate={openGenerator} />
       ) : (
         <>
+          {loadError && (
+            <div role="alert" className="rounded-xl bg-amber-bg px-5 py-3.5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+              <p className="text-[16px] leading-[1.5] text-amber flex-1">Couldn't refresh your invoices. What you see may be out of date.</p>
+              <button onClick={() => void refetch()} className={`${secondaryButton} shrink-0`}>Try again</button>
+            </div>
+          )}
           <ApprovalQueue invoices={invoices} />
           <StatsCards invoices={invoices} />
           <InvoiceTable invoices={invoices} onSettle={settleInvoice} />
