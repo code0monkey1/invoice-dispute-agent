@@ -278,14 +278,14 @@ export function AgentRun() {
               <button
                 onClick={togglePlaying}
                 aria-label={playing ? 'Pause the example' : 'Play the example'}
-                className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-tint"
+                className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-tint"
               >
                 {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               </button>
               <button
                 onClick={replay}
                 aria-label="Replay the example from the start"
-                className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-tint"
+                className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-tint"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -319,7 +319,7 @@ export function AgentRun() {
             </ol>
           </div>
 
-          <ol ref={logRef} className="h-[clamp(320px,52vh,440px)] overflow-y-auto px-5 @md:px-6 py-4 space-y-1">
+          <ol ref={logRef} className="@md:h-[clamp(320px,52vh,440px)] @md:overflow-y-auto px-5 @md:px-6 py-4 space-y-1">
             {RUN.slice(0, shown).map((event, i) => {
               const Icon = event.icon
               const isYou = event.who === 'you'

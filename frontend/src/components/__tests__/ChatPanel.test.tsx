@@ -157,7 +157,7 @@ describe('ChatPanel first-open invoice actions', () => {
     renderChat();
 
     expect(screen.queryByRole('button', { name: /create invoice email draft/i })).not.toBeInTheDocument();
-    expect(screen.getByText(/draft pending your approval/i)).toBeInTheDocument();
+    expect(screen.getByText(/review before this is sent/i)).toBeInTheDocument();
   });
 
   it('hides first-open actions after an outbound communication exists', async () => {

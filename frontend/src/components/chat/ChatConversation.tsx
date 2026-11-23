@@ -196,6 +196,8 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
               onApprove={approve}
               onReject={reject}
               loading={loading}
+              recipient={agentState?.client_email}
+              level={agentState?.escalation_level}
             />
           )}
           {loading && !interrupt && (

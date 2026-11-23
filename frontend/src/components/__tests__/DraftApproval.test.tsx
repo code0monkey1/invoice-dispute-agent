@@ -19,15 +19,16 @@ const interrupt: Interrupt = {
 
 describe('DraftApproval notes', () => {
   it('shows delivery and attachment notes separately from the email preview', () => {
-    const { container } = render(
+    render(
       <DraftApproval interrupt={interrupt} onApprove={vi.fn()} onReject={vi.fn()} loading={false} />,
     );
 
     for (const note of notes) {
       expect(screen.getByText(note)).toBeVisible();
-      expect(container.querySelector('pre')).not.toHaveTextContent(note);
+      expect(screen.getByTestId('draft-preview')).not.toHaveTextContent(note);
     }
-    expect(container.querySelector('pre')?.textContent).toBe(draft);
+    expect(screen.getByTestId('draft-preview')).toHaveTextContent('Final notice for INV-1');
+    expect(screen.getByTestId('draft-preview')).toHaveTextContent('Please pay the outstanding balance.');
   });
 
   it('approves only the email text when read-only notes are present', async () => {

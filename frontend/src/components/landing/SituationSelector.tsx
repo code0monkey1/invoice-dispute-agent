@@ -71,8 +71,8 @@ export function SituationSelector() {
                   if (e.key === 'ArrowDown' || e.key === 'ArrowRight') { e.preventDefault(); select(i + 1) }
                   if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') { e.preventDefault(); select(i - 1) }
                 }}
-                className={`text-left rounded-xl border border-l-4 px-4 py-3.5 transition-colors ${
-                  selected ? `bg-white border-line ${item.edge} shadow-card` : 'bg-transparent border-transparent hover:bg-white/60'
+                className={`text-left rounded-xl border px-4 py-3.5 transition-colors ${
+                  selected ? `bg-white border-line shadow-card` : 'bg-transparent border-transparent hover:bg-white/60'
                 }`}
               >
                 <span className="flex items-center gap-2 text-[18px] font-semibold">

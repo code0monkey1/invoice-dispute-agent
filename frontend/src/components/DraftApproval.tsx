@@ -29,7 +29,12 @@ interface Props {
   onApprove: (approvedDraft?: string) => void
   onReject: (message: string) => void
   loading: boolean
+  /** Who the email goes to, and the tone it is written in, shown before the owner approves. */
+  recipient?: string
+  level?: number
 }
+
+const LEVEL_NAMES: Record<number, string> = { 1: 'Friendly', 2: 'Formal', 3: 'Legal' }
 
 /** Parse a draft email string into editable sections. */
 function parseDraft(raw: string) {
@@ -106,7 +111,7 @@ function reassemble(parts: { subject: string; body: string; senderName: string; 
   return result
 }
 
-export default function DraftApproval({ interrupt, onApprove, onReject, loading }: Props) {
+export default function DraftApproval({ interrupt, onApprove, onReject, loading, recipient, level }: Props) {
   const paymentAction = PAYMENT_TOOLS[interrupt.tool]
   const initialDraft = interrupt.description || JSON.stringify(interrupt.args, null, 2)
   const [draftContent, setDraftContent] = useState(initialDraft)
@@ -205,11 +210,19 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
           </div>
           <div className="flex-1">
             <span className="text-sm font-bold text-coral-text">
-              Draft Pending Your Approval
+              Review before this is sent
             </span>
           </div>
           <FileText className="w-5 h-5 text-muted" />
         </div>
+
+        {(recipient || level) && (
+          <dl className="px-5 py-3 border-b border-line bg-white grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[14px]">
+            {recipient && (<><dt className="text-muted">To</dt><dd className="font-semibold text-ink break-all">{recipient}</dd></>)}
+            <dt className="text-muted">From</dt><dd className="text-ink">Your connected Gmail</dd>
+            {level ? (<><dt className="text-muted">Tone</dt><dd className="text-ink">{LEVEL_NAMES[level] ?? 'Friendly'}</dd></>) : null}
+          </dl>
+        )}
 
         {interrupt.notes && interrupt.notes.length > 0 && (
           <aside aria-label="Before sending" className="px-5 py-3 border-b border-line bg-amber-bg">
@@ -241,7 +254,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
                   id="draft-body"
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
-                  className="w-full bg-white border border-line-2 rounded-xl px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral min-h-[140px] font-mono leading-relaxed"
+                  className="w-full bg-white border border-line-2 rounded-xl px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral min-h-[160px] leading-relaxed"
                 />
               </div>
               {/* Signature fields */}
@@ -276,9 +289,13 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
               </div>
             </div>
           ) : (
-            <pre className="text-sm text-body whitespace-pre-wrap font-mono leading-relaxed">
-              {draftContent}
-            </pre>
+            <div data-testid="draft-preview" className="max-w-[65ch] text-[16px] text-ink leading-[1.6]">
+              {parsed.subject && <p className="font-semibold mb-3">{parsed.subject}</p>}
+              <p className="whitespace-pre-wrap text-body">{parsed.subject ? parsed.body : draftContent}</p>
+              {(parsed.senderName || parsed.business || parsed.email) && (
+                <p className="whitespace-pre-wrap text-body mt-3">{[parsed.senderName, parsed.business, parsed.email].filter(Boolean).join('\n')}</p>
+              )}
+            </div>
           )}
         </div>
 
@@ -326,31 +343,33 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
               </div>
             </div>
           ) : (
-            <div className="flex gap-3">
+            <div className="space-y-2">
               <button
                 onClick={() => onApprove(draftContent)}
                 disabled={loading}
-                className="flex-1 btn-coral inline-flex items-center justify-center gap-2 text-sm font-bold rounded-xl py-3 shadow-card"
+                className="w-full btn-coral inline-flex items-center justify-center gap-2 text-[16px] font-bold rounded-xl py-3.5 shadow-card"
               >
                 <Check className="w-4 h-4" strokeWidth={3} />
                 Approve & Send
               </button>
-              <button
-                onClick={handleStartEdit}
-                disabled={loading}
-                className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-tint disabled:opacity-50 disabled:cursor-not-allowed text-ink text-sm font-bold rounded-xl py-3 border-2 border-line-2 transition-colors"
-              >
-                <Pencil className="w-4 h-4" />
-                Edit Draft
-              </button>
-              <button
-                onClick={() => setShowReject(true)}
-                disabled={loading}
-                className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-red-bg disabled:opacity-50 disabled:cursor-not-allowed text-red text-sm font-bold rounded-xl py-3 transition-colors border-2 border-line-2"
-              >
-                <X className="w-4 h-4" strokeWidth={3} />
-                Reject
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleStartEdit}
+                  disabled={loading}
+                  className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-tint disabled:opacity-50 disabled:cursor-not-allowed text-ink text-sm font-semibold rounded-xl py-3 border border-line-2 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Edit Draft
+                </button>
+                <button
+                  onClick={() => setShowReject(true)}
+                  disabled={loading}
+                  className="flex-1 inline-flex items-center justify-center gap-2 hover:bg-red-bg disabled:opacity-50 disabled:cursor-not-allowed text-red text-sm font-semibold rounded-xl py-3 transition-colors"
+                >
+                  <X className="w-4 h-4" strokeWidth={3} />
+                  Reject
+                </button>
+              </div>
             </div>
           )}
         </div>

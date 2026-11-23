@@ -48,7 +48,7 @@ export default function LandingPage() {
   return (
     <div className="lp bg-page text-ink min-h-screen [overflow-x:clip]">
       <header className="max-w-[1180px] mx-auto px-4 sm:px-8 h-16 sm:h-20 flex items-center justify-between gap-4">
-        <a href="/" className="flex items-center gap-2.5">
+        <a href="/" className="flex items-center gap-2.5 min-h-11">
           <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-coral to-coral-2 text-ink shadow-card flex items-center justify-center">
             <Zap className="w-4 h-4" strokeWidth={2.5} />
           </span>
@@ -57,7 +57,7 @@ export default function LandingPage() {
         <nav aria-label="Main" className="flex items-center gap-4 sm:gap-6 text-[14px]">
           <a href="#how-it-works" className="hidden sm:inline text-body hover:text-ink">How it works</a>
           <a href="#faq" className="hidden sm:inline text-body hover:text-ink">FAQ</a>
-          <button onClick={cta.onGoogle} className="rounded-lg bg-card border border-line-2 px-4 py-2 font-semibold text-ink hover:border-ink">
+          <button onClick={cta.onGoogle} className="rounded-lg bg-card border border-line-2 px-4 min-h-11 font-semibold text-ink hover:border-ink">
             Sign in
           </button>
         </nav>
@@ -120,8 +120,7 @@ export default function LandingPage() {
         <span className="font-semibold text-ink text-[16px]">InvoiceChaser</span>
         <span className="flex flex-wrap gap-x-6 gap-y-1">
           <span>Made for freelancers and small studios</span>
-          <span>Built with LangGraph, Groq, FastAPI and React</span>
-          <a href="https://github.com/code0monkey1/invoice-dispute-agent" target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">GitHub</a>
+          <a href="https://github.com/code0monkey1/invoice-dispute-agent" target="_blank" rel="noopener noreferrer" className="inline-flex items-center min-h-11 underline underline-offset-4">GitHub</a>
         </span>
       </footer>
 

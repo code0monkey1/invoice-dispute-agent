@@ -114,7 +114,7 @@ function EmptyState({ onChase, onCreate }: { onChase: () => void; onCreate: () =
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
-  const { invoices, loading: fetchLoading, createInvoice, settleInvoice } = useInvoices()
+  const { invoices, loading: fetchLoading, loadError, refetch, createInvoice, settleInvoice } = useInvoices()
   const { user, isGuest, signIn, connectGmail } = useAuth()
   const [formOpen, setFormOpen] = useState(false)
   const [creating, setCreating] = useState(false)
@@ -146,7 +146,7 @@ export default function Dashboard() {
       navigate(`/invoice/${res.invoice.id}`)
     } catch (err) {
       console.error('Failed to create invoice:', err)
-      setCreateError(err instanceof Error ? err.message : 'Could not start chasing this invoice.')
+      setCreateError((err instanceof Error && err.message) || 'Could not start chasing this invoice. Check your connection and try again.')
     } finally {
       setCreating(false)
     }
@@ -201,6 +201,12 @@ export default function Dashboard() {
         <div className="py-16 text-center" role="status">
           <div className="w-8 h-8 mx-auto mb-3 rounded-full border-2 border-line border-t-coral animate-spin motion-reduce:animate-none" />
           <p className="text-[16px] text-muted">Loading your invoices…</p>
+        </div>
+      ) : loadError && invoices.length === 0 ? (
+        <div className="py-16 text-center" role="alert">
+          <p className="text-[18px] font-semibold">We couldn't load your invoices.</p>
+          <p className="mt-1 text-[16px] text-muted">Check your connection, then try again.</p>
+          <button onClick={() => void refetch()} className={`${secondaryButton} mt-5`}>Try again</button>
         </div>
       ) : invoices.length === 0 ? (
         <EmptyState onChase={openForm} onCreate={openGenerator} />

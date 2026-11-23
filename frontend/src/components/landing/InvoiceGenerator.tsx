@@ -17,7 +17,7 @@ export function InvoiceGenerator({ onTry }: { onTry: () => void }) {
           <p className="mt-4 text-[18px] leading-[1.6] text-muted max-w-[48ch]">
             Pick a template, add line items and a Stripe, Lemon Squeezy or PayPal link. The PDF goes straight to the agent.
           </p>
-          <button onClick={onTry} className="mt-6 text-[16px] font-semibold underline underline-offset-4 decoration-ink/30 hover:decoration-ink">
+          <button onClick={onTry} className="mt-6 inline-flex items-center min-h-11 text-[16px] font-semibold underline underline-offset-4 decoration-ink/30 hover:decoration-ink">
             Try the invoice generator in the demo
           </button>
         </div>
