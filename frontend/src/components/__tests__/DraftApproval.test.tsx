@@ -125,3 +125,15 @@ describe('DraftApproval approval treatment', () => {
     expect(confirm.className).not.toMatch(/emerald|green/);
   });
 });
+
+describe('DraftApproval preview fidelity', () => {
+  it('shows the exact draft text when parsing would drop or reorder part of it', () => {
+    const tricky = 'Subject: Hi\n\nPay now.\nBest regards,\nA\nB\nc@d.com\nExtra line one\nExtra line two';
+    render(
+      <DraftApproval interrupt={{ tool: 'draft_polite_reminder', args: {}, description: tricky }} onApprove={vi.fn()} onReject={vi.fn()} loading={false} />,
+    );
+    const preview = screen.getByTestId('draft-preview');
+    expect(preview).toHaveTextContent('Extra line one');
+    expect(preview).toHaveTextContent('Extra line two');
+  });
+});

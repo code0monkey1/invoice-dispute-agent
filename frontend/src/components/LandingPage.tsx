@@ -66,15 +66,15 @@ export default function LandingPage() {
       <main>
         {/* Two columns on desktop so the product is visible next to the promise. */}
         <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pt-4 sm:pt-8 pb-20 sm:pb-28 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-10 lg:gap-14 items-start">
-          <div className="lg:pt-6">
+          <div>
             <h1 className="text-[42px] sm:text-[56px] lg:text-[50px] font-extrabold leading-[1.1] tracking-[-0.02em] sm:max-w-[16ch] lg:max-w-none">
               Overdue invoices, chased{' '}
               <span className="font-serif italic font-normal text-coral-text">automatically.</span>
             </h1>
-            <p className="mt-6 text-[18px] sm:text-[20px] leading-[1.5] text-body max-w-[42ch]">
+            <p className="mt-6 lg:mt-8 text-[18px] sm:text-[20px] leading-[1.5] text-body max-w-[42ch]">
               The agent drafts each reminder and escalates when needed. Your only step is approving an email before it sends.
             </p>
-            <ul className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[16px] font-medium">
+            <ul className="mt-5 lg:mt-7 flex flex-wrap gap-x-5 gap-y-2 text-[16px] font-medium">
               {HERO_POINTS.map((point) => (
                 <li key={point} className="flex items-center gap-1.5">
                   <Check className="w-4 h-4 text-green" strokeWidth={2.5} />
@@ -82,7 +82,7 @@ export default function LandingPage() {
                 </li>
               ))}
             </ul>
-            <div className="mt-8">
+            <div className="mt-8 lg:mt-10">
               <CtaButtons {...cta} />
               <p className="mt-3 text-[16px] font-medium">Free to use. No credit card.</p>
               <p className="mt-3 flex gap-2 text-[14px] leading-[1.5] text-muted max-w-[44ch]">
@@ -118,7 +118,7 @@ export default function LandingPage() {
 
       <footer className="max-w-[1180px] mx-auto px-4 sm:px-8 py-8 flex flex-col sm:flex-row gap-2 sm:gap-6 sm:items-center justify-between text-[14px] text-muted">
         <span className="font-semibold text-ink text-[16px]">InvoiceChaser</span>
-        <span className="flex flex-wrap gap-x-6 gap-y-1">
+        <span className="flex flex-wrap items-center gap-x-6 gap-y-1">
           <span>Made for freelancers and small studios</span>
           <a href="https://github.com/code0monkey1/invoice-dispute-agent" target="_blank" rel="noopener noreferrer" className="inline-flex items-center min-h-11 underline underline-offset-4">GitHub</a>
         </span>

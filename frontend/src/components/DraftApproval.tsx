@@ -116,6 +116,12 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading,
   const initialDraft = interrupt.description || JSON.stringify(interrupt.args, null, 2)
   const [draftContent, setDraftContent] = useState(initialDraft)
   const parsed = useMemo(() => parseDraft(draftContent), [draftContent])
+  const signature = [parsed.senderName, parsed.business, parsed.email].filter(Boolean).join('\n')
+  // Only show the tidy layout when it reproduces, character for character
+  // (ignoring whitespace), the text the owner is about to approve.
+  const squash = (t: string) => t.replace(/\s+/g, '')
+  const previewFaithful = Boolean(parsed.subject) &&
+    squash(`Subject:${parsed.subject}${parsed.body}${signature}`) === squash(draftContent)
 
   const [editing, setEditing] = useState(false)
   const [subject, setSubject] = useState(parsed.subject)
@@ -290,10 +296,16 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading,
             </div>
           ) : (
             <div data-testid="draft-preview" className="max-w-[65ch] text-[16px] text-ink leading-[1.6]">
-              {parsed.subject && <p className="font-semibold mb-3">{parsed.subject}</p>}
-              <p className="whitespace-pre-wrap text-body">{parsed.subject ? parsed.body : draftContent}</p>
-              {(parsed.senderName || parsed.business || parsed.email) && (
-                <p className="whitespace-pre-wrap text-body mt-3">{[parsed.senderName, parsed.business, parsed.email].filter(Boolean).join('\n')}</p>
+              {previewFaithful ? (
+                <>
+                  <p className="font-semibold mb-3">{parsed.subject}</p>
+                  <p className="whitespace-pre-wrap text-body">{parsed.body}</p>
+                  {signature && <p className="whitespace-pre-wrap text-body mt-3">{signature}</p>}
+                </>
+              ) : (
+                // The parsed parts do not reproduce the draft exactly, so show the
+                // exact string that Approve will send rather than a re-assembled copy.
+                <p className="whitespace-pre-wrap text-body">{draftContent}</p>
               )}
             </div>
           )}
