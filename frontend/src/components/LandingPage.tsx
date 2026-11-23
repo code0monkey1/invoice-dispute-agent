@@ -12,7 +12,6 @@ import { Testimonials } from './landing/Testimonials'
 import { Faq } from './landing/Faq'
 import { GuestModal } from './landing/GuestModal'
 import { AgentRun } from './landing/AgentRun'
-import { HeroCards } from './landing/HeroCards'
 
 
 // Verified benefits only: each one is something the product does today.
@@ -66,7 +65,7 @@ export default function LandingPage() {
 
       <main>
         {/* Two columns on desktop so the product is visible next to the promise. */}
-        <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pt-4 sm:pt-8 pb-20 sm:pb-28 grid lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] gap-10 lg:gap-14 items-start">
+        <section className="max-w-[1180px] mx-auto px-4 sm:px-8 pt-4 sm:pt-8 pb-20 sm:pb-28 grid lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] gap-10 lg:gap-14 items-start">
           <div className="lg:pt-6">
             <h1 className="text-[42px] sm:text-[56px] lg:text-[50px] font-extrabold leading-[1.1] tracking-[-0.02em] sm:max-w-[16ch] lg:max-w-none">
               Overdue invoices, chased{' '}
@@ -92,14 +91,7 @@ export default function LandingPage() {
               </p>
             </div>
           </div>
-          <HeroCards />
-        </section>
-
-        <section aria-label="Live example" className="max-w-[1180px] mx-auto px-4 sm:px-8 pb-20 sm:pb-28">
-          <p className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted mb-4">See a full run on one invoice</p>
-          <div className="max-w-[760px]">
-            <AgentRun />
-          </div>
+          <AgentRun />
         </section>
 
         <HowItWorksBand />
