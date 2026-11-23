@@ -19,15 +19,16 @@ const interrupt: Interrupt = {
 
 describe('DraftApproval notes', () => {
   it('shows delivery and attachment notes separately from the email preview', () => {
-    const { container } = render(
+    render(
       <DraftApproval interrupt={interrupt} onApprove={vi.fn()} onReject={vi.fn()} loading={false} />,
     );
 
     for (const note of notes) {
       expect(screen.getByText(note)).toBeVisible();
-      expect(container.querySelector('pre')).not.toHaveTextContent(note);
+      expect(screen.getByTestId('draft-preview')).not.toHaveTextContent(note);
     }
-    expect(container.querySelector('pre')?.textContent).toBe(draft);
+    expect(screen.getByTestId('draft-preview')).toHaveTextContent('Final notice for INV-1');
+    expect(screen.getByTestId('draft-preview')).toHaveTextContent('Please pay the outstanding balance.');
   });
 
   it('approves only the email text when read-only notes are present', async () => {
@@ -122,5 +123,17 @@ describe('DraftApproval approval treatment', () => {
     const confirm = screen.getByRole('button', { name: /confirm/i });
     expect(confirm).toHaveClass('btn-coral');
     expect(confirm.className).not.toMatch(/emerald|green/);
+  });
+});
+
+describe('DraftApproval preview fidelity', () => {
+  it('shows the exact draft text when parsing would drop or reorder part of it', () => {
+    const tricky = 'Subject: Hi\n\nPay now.\nBest regards,\nA\nB\nc@d.com\nExtra line one\nExtra line two';
+    render(
+      <DraftApproval interrupt={{ tool: 'draft_polite_reminder', args: {}, description: tricky }} onApprove={vi.fn()} onReject={vi.fn()} loading={false} />,
+    );
+    const preview = screen.getByTestId('draft-preview');
+    expect(preview).toHaveTextContent('Extra line one');
+    expect(preview).toHaveTextContent('Extra line two');
   });
 });

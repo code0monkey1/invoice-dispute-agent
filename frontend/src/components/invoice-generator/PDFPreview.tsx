@@ -102,7 +102,7 @@ export function PDFPreview({ data, className }: Props) {
         />
       )}
       {!urlA && !urlB && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-400">
+        <div className="absolute inset-0 flex items-center justify-center text-sm text-muted">
           Generating preview…
         </div>
       )}

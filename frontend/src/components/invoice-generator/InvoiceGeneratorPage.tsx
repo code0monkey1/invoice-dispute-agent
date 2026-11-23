@@ -128,13 +128,13 @@ export function InvoiceGeneratorPage() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
       <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-slate-900">Generate invoice</h1>
+        <h1 className="text-2xl font-bold text-ink">Generate invoice</h1>
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={onDownload}
             disabled={!isValid || submitting}
-            className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium text-body border border-slate-300 rounded-md hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Download PDF
           </button>
@@ -156,7 +156,7 @@ export function InvoiceGeneratorPage() {
       )}
 
       <section className="space-y-3">
-        <label className="text-xs uppercase font-semibold text-slate-500 tracking-wider">Template</label>
+        <label className="text-xs uppercase font-semibold text-muted tracking-wider">Template</label>
         <TemplatePicker value={data.template} onChange={setTemplate} />
       </section>
 

@@ -5,7 +5,7 @@ import { ChatSidebar } from './chat/ChatSidebar'
 export default function ChatPanel() {
   const panel = useChatPanel()
   return (
-    <div className="flex gap-6 h-[calc(100vh-7rem)] animate-fade-up">
+    <div className="flex flex-col lg:flex-row gap-6 lg:h-[calc(100dvh-7rem)] animate-fade-up">
       <ChatConversation panel={panel} />
       <ChatSidebar panel={panel} />
     </div>

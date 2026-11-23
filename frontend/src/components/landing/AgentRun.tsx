@@ -149,7 +149,7 @@ function DraftCard({ draft, pending, onApprove }: { draft: Draft; pending: boole
       <p className="px-4 pt-3 text-[14px] text-muted">
         To sam@clientco.com
       </p>
-      <p className="px-4 pt-0.5 text-[15px] font-semibold">{draft.subject}</p>
+      <p className="px-4 pt-0.5 text-[16px] font-semibold">{draft.subject}</p>
       <div className="font-serif px-4 pt-2 pb-3 text-[16px] leading-[1.6] text-ink space-y-1.5">
         {draft.body.map((line) => <p key={line}>{line}</p>)}
       </div>
@@ -158,7 +158,7 @@ function DraftCard({ draft, pending, onApprove }: { draft: Draft; pending: boole
           <>
             <button
               onClick={onApprove}
-              className="inline-flex items-center gap-2 btn-coral rounded-lg font-semibold text-[15px] px-4 py-2"
+              className="inline-flex items-center gap-2 btn-coral rounded-lg font-semibold text-[16px] px-4 py-2"
             >
               <Check className="w-4 h-4" strokeWidth={2.5} />
               Approve and send
@@ -256,7 +256,7 @@ export function AgentRun() {
             <span className="w-2.5 h-2.5 rounded-full bg-[#F4C77B]" />
             <span className="w-2.5 h-2.5 rounded-full bg-[#9FD3AE]" />
           </span>
-          <span className="flex-1 max-w-[300px] mx-auto rounded-md bg-white border border-line px-3 py-1 text-[13px] text-muted text-center truncate">
+          <span className="flex-1 max-w-[300px] mx-auto rounded-md bg-white border border-line px-3 py-1 text-[14px] text-muted text-center truncate">
             InvoiceChaser / Invoices / INV-042
           </span>
           <span className="w-[42px]" />
@@ -271,21 +271,21 @@ export function AgentRun() {
 
         <div className="flex flex-col min-w-0">
           <div className="flex items-center justify-between gap-4 px-5 @md:px-6 py-3.5 border-b border-line">
-            <h2 id="run-title" className="text-[17px] font-semibold">
+            <h2 id="run-title" className="text-[18px] font-semibold">
               Agent run for INV-042 <span className="font-normal text-muted">(example)</span>
             </h2>
             <div className="flex items-center gap-1">
               <button
                 onClick={togglePlaying}
                 aria-label={playing ? 'Pause the example' : 'Play the example'}
-                className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-tint"
+                className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-tint"
               >
                 {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
               </button>
               <button
                 onClick={replay}
                 aria-label="Replay the example from the start"
-                className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-tint"
+                className="w-11 h-11 rounded-lg flex items-center justify-center hover:bg-tint"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -319,7 +319,7 @@ export function AgentRun() {
             </ol>
           </div>
 
-          <ol ref={logRef} className="h-[clamp(320px,52vh,440px)] overflow-y-auto px-5 @md:px-6 py-4 space-y-1">
+          <ol ref={logRef} className="@md:h-[clamp(320px,52vh,440px)] @md:overflow-y-auto px-5 @md:px-6 py-4 space-y-1">
             {RUN.slice(0, shown).map((event, i) => {
               const Icon = event.icon
               const isYou = event.who === 'you'
@@ -346,7 +346,7 @@ export function AgentRun() {
                         {event.title}
                       </span>
                     </p>
-                    {event.detail && <p className="mt-1 pl-[34px] text-[15px] leading-[1.5] text-muted">{event.detail}</p>}
+                    {event.detail && <p className="mt-1 pl-[34px] text-[16px] leading-[1.5] text-muted">{event.detail}</p>}
                     {event.file && (
                       <div className="@md:pl-[34px]">
                         <div className="mt-3 rounded-lg border-2 border-dashed border-coral/50 bg-white px-4 py-4 flex items-center gap-4">
@@ -355,7 +355,7 @@ export function AgentRun() {
                             <span className="text-xs font-bold text-red mt-0.5">PDF</span>
                           </span>
                           <div className="min-w-0 flex-1">
-                            <p className="text-[15px] font-semibold truncate">{event.file}</p>
+                            <p className="text-[16px] font-semibold truncate">{event.file}</p>
                             <div className="mt-2 h-1.5 rounded-full bg-line overflow-hidden">
                               <div className="h-full rounded-full bg-coral animate-[lpFill_1.3s_ease-out_forwards] motion-reduce:animate-none motion-reduce:w-full" />
                             </div>
@@ -372,8 +372,8 @@ export function AgentRun() {
                             style={{ animationDelay: `${f * 90}ms` }}
                             className="rounded-lg bg-white border border-line px-3 py-2 animate-[runIn_.35s_ease-out_both] motion-reduce:animate-none"
                           >
-                            <dt className="text-[13px] text-muted">{label}</dt>
-                            <dd className="text-[15px] font-semibold truncate">{value}</dd>
+                            <dt className="text-[14px] text-muted">{label}</dt>
+                            <dd className="text-[16px] font-semibold truncate">{value}</dd>
                           </div>
                         ))}
                       </dl>

@@ -29,7 +29,12 @@ interface Props {
   onApprove: (approvedDraft?: string) => void
   onReject: (message: string) => void
   loading: boolean
+  /** Who the email goes to, and the tone it is written in, shown before the owner approves. */
+  recipient?: string
+  level?: number
 }
+
+const LEVEL_NAMES: Record<number, string> = { 1: 'Friendly', 2: 'Formal', 3: 'Legal' }
 
 /** Parse a draft email string into editable sections. */
 function parseDraft(raw: string) {
@@ -106,11 +111,17 @@ function reassemble(parts: { subject: string; body: string; senderName: string; 
   return result
 }
 
-export default function DraftApproval({ interrupt, onApprove, onReject, loading }: Props) {
+export default function DraftApproval({ interrupt, onApprove, onReject, loading, recipient, level }: Props) {
   const paymentAction = PAYMENT_TOOLS[interrupt.tool]
   const initialDraft = interrupt.description || JSON.stringify(interrupt.args, null, 2)
   const [draftContent, setDraftContent] = useState(initialDraft)
   const parsed = useMemo(() => parseDraft(draftContent), [draftContent])
+  const signature = [parsed.senderName, parsed.business, parsed.email].filter(Boolean).join('\n')
+  // Only show the tidy layout when it reproduces, character for character
+  // (ignoring whitespace), the text the owner is about to approve.
+  const squash = (t: string) => t.replace(/\s+/g, '')
+  const previewFaithful = Boolean(parsed.subject) &&
+    squash(`Subject:${parsed.subject}${parsed.body}${signature}`) === squash(draftContent)
 
   const [editing, setEditing] = useState(false)
   const [subject, setSubject] = useState(parsed.subject)
@@ -163,15 +174,15 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
             </div>
           </div>
           <div className="px-5 py-4">
-            <p className="text-sm text-gray-600">{paymentAction.description}</p>
+            <p className="text-sm text-body">{paymentAction.description}</p>
             {interrupt.args?.follow_up_date != null && (
-              <p className="text-xs text-gray-400 mt-1">Follow-up: {String(interrupt.args.follow_up_date)}</p>
+              <p className="text-xs text-muted mt-1">Follow-up: {String(interrupt.args.follow_up_date)}</p>
             )}
             {interrupt.args?.amount_paid != null && (
-              <p className="text-xs text-gray-400 mt-1">Payment: ${String(interrupt.args.amount_paid)}</p>
+              <p className="text-xs text-muted mt-1">Payment: ${String(interrupt.args.amount_paid)}</p>
             )}
             {interrupt.args?.payment_date != null && (
-              <p className="text-xs text-gray-400 mt-1">Date: {String(interrupt.args.payment_date)}</p>
+              <p className="text-xs text-muted mt-1">Date: {String(interrupt.args.payment_date)}</p>
             )}
           </div>
           <div className="px-5 py-4 border-t border-gray-100 flex gap-3">
@@ -185,7 +196,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
             <button
               onClick={() => onReject('Not now')}
               disabled={loading}
-              className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-red-bg disabled:opacity-50 text-red text-sm font-bold rounded-xl py-3 border-2 border-line-2 transition-all"
+              className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-red-bg disabled:opacity-50 text-red text-sm font-bold rounded-xl py-3 border-2 border-line-2 transition-colors"
             >
               <X className="w-4 h-4" strokeWidth={3} /> Dismiss
             </button>
@@ -205,11 +216,19 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
           </div>
           <div className="flex-1">
             <span className="text-sm font-bold text-coral-text">
-              Draft Pending Your Approval
+              Review before this is sent
             </span>
           </div>
           <FileText className="w-5 h-5 text-muted" />
         </div>
+
+        {(recipient || level) && (
+          <dl className="px-5 py-3 border-b border-line bg-white grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[14px]">
+            {recipient && (<><dt className="text-muted">To</dt><dd className="font-semibold text-ink break-all">{recipient}</dd></>)}
+            <dt className="text-muted">From</dt><dd className="text-ink">Your connected Gmail</dd>
+            {level ? (<><dt className="text-muted">Tone</dt><dd className="text-ink">{LEVEL_NAMES[level] ?? 'Friendly'}</dd></>) : null}
+          </dl>
+        )}
 
         {interrupt.notes && interrupt.notes.length > 0 && (
           <aside aria-label="Before sending" className="px-5 py-3 border-b border-line bg-amber-bg">
@@ -226,54 +245,69 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
             <div className="space-y-4">
               {/* Subject */}
               <div>
-                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Subject</label>
+                <label htmlFor="draft-subject" className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Subject</label>
                 <input
+                  id="draft-subject"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  className="w-full bg-white border border-line-2 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-coral"
+                  className="w-full bg-white border border-line-2 rounded-xl px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral"
                 />
               </div>
               {/* Body */}
               <div>
-                <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Body</label>
+                <label htmlFor="draft-body" className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Body</label>
                 <textarea
+                  id="draft-body"
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
-                  className="w-full bg-white border border-line-2 rounded-xl px-4 py-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-coral min-h-[140px] font-mono leading-relaxed"
+                  className="w-full bg-white border border-line-2 rounded-xl px-4 py-3 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral min-h-[160px] leading-relaxed"
                 />
               </div>
               {/* Signature fields */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Sent By</label>
+                  <label htmlFor="draft-sender" className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Sent By</label>
                   <input
+                    id="draft-sender"
                     value={senderName}
                     onChange={(e) => setSenderName(e.target.value)}
-                    className="w-full bg-white border border-line-2 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-coral"
+                    className="w-full bg-white border border-line-2 rounded-xl px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Business</label>
+                  <label htmlFor="draft-business" className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Business</label>
                   <input
+                    id="draft-business"
                     value={business}
                     onChange={(e) => setBusiness(e.target.value)}
-                    className="w-full bg-white border border-line-2 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-coral"
+                    className="w-full bg-white border border-line-2 rounded-xl px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Email</label>
+                  <label htmlFor="draft-email" className="block text-xs font-bold text-muted uppercase tracking-wider mb-1.5">Email</label>
                   <input
+                    id="draft-email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-white border border-line-2 rounded-xl px-4 py-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-coral"
+                    className="w-full bg-white border border-line-2 rounded-xl px-4 py-2.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-coral"
                   />
                 </div>
               </div>
             </div>
           ) : (
-            <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono leading-relaxed">
-              {draftContent}
-            </pre>
+            <div data-testid="draft-preview" className="max-w-[65ch] text-[16px] text-ink leading-[1.6]">
+              {previewFaithful ? (
+                <>
+                  <p className="font-semibold mb-3">{parsed.subject}</p>
+                  <p className="whitespace-pre-wrap text-body">{parsed.body}</p>
+                  {signature && <p className="whitespace-pre-wrap text-body mt-3">{signature}</p>}
+                </>
+              ) : (
+                // The parsed parts do not reproduce the draft exactly, so show the
+                // exact string that Approve will send rather than a re-assembled copy.
+                <p className="whitespace-pre-wrap text-body">{draftContent}</p>
+              )}
+            </div>
           )}
         </div>
 
@@ -290,7 +324,7 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
               </button>
               <button
                 onClick={() => setEditing(false)}
-                className="px-4 text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors"
+                className="px-4 text-muted hover:text-body text-sm font-medium transition-colors"
               >
                 Cancel
               </button>
@@ -298,53 +332,56 @@ export default function DraftApproval({ interrupt, onApprove, onReject, loading 
           ) : showReject ? (
             <div className="space-y-3">
               <input
+                aria-label="Reason for rejection"
                 value={rejectReason}
                 onChange={(e) => setRejectReason(e.target.value)}
                 placeholder="Reason for rejection (optional)..."
-                className="w-full bg-white border border-line-2 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-coral"
+                className="w-full bg-white border border-line-2 rounded-xl px-4 py-3 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-coral"
               />
               <div className="flex gap-2">
                 <button
                   onClick={() => { onReject(rejectReason); setShowReject(false) }}
                   disabled={loading}
-                  className="flex-1 bg-red disabled:opacity-50 text-white text-sm font-bold rounded-xl py-2.5 transition-all shadow-card"
+                  className="flex-1 bg-red disabled:opacity-50 text-white text-sm font-bold rounded-xl py-2.5 transition-colors shadow-card"
                 >
                   Confirm Rejection
                 </button>
                 <button
                   onClick={() => setShowReject(false)}
-                  className="px-4 text-gray-400 hover:text-gray-600 text-sm font-medium transition-colors"
+                  className="px-4 text-muted hover:text-body text-sm font-medium transition-colors"
                 >
                   Cancel
                 </button>
               </div>
             </div>
           ) : (
-            <div className="flex gap-3">
+            <div className="space-y-2">
               <button
                 onClick={() => onApprove(draftContent)}
                 disabled={loading}
-                className="flex-1 btn-coral inline-flex items-center justify-center gap-2 text-sm font-bold rounded-xl py-3 shadow-card"
+                className="w-full btn-coral inline-flex items-center justify-center gap-2 text-[16px] font-bold rounded-xl py-3.5 shadow-card"
               >
                 <Check className="w-4 h-4" strokeWidth={3} />
                 Approve & Send
               </button>
-              <button
-                onClick={handleStartEdit}
-                disabled={loading}
-                className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-tint disabled:opacity-50 disabled:cursor-not-allowed text-ink text-sm font-bold rounded-xl py-3 border-2 border-line-2 transition-all"
-              >
-                <Pencil className="w-4 h-4" />
-                Edit Draft
-              </button>
-              <button
-                onClick={() => setShowReject(true)}
-                disabled={loading}
-                className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-red-bg disabled:opacity-50 disabled:cursor-not-allowed text-red text-sm font-bold rounded-xl py-3 transition-all border-2 border-line-2"
-              >
-                <X className="w-4 h-4" strokeWidth={3} />
-                Reject
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleStartEdit}
+                  disabled={loading}
+                  className="flex-1 inline-flex items-center justify-center gap-2 bg-white hover:bg-tint disabled:opacity-50 disabled:cursor-not-allowed text-ink text-sm font-semibold rounded-xl py-3 border border-line-2 transition-colors"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Edit Draft
+                </button>
+                <button
+                  onClick={() => setShowReject(true)}
+                  disabled={loading}
+                  className="flex-1 inline-flex items-center justify-center gap-2 hover:bg-red-bg disabled:opacity-50 disabled:cursor-not-allowed text-red text-sm font-semibold rounded-xl py-3 transition-colors"
+                >
+                  <X className="w-4 h-4" strokeWidth={3} />
+                  Reject
+                </button>
+              </div>
             </div>
           )}
         </div>

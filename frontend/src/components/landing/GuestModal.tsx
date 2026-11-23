@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import { GoogleIcon } from './GoogleIcon'
 
@@ -14,6 +15,11 @@ interface GuestModalProps {
 
 
 export function GuestModal({ name, onNameChange, onEnter, onGoogle, onClose }: GuestModalProps) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [onClose])
   return (
     <div className="fixed inset-0 bg-ink/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div
@@ -26,15 +32,15 @@ export function GuestModal({ name, onNameChange, onEnter, onGoogle, onClose }: G
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 id="guest-title" className="text-[22px] font-bold">Try the demo</h2>
-            <p className="text-[15px] text-muted mt-1">No sign-up. Guest sessions are temporary.</p>
+            <p className="text-[16px] text-muted mt-1">No sign-up. Guest sessions are temporary.</p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="p-1 -m-1 text-muted hover:text-ink">
+          <button onClick={onClose} aria-label="Close" className="p-2.5 -m-2.5 text-muted hover:text-ink">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <label className="block mt-6">
-          <span className="block text-[15px] font-semibold mb-1.5">Your name</span>
+          <span className="block text-[16px] font-semibold mb-1.5">Your name</span>
           <input
             type="text"
             value={name}

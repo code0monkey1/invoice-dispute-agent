@@ -57,7 +57,7 @@ export function Faq() {
       <div className="border-y border-line-2 divide-y divide-line-2">
         {FAQS.map(({ question, answer }) => (
           <details key={question} className="group">
-            <summary className="flex items-center justify-between gap-4 py-5 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[17px] font-semibold">
+            <summary className="flex items-center justify-between gap-4 py-5 cursor-pointer list-none [&::-webkit-details-marker]:hidden text-[18px] font-semibold">
               {question}
               <Plus className="w-5 h-5 shrink-0 text-muted transition-transform group-open:rotate-45 motion-reduce:transition-none" />
             </summary>

@@ -20,7 +20,7 @@ export function WithWithout() {
       <div className="mt-10 rounded-xl bg-white border border-line overflow-hidden">
         <table className="w-full text-left text-[16px]">
           <thead>
-            <tr className="border-b border-line text-[15px]">
+            <tr className="border-b border-line text-[16px]">
               <th scope="col" className="px-5 py-3.5 font-medium text-muted hidden md:table-cell w-[22%]">Task</th>
               <th scope="col" className="px-5 py-3.5 font-medium text-muted">On your own</th>
               <th scope="col" className="px-5 py-3.5 font-semibold bg-ink text-white">With InvoiceChaser</th>
@@ -28,7 +28,7 @@ export function WithWithout() {
           </thead>
           <tbody>
             {COMPARISON.map(([task, without, withIt]) => (
-              <tr key={task} className="border-b last:border-b-0 border-[#F6EDE3] align-top">
+              <tr key={task} className="border-b last:border-b-0 border-line align-top">
                 <th scope="row" className="px-5 py-4 font-semibold hidden md:table-cell">{task}</th>
                 <td className="px-5 py-4 text-muted">
                   <span className="md:hidden block text-[14px] font-semibold text-ink mb-0.5">{task}</span>

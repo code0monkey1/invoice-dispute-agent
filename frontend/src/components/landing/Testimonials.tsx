@@ -81,7 +81,7 @@ export function Testimonials() {
         <div className="divide-y divide-line-2">
           {TESTIMONIALS.map((t) => (
             <figure key={t.name} className="py-7 first:pt-0 last:pb-0 flex flex-col gap-5">
-              <blockquote className="text-[17px] leading-[1.55]">“{t.quote}”</blockquote>
+              <blockquote className="text-[18px] leading-[1.55]">“{t.quote}”</blockquote>
               <Author t={t} size="sm" />
             </figure>
           ))}

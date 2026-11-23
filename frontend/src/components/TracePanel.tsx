@@ -125,7 +125,7 @@ function describeStep(step: TraceStep): StepView {
 
 function RunCard({ run }: { run: TraceRun }) {
   const [open, setOpen] = useState(false)
-  const status = STATUS_STYLES[run.status] ?? { label: run.status, className: 'bg-gray-100 text-gray-600' }
+  const status = STATUS_STYLES[run.status] ?? { label: run.status, className: 'bg-gray-100 text-body' }
   const latency = formatLatency(run.latency_ms)
   const tokens = formatTokens(run.input_tokens, run.output_tokens)
   const started = new Date(run.started_at).toLocaleString('en-US', {
@@ -142,15 +142,15 @@ function RunCard({ run }: { run: TraceRun }) {
         aria-controls={panelId}
         className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 text-left hover:bg-orange-50/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-coral/40"
       >
-        {open ? <ChevronDown className="w-4 h-4 text-gray-400" aria-hidden /> : <ChevronRight className="w-4 h-4 text-gray-400" aria-hidden />}
-        <span className="text-sm font-bold text-gray-800">{KIND_LABELS[run.kind] ?? run.kind}</span>
+        {open ? <ChevronDown className="w-4 h-4 text-muted" aria-hidden /> : <ChevronRight className="w-4 h-4 text-muted" aria-hidden />}
+        <span className="text-sm font-bold text-ink">{KIND_LABELS[run.kind] ?? run.kind}</span>
         <span className={`text-xs font-bold uppercase tracking-wider rounded-md px-1.5 py-0.5 ${status.className}`}>{status.label}</span>
-        <span className="ml-auto flex flex-wrap items-center gap-x-3 text-xs font-medium text-gray-500 tabular-nums">
+        <span className="ml-auto flex flex-wrap items-center gap-x-3 text-xs font-medium text-muted tabular-nums">
           {run.level_start != null && <span>Level {run.level_start}</span>}
           {latency && <span>{latency}</span>}
           {tokens && <span>{tokens}</span>}
           <span title={run.model ?? undefined}>{formatCost(run.cost_usd)}</span>
-          <span className="text-gray-400">{started}</span>
+          <span className="text-muted">{started}</span>
         </span>
       </button>
       {open && (
@@ -172,10 +172,10 @@ function RunCard({ run }: { run: TraceRun }) {
                       <Icon className="w-3.5 h-3.5" aria-hidden />
                     </span>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-bold text-gray-700">{view.title}</p>
-                      {view.detail && <p className="mt-0.5 text-xs text-gray-500 break-words">{view.detail}</p>}
+                      <p className="text-xs font-bold text-body">{view.title}</p>
+                      {view.detail && <p className="mt-0.5 text-xs text-muted break-words">{view.detail}</p>}
                       {view.meta.length > 0 && (
-                        <p className="mt-0.5 text-xs font-medium uppercase tracking-wider text-gray-400">{view.meta.join(' · ')}</p>
+                        <p className="mt-0.5 text-xs font-medium uppercase tracking-wider text-muted">{view.meta.join(' · ')}</p>
                       )}
                     </div>
                   </li>
@@ -183,9 +183,9 @@ function RunCard({ run }: { run: TraceRun }) {
               })}
             </ol>
           ) : (
-            <p className="text-xs italic text-gray-400">No steps were recorded for this run.</p>
+            <p className="text-xs italic text-muted">No steps were recorded for this run.</p>
           )}
-          <p className="mt-3 text-xs text-gray-400 font-mono break-all">
+          <p className="mt-3 text-xs text-muted font-mono break-all">
             run {run.id}{run.prompt_version ? ` · prompt ${run.prompt_version}` : ''}{run.model ? ` · ${run.model}` : ''}
           </p>
         </div>
@@ -200,7 +200,7 @@ export default function TracePanel({ invoiceId }: { invoiceId: string }) {
 
   return (
     <div className="flex-1 overflow-y-auto px-5 py-4 bg-gradient-to-b from-orange-50/20 to-white">
-      <p className="mb-4 text-xs text-gray-500">
+      <p className="mb-4 text-xs text-muted">
         Every prompt, tool call and decision the agent made on this invoice. Contact details are masked, and runs are kept for 30 days.
       </p>
 
@@ -228,7 +228,7 @@ export default function TracePanel({ invoiceId }: { invoiceId: string }) {
       )}
 
       {traces.isSuccess && runs.length === 0 && (
-        <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-gray-400">
+        <p className="rounded-xl border border-dashed border-gray-200 px-4 py-8 text-center text-sm text-muted">
           No agent runs yet. Send a message and every step the agent takes will show up here.
         </p>
       )}
@@ -244,7 +244,7 @@ export default function TracePanel({ invoiceId }: { invoiceId: string }) {
           type="button"
           onClick={() => void traces.fetchNextPage()}
           disabled={traces.isFetchingNextPage}
-          className="mt-3 w-full rounded-xl border border-gray-200 bg-white py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+          className="mt-3 w-full rounded-xl border border-gray-200 bg-white py-2 text-xs font-bold text-body hover:bg-gray-50 disabled:opacity-50"
         >
           {traces.isFetchingNextPage ? 'Loading…' : 'Load older runs'}
         </button>

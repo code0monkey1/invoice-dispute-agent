@@ -51,7 +51,7 @@ export default function GoogleCallback() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-mesh noise">
+      <div className="min-h-screen flex items-center justify-center bg-mesh">
         <div className="text-center">
           <p className="text-red-500 text-lg mb-4">Sign-in failed: {error}</p>
           <a href="/" className="text-coral-text hover:underline">Back to home</a>
@@ -61,10 +61,10 @@ export default function GoogleCallback() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-mesh noise">
+    <div className="min-h-screen flex items-center justify-center bg-mesh">
       <div className="text-center">
         <div className="w-10 h-10 border-4 border-coral border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-        <p className="text-lg text-gray-600 font-medium">Signing you in...</p>
+        <p className="text-lg text-body font-medium">Signing you in...</p>
       </div>
     </div>
   )

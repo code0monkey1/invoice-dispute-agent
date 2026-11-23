@@ -121,21 +121,21 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                       {status.label}
                     </p>
                   </td>
-                  <td className="px-5 py-4 hidden md:table-cell text-[15px] text-body tabular-nums">{inv.invoice_id || inv.id}</td>
+                  <td className="px-5 py-4 hidden md:table-cell text-[16px] text-body tabular-nums">{inv.invoice_id || inv.id}</td>
                   <td className="px-5 py-4 text-right">
                     <span className="text-[16px] font-semibold tabular-nums">{formatMoney(inv.balance_due ?? inv.invoice_amount)}</span>
                     {inv.amount_paid > 0 && (
-                      <p className="text-[13px] text-muted tabular-nums">{formatMoney(inv.amount_paid)} paid</p>
+                      <p className="text-[14px] text-muted tabular-nums">{formatMoney(inv.amount_paid)} paid</p>
                     )}
                   </td>
-                  <td className="px-5 py-4 text-right hidden md:table-cell text-[15px] text-body tabular-nums">
+                  <td className="px-5 py-4 text-right hidden md:table-cell text-[16px] text-body tabular-nums">
                     {formatOverdue(inv.days_overdue)}
                   </td>
                   <td className="px-5 py-4 hidden lg:table-cell">
                     <EscalationBadge level={inv.escalation_level} />
                   </td>
                   <td className="px-5 py-4 hidden sm:table-cell">
-                    <span className={`inline-flex items-center gap-2 text-[15px] ${style.text}`}>
+                    <span className={`inline-flex items-center gap-2 text-[16px] ${style.text}`}>
                       <span className={`w-2 h-2 rounded-full shrink-0 ${style.dot}`} />
                       {status.label}
                     </span>
@@ -147,13 +147,13 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                           <button
                             onClick={() => settle(inv.id)}
                             disabled={settlingId === inv.id}
-                            className="rounded-full px-3 py-1.5 text-[13px] font-semibold bg-green text-white hover:bg-[#17603F] disabled:opacity-60"
+                            className="rounded-full px-3 py-1.5 text-[14px] font-semibold bg-green text-white hover:bg-[#17603F] disabled:opacity-60"
                           >
                             {settlingId === inv.id ? 'Settling…' : 'Yes, settled'}
                           </button>
                           <button
                             onClick={() => setConfirmingId(null)}
-                            className="rounded-full px-3 py-1.5 text-[13px] font-semibold text-body hover:bg-[#F6EDE3]"
+                            className="rounded-full px-3 py-1.5 text-[14px] font-semibold text-body hover:bg-[#F6EDE3]"
                           >
                             Cancel
                           </button>
@@ -162,7 +162,7 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
                         <button
                           onClick={() => { setSettleError(null); setConfirmingId(inv.id) }}
                           title="The agent stops all work on this invoice"
-                          className="rounded-full px-3 py-1.5 text-[13px] font-semibold border border-line text-body hover:border-green hover:text-green"
+                          className="rounded-full px-3 py-1.5 text-[14px] font-semibold border border-line text-body hover:border-green hover:text-green"
                         >
                           Mark settled
                         </button>
@@ -181,7 +181,7 @@ export default function InvoiceTable({ invoices, onSettle }: InvoiceTableProps) 
           <p role="alert" className="px-5 py-3 text-[14px] text-[#B42318] border-t border-line">{settleError}</p>
         )}
         {visible.length === 0 && (
-          <p className="px-5 py-8 text-center text-[15px] text-muted">No invoices here.</p>
+          <p className="px-5 py-8 text-center text-[16px] text-muted">No invoices here.</p>
         )}
       </div>
     </section>

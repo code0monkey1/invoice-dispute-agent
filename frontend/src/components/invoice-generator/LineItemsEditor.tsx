@@ -72,7 +72,7 @@ export function LineItemsEditor({ items, onChange }: Props) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm" role="table">
         <thead>
-          <tr role="row" className="text-left text-xs uppercase text-slate-500">
+          <tr role="row" className="text-left text-xs uppercase text-muted">
             <th className="py-2">Description</th>
             <th className="py-2 w-20 text-right">Qty</th>
             <th className="py-2 w-28 text-right">Unit price</th>
@@ -112,7 +112,7 @@ export function LineItemsEditor({ items, onChange }: Props) {
                   disabled={rows.length <= 1}
                   title={rows.length <= 1 ? 'Keep at least one row' : 'Remove row'}
                   onClick={() => removeRow(i)}
-                  className="p-1 text-slate-500 hover:text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="p-1 text-muted hover:text-rose-600 disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

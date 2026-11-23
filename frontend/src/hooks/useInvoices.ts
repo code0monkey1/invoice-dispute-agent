@@ -46,5 +46,5 @@ export function useInvoices() {
     await refetchQuery()
   }, [refetchQuery])
 
-  return { invoices: query.data ?? [], loading: query.isPending, createInvoice, settleInvoice, refetch }
+  return { invoices: query.data ?? [], loading: query.isPending, loadError: query.isError, createInvoice, settleInvoice, refetch }
 }

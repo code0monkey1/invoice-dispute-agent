@@ -163,7 +163,7 @@ body {
 
 /* Level card glow transition */
 .level-card {
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: border-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* ─── Interaction states (whole app) ─── */

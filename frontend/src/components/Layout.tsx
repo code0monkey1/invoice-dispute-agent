@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: ReactNode }) {
             <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-coral to-coral-2 text-ink shadow-card flex items-center justify-center">
               <Zap className="w-4 h-4" strokeWidth={2.5} />
             </span>
-            <span className="font-bold text-[19px] tracking-tight">Invoice<span className="text-coral-text">Chaser</span></span>
+            <span className="font-bold text-[20px] tracking-tight">Invoice<span className="text-coral-text">Chaser</span></span>
           </Link>
 
           {user && (
@@ -24,21 +24,21 @@ export default function Layout({ children }: { children: ReactNode }) {
               {user.picture ? (
                 <img src={user.picture} alt="" className="w-8 h-8 rounded-full" referrerPolicy="no-referrer" />
               ) : (
-                <span className="w-8 h-8 rounded-full bg-[#FDEBDD] text-[#B4410E] flex items-center justify-center">
+                <span className="w-8 h-8 rounded-full bg-tint text-coral-text flex items-center justify-center">
                   <User className="w-4 h-4" />
                 </span>
               )}
-              <span className="hidden sm:inline text-[15px] text-body">
+              <span className="hidden sm:inline text-[16px] text-body">
                 {isGuest ? (
                   <>
                     {user.name || 'Guest'}
-                    <span className="ml-2 rounded-full bg-[#F6EDE3] text-muted text-[13px] font-medium px-2 py-0.5">Demo</span>
+                    <span className="ml-2 rounded-full bg-tint text-muted text-[14px] font-medium px-2 py-0.5">Demo</span>
                   </>
                 ) : (
                   user.email
                 )}
               </span>
-              <button onClick={signOut} className="text-[15px] font-medium text-muted hover:text-ink">
+              <button onClick={signOut} className="text-[16px] font-medium text-muted hover:text-ink">
                 {isGuest ? 'Exit demo' : 'Sign out'}
               </button>
             </div>

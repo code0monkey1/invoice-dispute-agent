@@ -57,7 +57,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
       await clearCache();
       window.location.href = '/';
     }
-    throw new Error(errorMessage(await res.text()));
+    throw new Error(errorMessage(await res.text()) || `Request failed (${res.status}). The server may be unreachable.`);
   }
   return res.json();
 }
@@ -78,7 +78,7 @@ async function requestForm<T>(path: string, formData: FormData): Promise<T> {
       await clearCache();
       window.location.href = '/';
     }
-    throw new Error(errorMessage(await res.text()));
+    throw new Error(errorMessage(await res.text()) || `Request failed (${res.status}). The server may be unreachable.`);
   }
   return res.json();
 }

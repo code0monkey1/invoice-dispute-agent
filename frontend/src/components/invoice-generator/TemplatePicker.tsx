@@ -44,7 +44,7 @@ export function TemplatePicker({ value, onChange }: Props) {
             }`}
           >
             <div className="w-full h-16 rounded" style={{ background: t.swatch }} />
-            <span className={`text-sm font-medium ${active ? 'text-ink' : 'text-slate-700'}`}>
+            <span className={`text-sm font-medium ${active ? 'text-ink' : 'text-body'}`}>
               {t.label}
             </span>
           </button>

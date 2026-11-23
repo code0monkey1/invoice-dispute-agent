@@ -79,32 +79,26 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
   }
 
   const fields = [
-    { key: 'invoice_id', label: 'Invoice ID', placeholder: 'INV-001', type: 'text', required: true },
-    { key: 'client_name', label: 'Client Name', placeholder: 'Acme Corp', type: 'text', required: true },
-    { key: 'client_email', label: 'Client Email', placeholder: 'billing@acme.com', type: 'email', required: true },
-    { key: 'invoice_amount', label: 'Invoice Total ($)', placeholder: '5000.00', type: 'number', required: true },
-    { key: 'amount_paid', label: 'Amount Paid ($)', placeholder: '0.00', type: 'number', required: false },
-    { key: 'days_overdue', label: 'Days Overdue', placeholder: '45', type: 'number', required: true },
-    { key: 'jurisdiction', label: 'Jurisdiction', placeholder: 'California', type: 'text', required: true },
+    { key: 'invoice_id', label: 'Invoice ID', placeholder: 'e.g. INV-001', type: 'text', required: true },
+    { key: 'client_name', label: 'Client Name', placeholder: 'e.g. Acme Corp', type: 'text', required: true },
+    { key: 'client_email', label: 'Client Email', placeholder: 'e.g. billing@acme.com', type: 'email', required: true },
+    { key: 'invoice_amount', label: 'Invoice total ($)', placeholder: 'e.g. 5000.00', type: 'number', required: true },
+    { key: 'amount_paid', label: 'Already paid ($)', placeholder: 'e.g. 0.00', type: 'number', required: false },
+    { key: 'days_overdue', label: 'Days Overdue', placeholder: 'e.g. 45', type: 'number', required: true },
+    { key: 'jurisdiction', label: 'Client location (for legal notices)', placeholder: 'e.g. California', type: 'text', required: true },
   ] as const
 
   return (
     <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl w-full max-w-lg shadow-pop border border-orange-100/50 animate-fade-up overflow-hidden">
-        <div className="bg-gradient-to-r from-coral to-coral-2 px-6 py-5 relative overflow-hidden">
-          <div className="absolute inset-0 opacity-10">
-            <div className="absolute -right-8 -top-8 w-32 h-32 rounded-full bg-white/20" />
-            <div className="absolute -left-4 -bottom-4 w-20 h-20 rounded-full bg-white/10" />
+      <div className="bg-white rounded-xl w-full max-w-lg shadow-pop border border-line animate-fade-up overflow-hidden">
+        <div className="px-6 pt-6 pb-4 border-b border-line flex items-start justify-between gap-4">
+          <div>
+            <h2 className="text-[20px] font-bold text-ink">Chase an invoice</h2>
+            <p className="text-[14px] text-muted mt-1">Upload the invoice, or enter the details yourself.</p>
           </div>
-          <div className="flex items-center justify-between relative">
-            <div>
-              <h2 className="text-lg font-bold text-ink">New Invoice Dispute</h2>
-              <p className="text-ink/70 text-xs mt-0.5">Upload an invoice or enter the details manually</p>
-            </div>
-            <button onClick={onClose} className="text-ink/60 hover:text-ink transition-colors p-1 rounded-lg hover:bg-white/20">
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="text-muted hover:text-ink transition-colors p-2.5 -m-2.5 rounded-lg">
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[78vh] overflow-y-auto">
@@ -130,10 +124,10 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
                 {uploadedFile ? <FileText className="w-5 h-5 text-coral-text" /> : <Upload className="w-5 h-5 text-coral-text" />}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-gray-800">
+                <p className="text-sm font-bold text-ink">
                   {uploadedFile ? uploadedFile.name : 'Upload PDF or DOCX invoice'}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-muted mt-0.5">
                   {parsing ? 'Reading invoice...' : 'Extracted fields can be reviewed before creating the dispute'}
                 </p>
               </div>
@@ -161,8 +155,9 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {fields.map(({ key, label, placeholder, type, required }) => (
               <div key={key} className={key === 'client_email' ? 'sm:col-span-2' : undefined}>
-                <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1.5">{label}</label>
+                <label htmlFor={`inv-${key}`} className="block text-xs font-semibold text-muted uppercase tracking-wider mb-1.5">{label}</label>
                 <input
+                  id={`inv-${key}`}
                   type={type}
                   required={required}
                   min={type === 'number' ? 0 : undefined}
@@ -170,7 +165,7 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
                   placeholder={placeholder}
                   value={form[key]}
                   onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral/50 transition-all"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral/50 transition-colors"
                 />
               </div>
             ))}
@@ -187,7 +182,7 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
             className="w-full btn-coral font-bold rounded-xl py-3.5 text-sm flex items-center justify-center gap-2 shadow-card mt-3"
           >
             <Sparkles className="w-4 h-4" />
-            {loading ? 'Creating Dispute...' : parsing ? 'Reading Invoice...' : 'Start AI-Powered Dispute'}
+            {loading ? 'Starting…' : parsing ? 'Reading Invoice...' : 'Start chasing'}
           </button>
         </form>
       </div>

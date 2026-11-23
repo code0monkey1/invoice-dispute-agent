@@ -58,17 +58,17 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
   return (
     <>
       {/* Chat Area */}
-      <div className="flex-1 flex flex-col bg-white border border-gray-200/80 rounded-xl overflow-hidden shadow-card">
+      <div className="flex-1 min-w-0 flex flex-col min-h-[70dvh] lg:min-h-0 bg-white border border-gray-200/80 rounded-xl overflow-hidden shadow-card">
         {/* Chat Header */}
         <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-100 bg-gradient-to-r from-white to-orange-50/30">
-          <Link to="/" className="text-gray-400 hover:text-coral-text transition-colors p-1 rounded-lg hover:bg-orange-50">
+          <Link to="/" className="text-muted hover:text-coral-text transition-colors p-1 rounded-lg hover:bg-orange-50">
             <ArrowLeft className="w-5 h-5" />
           </Link>
           <div className="flex-1">
-            <h2 className="text-sm font-bold text-gray-800">
+            <h2 className="text-sm font-bold text-ink">
               Invoice <span className="font-mono text-coral-text bg-orange-50 px-1.5 py-0.5 rounded-md">#{displayInvoiceId}</span>
               {agentState?.client_name && (
-                <span className="text-gray-400 font-normal font-sans"> — {agentState.client_name}</span>
+                <span className="text-muted font-normal font-sans"> — {agentState.client_name}</span>
               )}
             </h2>
           </div>
@@ -90,7 +90,7 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
               aria-controls={`panel-${id}`}
               onClick={() => setView(id)}
               className={`inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold border-b-2 -mb-px transition-colors ${
-                view === id ? 'border-coral text-coral-text' : 'border-transparent text-gray-400 hover:text-gray-600'
+                view === id ? 'border-coral text-coral-text' : 'border-transparent text-muted hover:text-body'
               }`}
             >
               <Icon className="w-3.5 h-3.5" aria-hidden />
@@ -112,21 +112,21 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
         <div className="flex-1 overflow-y-auto py-4 space-y-1 bg-gradient-to-b from-orange-50/20 to-white">
           <section aria-labelledby="conversation-summary-title" className="mx-5 mb-5 pb-4 border-b border-gray-100">
             <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
-              <h3 id="conversation-summary-title" className="text-sm font-semibold text-gray-800">Conversation summary</h3>
+              <h3 id="conversation-summary-title" className="text-sm font-semibold text-ink">Conversation summary</h3>
               <button type="button" onClick={fullHistoryVisible ? hideHistory : viewHistory}
                 aria-expanded={Boolean(fullHistoryVisible)} aria-controls="conversation-history"
                 disabled={!hasSavedConversation}
-                className="text-xs font-semibold text-coral-text hover:text-ink underline underline-offset-4 disabled:text-gray-400 disabled:no-underline focus-visible:outline-2 focus-visible:outline-offset-4">
+                className="text-xs font-semibold text-coral-text hover:text-ink underline underline-offset-4 disabled:text-muted disabled:no-underline focus-visible:outline-2 focus-visible:outline-offset-4">
                 {fullHistoryVisible ? 'Hide conversation history' : 'View conversation history'}
               </button>
             </div>
-            {summary ? <div className="text-sm leading-relaxed text-gray-600 max-w-[75ch]"><Markdown>{summary}</Markdown></div> : (
-              <p className="text-sm text-gray-500">{hasSavedConversation ? 'Your saved summary will appear here. You can also view the full conversation history.' : 'Your summary will appear here after the conversation begins.'}</p>
+            {summary ? <div className="text-sm leading-relaxed text-body max-w-[75ch]"><Markdown>{summary}</Markdown></div> : (
+              <p className="text-sm text-muted">{hasSavedConversation ? 'Your saved summary will appear here. You can also view the full conversation history.' : 'Your summary will appear here after the conversation begins.'}</p>
             )}
-            {summary && summaryMetadata?.is_stale && <p className="text-xs text-gray-400 mt-3">New updates will be included when you next open this invoice.</p>}
+            {summary && summaryMetadata?.is_stale && <p className="text-xs text-muted mt-3">New updates will be included when you next open this invoice.</p>}
           </section>
-          {fullHistoryLoading && <p role="status" className="mx-5 text-sm text-gray-500">Loading conversation history…</p>}
-          {fullHistoryError && <div role="alert" className="mx-5 text-sm text-gray-600">
+          {fullHistoryLoading && <p role="status" className="mx-5 text-sm text-muted">Loading conversation history…</p>}
+          {fullHistoryError && <div role="alert" className="mx-5 text-sm text-body">
             Could not load conversation history. <button type="button" onClick={() => void retryHistory()} className="underline text-coral-text">Retry history</button>
           </div>}
           {messages.length === 0 && !loading && !showFirstOpenActions && !hasSavedConversation && (
@@ -134,10 +134,10 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
               <div className="w-14 h-14 bg-gradient-to-br from-coral to-coral-2 rounded-xl flex items-center justify-center mb-4 shadow-card">
                 <ArrowUpCircle className="w-7 h-7 text-ink" />
               </div>
-              <p className="text-gray-600 text-sm font-semibold">
+              <p className="text-body text-sm font-semibold">
                 Send a message to start working on this invoice dispute.
               </p>
-              <p className="text-gray-400 text-xs mt-2 font-medium">
+              <p className="text-muted text-xs mt-2 font-medium">
                 Try: "Help me chase this payment" or "Draft a reminder"
               </p>
             </div>
@@ -145,10 +145,10 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
           {showFirstOpenActions && (
             <div className="mx-5 mb-4 rounded-xl border border-orange-200 bg-white shadow-card overflow-hidden animate-fade-up">
               <div className="px-5 py-4 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-orange-100">
-                <p className="text-sm font-bold text-gray-800">
+                <p className="text-sm font-bold text-ink">
                   Start with this invoice
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted mt-1">
                   Create the first email for this invoice or ask invoice-specific questions.
                 </p>
               </div>
@@ -166,7 +166,7 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
                   type="button"
                   onClick={handleChatAboutInvoice}
                   disabled={loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border-2 border-gray-200 bg-white px-4 py-3 text-sm font-bold text-body hover:bg-gray-50 disabled:opacity-50"
                 >
                   <MessageSquare className="w-4 h-4" />
                   Chat about this invoice
@@ -182,10 +182,10 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
             ))}
           {fullHistoryVisible && communications.length > 0 && (
             <section aria-label="Email and communication history" className="mx-5 mt-5 mb-4 space-y-3">
-              <h3 className="text-sm font-semibold text-gray-700">Email and communication history</h3>
+              <h3 className="text-sm font-semibold text-body">Email and communication history</h3>
               {communications.map(entry => <details key={entry.id} className="border border-gray-200 rounded-lg px-3 py-2 text-sm">
-                <summary className="cursor-pointer text-gray-700">{entry.subject || entry.type} <span className="text-xs text-gray-400">{entry.timestamp}</span></summary>
-                <p className="whitespace-pre-wrap break-words mt-3 text-gray-600">{entry.content}</p>
+                <summary className="cursor-pointer text-body">{entry.subject || entry.type} <span className="text-xs text-muted">{entry.timestamp}</span></summary>
+                <p className="whitespace-pre-wrap break-words mt-3 text-body">{entry.content}</p>
               </details>)}
             </section>
           )}
@@ -196,16 +196,18 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
               onApprove={approve}
               onReject={reject}
               loading={loading}
+              recipient={agentState?.client_email}
+              level={agentState?.escalation_level}
             />
           )}
           {loading && !interrupt && (
             <div className="flex items-center gap-2.5 px-5 py-3">
               <div className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-coral animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-2 h-2 rounded-full bg-coral animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-2 h-2 rounded-full bg-coral animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-2 h-2 rounded-full bg-coral animate-pulse motion-reduce:animate-none" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 rounded-full bg-coral animate-pulse motion-reduce:animate-none" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 rounded-full bg-coral animate-pulse motion-reduce:animate-none" style={{ animationDelay: '300ms' }} />
               </div>
-              <span className="text-gray-400 text-sm font-medium">Agent is thinking...</span>
+              <span className="text-muted text-sm font-medium">Agent is thinking...</span>
             </div>
           )}
           {lastEmailSent && (
@@ -214,7 +216,7 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
                 lastEmailSent.sent
                   ? 'bg-green-bg text-green border border-green/20'
                   : lastEmailSent.status === 'demo'
-                    ? 'bg-white text-gray-700 border border-line'
+                    ? 'bg-white text-body border border-line'
                     : 'bg-rose-50 text-rose-700 border border-rose-200/60'
               }`}>
                 {lastEmailSent.sent ? (
@@ -285,7 +287,7 @@ export function ChatConversation({ panel }: { panel: ReturnType<typeof useChatPa
               onKeyDown={handleKeyDown}
               placeholder={interrupt && APPROVAL_TOOLS.includes(interrupt.tool) ? 'Approve or reject the draft above...' : chatFocused ? 'Ask about this invoice or your other invoices...' : 'Type your message...'}
               disabled={loading || !!(interrupt && APPROVAL_TOOLS.includes(interrupt.tool))}
-              className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-gray-800 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral/50 disabled:opacity-50 transition-all"
+              className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2.5 text-sm text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-coral/30 focus:border-coral/50 disabled:opacity-50 transition-colors"
             />
             <button
               onClick={handleSend}
