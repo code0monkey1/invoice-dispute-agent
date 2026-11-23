@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { GoogleIcon } from './GoogleIcon'
 
@@ -15,11 +15,14 @@ interface GuestModalProps {
 
 
 export function GuestModal({ name, onNameChange, onEnter, onGoogle, onClose }: GuestModalProps) {
+  // Keep the latest onClose in a ref so the key listener is added once, not on every parent render.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => { onCloseRef.current = onClose }, [onClose])
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
-    document.addEventListener("keydown", onKey)
-    return () => document.removeEventListener("keydown", onKey)
-  }, [onClose])
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCloseRef.current() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [])
   return (
     <div className="fixed inset-0 bg-ink/50 z-[100] flex items-center justify-center p-4" onClick={onClose}>
       <div

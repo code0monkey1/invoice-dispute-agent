@@ -6,14 +6,14 @@ import Dashboard from '../Dashboard';
 import type { Invoice } from '../../types';
 import { withQueryClient } from '../../test/queryClient';
 
-const state: { invoices: Invoice[]; loading: boolean } = { invoices: [], loading: false };
+const state: { invoices: Invoice[]; loading: boolean; loadError: boolean } = { invoices: [], loading: false, loadError: false };
 const settleInvoice = vi.hoisted(() => vi.fn());
 const getConversation = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api', () => ({ api: { getConversation } }));
 
 vi.mock('../../hooks/useInvoices', () => ({
-  useInvoices: () => ({ invoices: state.invoices, loading: state.loading, createInvoice: vi.fn(), settleInvoice, refetch: vi.fn() }),
+  useInvoices: () => ({ invoices: state.invoices, loading: state.loading, loadError: state.loadError, createInvoice: vi.fn(), settleInvoice, refetch: vi.fn() }),
 }));
 
 const auth = vi.hoisted(() => ({
@@ -61,6 +61,7 @@ describe('Dashboard', () => {
   beforeEach(() => {
     state.invoices = [];
     state.loading = false;
+    state.loadError = false;
     auth.gmailConnected = true;
     auth.connectGmail.mockClear();
     settleInvoice.mockReset();
@@ -192,5 +193,20 @@ describe('Dashboard', () => {
     await userEvent.unhover(row);
     await userEvent.hover(row);
     expect(getConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it('warns that cached invoices may be out of date when a refresh fails', () => {
+    state.invoices = [inv('INV-1')];
+    state.loadError = true;
+    renderDashboard();
+    expect(screen.getByRole('alert')).toHaveTextContent(/out of date/i);
+    expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+    expect(screen.getByText('INV-1 Client')).toBeInTheDocument();
+  });
+
+  it('shows no stale-data warning when the refresh succeeded', () => {
+    state.invoices = [inv('INV-1')];
+    renderDashboard();
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 });
