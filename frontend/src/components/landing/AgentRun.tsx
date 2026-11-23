@@ -177,10 +177,10 @@ function DraftCard({ draft, pending, onApprove }: { draft: Draft; pending: boole
 }
 
 
-function Freelancer({ mood, thought }: { mood: Mood; thought: string }) {
+function Freelancer({ mood, thought, live }: { mood: Mood; thought: string; live: boolean }) {
   return (
     <figure className="flex items-center gap-4">
-      <div className="relative w-[76px] h-[76px] sm:w-[88px] sm:h-[88px] shrink-0 rounded-xl overflow-hidden bg-[#FDEBDD]">
+      <div className="relative w-[76px] h-[76px] @md:w-[88px] @md:h-[88px] shrink-0 rounded-xl overflow-hidden bg-[#FDEBDD]">
         {(Object.keys(FACES) as Mood[]).map((m) => (
           <img
             key={m}
@@ -195,7 +195,7 @@ function Freelancer({ mood, thought }: { mood: Mood; thought: string }) {
       <figcaption className="min-w-0">
         <p
           className="relative rounded-xl rounded-bl-sm bg-tint px-3.5 py-2.5 text-[16px] leading-[1.45] font-medium max-w-[34ch] before:absolute before:-left-1.5 before:bottom-2 before:w-3 before:h-3 before:rotate-45 before:bg-tint"
-          aria-live="polite"
+          aria-live={live ? 'polite' : 'off'}
         >
           “{thought}”
         </p>
@@ -213,6 +213,9 @@ export function AgentRun() {
   const [shown, setShown] = useState(reducedMotion ? RUN.length : 1)
   const [playing, setPlaying] = useState(!reducedMotion)
   const logRef = useRef<HTMLOListElement>(null)
+  // Announce steps only once the visitor takes control, so a screen reader
+  // does not narrate the auto-playing demo from page load.
+  const [interacted, setInteracted] = useState(false)
 
   const current = RUN[shown - 1]
   const pending = Boolean(current.draft)
@@ -230,14 +233,22 @@ export function AgentRun() {
     if (log) log.scrollTo({ top: log.scrollHeight, behavior: reducedMotion ? 'auto' : 'smooth' })
   }, [shown, reducedMotion])
 
-  const approve = () => setShown((n) => n + 1)
+  const approve = () => {
+    setInteracted(true)
+    setShown((n) => n + 1)
+  }
+  const togglePlaying = () => {
+    setInteracted(true)
+    setPlaying((p) => !p)
+  }
   const replay = () => {
+    setInteracted(true)
     setShown(1)
     setPlaying(true)
   }
 
   return (
-    <div aria-labelledby="run-title" role="region">
+    <div aria-labelledby="run-title" role="region" className="@container">
       <div className="rounded-xl bg-white border border-line shadow-card">
         <div aria-hidden="true" className="flex items-center gap-3 px-4 py-2.5 rounded-t-xl bg-[#FBF5EE] border-b border-line">
           <span className="flex gap-1.5">
@@ -250,22 +261,22 @@ export function AgentRun() {
           </span>
           <span className="w-[42px]" />
         </div>
-        <div className="px-5 sm:px-6 py-4 border-b border-line flex items-center justify-between gap-4">
-          <Freelancer mood={current.mood} thought={current.thought} />
-          <div className="hidden sm:block shrink-0 text-[14px] leading-[1.5] text-muted">
+        <div className="px-5 @md:px-6 py-4 border-b border-line flex items-center justify-between gap-4">
+          <Freelancer mood={current.mood} thought={current.thought} live={interacted} />
+          <div className="hidden @lg:block shrink-0 text-[14px] leading-[1.5] text-muted">
             <p className="flex items-center gap-2"><span className="w-2.5 h-2.5 rounded-full bg-ink" />The agent</p>
             <p className="flex items-center gap-2 mt-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-coral" />You</p>
           </div>
         </div>
 
         <div className="flex flex-col min-w-0">
-          <div className="flex items-center justify-between gap-4 px-5 sm:px-6 py-3.5 border-b border-line">
+          <div className="flex items-center justify-between gap-4 px-5 @md:px-6 py-3.5 border-b border-line">
             <h2 id="run-title" className="text-[17px] font-semibold">
               Agent run for INV-042 <span className="font-normal text-muted">(example)</span>
             </h2>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setPlaying((p) => !p)}
+                onClick={togglePlaying}
                 aria-label={playing ? 'Pause the example' : 'Play the example'}
                 className="w-9 h-9 rounded-lg flex items-center justify-center hover:bg-tint"
               >
@@ -281,9 +292,9 @@ export function AgentRun() {
             </div>
           </div>
 
-          <div className="px-5 sm:px-6 py-3 border-b border-line">
+          <div className="px-5 @md:px-6 py-3 border-b border-line">
             <div className="flex items-center justify-between gap-3 text-[14px]">
-              <span className="text-muted tabular-nums" aria-live="polite">
+              <span className="text-muted tabular-nums" aria-live={interacted ? 'polite' : 'off'}>
                 Step {shown} of {RUN.length}
               </span>
               {pending ? (
@@ -308,7 +319,7 @@ export function AgentRun() {
             </ol>
           </div>
 
-          <ol ref={logRef} className="h-[420px] sm:h-[440px] overflow-y-auto px-5 sm:px-6 py-4 space-y-1">
+          <ol ref={logRef} className="h-[clamp(320px,52vh,440px)] overflow-y-auto px-5 @md:px-6 py-4 space-y-1">
             {RUN.slice(0, shown).map((event, i) => {
               const Icon = event.icon
               const isYou = event.who === 'you'
@@ -316,7 +327,7 @@ export function AgentRun() {
               return (
                 <li
                   key={i}
-                  className={`grid grid-cols-[52px_1fr] sm:grid-cols-[64px_1fr] gap-3 rounded-lg py-3 animate-[runIn_.35s_ease-out] motion-reduce:animate-none ${
+                  className={`grid grid-cols-[52px_1fr] @md:grid-cols-[64px_1fr] gap-3 rounded-lg py-3 animate-[runIn_.35s_ease-out] motion-reduce:animate-none ${
                     isYou ? 'bg-[#FFE9DF] px-3 -mx-3' : ''
                   }`}
                 >
@@ -337,7 +348,7 @@ export function AgentRun() {
                     </p>
                     {event.detail && <p className="mt-1 pl-[34px] text-[15px] leading-[1.5] text-muted">{event.detail}</p>}
                     {event.file && (
-                      <div className="sm:pl-[34px]">
+                      <div className="@md:pl-[34px]">
                         <div className="mt-3 rounded-lg border-2 border-dashed border-coral/50 bg-white px-4 py-4 flex items-center gap-4">
                           <span className="w-11 h-12 shrink-0 rounded-md bg-tint border border-line flex flex-col items-center justify-center">
                             <FileText className="w-4 h-4 text-red" />
@@ -354,7 +365,7 @@ export function AgentRun() {
                       </div>
                     )}
                     {event.fields && (
-                      <dl className="mt-3 pl-[34px] grid grid-cols-2 gap-2">
+                      <dl className="mt-3 pl-[34px] grid grid-cols-1 @sm:grid-cols-2 gap-2">
                         {event.fields.map(([label, value], f) => (
                           <div
                             key={label}
@@ -368,7 +379,7 @@ export function AgentRun() {
                       </dl>
                     )}
                     {event.draft && (
-                      <div className="sm:pl-[34px]">
+                      <div className="@md:pl-[34px]">
                         <DraftCard draft={event.draft} pending={isPending} onApprove={approve} />
                       </div>
                     )}
