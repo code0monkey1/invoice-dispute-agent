@@ -1,0 +1,117 @@
+name: Feature evidence
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited]
+  pull_request_target:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    if: github.event_name == 'pull_request' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      mode: ${{ steps.selection.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.merge_commit_sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify the landed revision
+        if: github.event_name == 'pull_request_target'
+        env:
+          LANDED_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$LANDED_SHA"
+          git merge-base --is-ancestor "$LANDED_SHA" origin/main
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - name: Select declared test
+        id: selection
+        run: python scripts/feature_evidence.py select
+      - name: Install backend dependencies
+        if: steps.selection.outputs.mode != 'ci-only'
+        run: python -m pip install -r requirements.txt
+      - uses: actions/setup-node@v4
+        if: steps.selection.outputs.mode == 'browser-video'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install browser test dependencies
+        if: steps.selection.outputs.mode == 'browser-video'
+        working-directory: frontend
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Install video encoder
+        if: github.event_name == 'pull_request_target' && steps.selection.outputs.mode == 'browser-video'
+        run: command -v ffmpeg || sudo apt-get install -y ffmpeg
+      - name: Run the declared test
+        if: steps.selection.outputs.mode != 'ci-only'
+        env:
+          RECORD_ON_MERGE: ${{ github.event_name == 'pull_request_target' && '--record' || '' }}
+        run: |
+          if [ "$RECORD_ON_MERGE" = "--record" ]; then
+            python scripts/feature_evidence.py run --record
+          else
+            python scripts/feature_evidence.py run
+          fi
+      - name: Prepare passing evidence
+        if: github.event_name == 'pull_request_target' && steps.selection.outputs.mode != 'ci-only'
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/feature-evidence
+        run: python scripts/feature_evidence.py collect
+      - name: Save passing evidence
+        if: github.event_name == 'pull_request_target' && steps.selection.outputs.mode != 'ci-only'
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-evidence
+          path: ${{ runner.temp }}/feature-evidence
+          if-no-files-found: error
+          retention-days: 3
+          overwrite: true
+      - name: Save browser failure diagnostics
+        if: failure() && steps.selection.outputs.mode == 'browser-video'
+        uses: actions/upload-artifact@v4
+        with:
+          name: feature-evidence-diagnostics
+          path: frontend/test-results/
+          if-no-files-found: ignore
+          retention-days: 3
+          overwrite: true
+
+  publish:
+    name: Deliver to Slack
+    needs: test
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged == true && needs.test.outputs.mode != 'ci-only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          persist-credentials: false
+          sparse-checkout: scripts
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-evidence
+          path: ${{ runner.temp }}/feature-evidence
+      - name: Post the passing result
+        env:
+          EVIDENCE_DIR: ${{ runner.temp }}/feature-evidence
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: python scripts/feature_evidence.py publish

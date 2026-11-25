@@ -12,6 +12,8 @@ data/
 .vercel
 /public/
 frontend/coverage/
+/frontend/test-results/
+/frontend/playwright-report/
 .pytest_cache/
 graphify-out
 

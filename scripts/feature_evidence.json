@@ -1,0 +1,12 @@
+{
+  "invoice-number-ownership": {
+    "mode": "browser-video",
+    "target": "e2e/invoice-number-ownership.e2e.ts",
+    "description": "Two owners each created inv-1, and a repeat submission by the same owner was rejected without altering either invoice."
+  },
+  "invoice-owner-api": {
+    "mode": "test-summary",
+    "target": "tests/test_create_validation.py::test_same_number_for_two_users_is_two_invoices",
+    "description": "The API accepted the same invoice number for two different users and stored two separately owned invoices."
+  }
+}

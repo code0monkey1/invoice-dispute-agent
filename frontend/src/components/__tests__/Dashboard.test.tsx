@@ -8,12 +8,13 @@ import { withQueryClient } from '../../test/queryClient';
 
 const state: { invoices: Invoice[]; loading: boolean; loadError: boolean } = { invoices: [], loading: false, loadError: false };
 const settleInvoice = vi.hoisted(() => vi.fn());
+const createInvoice = vi.hoisted(() => vi.fn());
 const getConversation = vi.hoisted(() => vi.fn());
 
 vi.mock('../../api', () => ({ api: { getConversation } }));
 
 vi.mock('../../hooks/useInvoices', () => ({
-  useInvoices: () => ({ invoices: state.invoices, loading: state.loading, loadError: state.loadError, createInvoice: vi.fn(), settleInvoice, refetch: vi.fn() }),
+  useInvoices: () => ({ invoices: state.invoices, loading: state.loading, loadError: state.loadError, createInvoice, settleInvoice, refetch: vi.fn() }),
 }));
 
 const auth = vi.hoisted(() => ({
@@ -65,6 +66,7 @@ describe('Dashboard', () => {
     auth.gmailConnected = true;
     auth.connectGmail.mockClear();
     settleInvoice.mockReset();
+    createInvoice.mockReset();
     getConversation.mockReset().mockResolvedValue({ messages: [], interrupt: null, state: {}, communications: [] });
     settleInvoice.mockResolvedValue(undefined);
   });
@@ -208,5 +210,24 @@ describe('Dashboard', () => {
     state.invoices = [inv('INV-1')];
     renderDashboard();
     expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('announces a duplicate invoice error and keeps the form open', async () => {
+    const user = userEvent.setup();
+    state.invoices = [inv('inv-1')];
+    createInvoice.mockRejectedValueOnce(new Error("Invoice 'inv-1' already exists"));
+    renderDashboard();
+
+    await user.click(screen.getAllByRole('button', { name: 'Chase an invoice' })[0]!);
+    await user.type(screen.getByLabelText('Invoice ID'), 'inv-1');
+    await user.type(screen.getByLabelText('Client Name'), 'Duplicate Client');
+    await user.type(screen.getByLabelText('Client Email'), 'billing@example.test');
+    await user.type(screen.getByLabelText('Invoice total ($)'), '1200');
+    await user.type(screen.getByLabelText('Days Overdue'), '10');
+    await user.type(screen.getByLabelText('Client location (for legal notices)'), 'California');
+    await user.click(screen.getByRole('button', { name: 'Start chasing' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent("Invoice 'inv-1' already exists");
+    expect(screen.getByLabelText('Invoice ID')).toHaveValue('inv-1');
   });
 });
