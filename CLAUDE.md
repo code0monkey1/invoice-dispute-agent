@@ -64,6 +64,8 @@ Golden set in `evals/golden/level_{0..3}.yaml`. `harness.py` runs a case through
 ### Tests
 `pytest` (backend, includes eval tier 1) and `cd frontend && npx vitest run`. The fakes shared by tests and evals are in `tests/fakes.py`.
 
+For recorded merge evidence, see [Feature evidence](docs/feature-evidence.md).
+
 ## External Services
 - **Groq API** (LLM — configurable with `GROQ_MODEL`, default `openai/gpt-oss-120b`)
 - **Tavily API** (web search for legal procedures)

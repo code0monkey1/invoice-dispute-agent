@@ -171,11 +171,9 @@ export default function InvoiceForm({ open, onClose, onSubmit, loading, error }:
             ))}
           </div>
 
-          {error && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-              {error}
-            </div>
-          )}
+          <div role="alert" className={error ? 'rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700' : 'sr-only'}>
+            {error}
+          </div>
           <button
             type="submit"
             disabled={loading || parsing}
